@@ -3,6 +3,11 @@ import pytest
 from app.llm import FakeLLM, LLM
 
 
+def test_fake_llm_allows_empty_responses_on_init():
+    llm = FakeLLM([])
+    assert isinstance(llm, FakeLLM)
+
+
 def test_fake_llm_returns_scripted_response():
     llm = FakeLLM(["first", "second"])
     assert llm.complete(system="s", user="u") == "first"

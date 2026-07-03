@@ -16,8 +16,6 @@ class LLM(ABC):
 
 class FakeLLM(LLM):
     def __init__(self, responses: list[str]):
-        if not responses:
-            raise ValueError("responses must not be empty")
         self._responses = responses
         self._index = 0
 
