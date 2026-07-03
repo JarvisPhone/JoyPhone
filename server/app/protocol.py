@@ -1,5 +1,5 @@
 import json
-from typing import Literal, Optional, Union
+from typing import Any, Literal, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -81,9 +81,19 @@ class TaskStart(_Downlink):
 class Action(_Downlink):
     type: Literal["action"] = "action"
     actionId: str
-    # op: open_app / tap / input / swipe / back / home / wait / read_screen
-    op: str
-    params: dict = Field(default_factory=dict)
+    op: Literal[
+        "open_app",
+        "tap",
+        "input",
+        "swipe",
+        "back",
+        "home",
+        "wait",
+        "read_screen",
+        "done",
+        "abort",
+    ]
+    params: dict[str, Any] = Field(default_factory=dict)
 
 
 class TaskDone(_Downlink):
