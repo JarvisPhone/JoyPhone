@@ -1,25 +1,47 @@
-import org.gradle.api.tasks.testing.Test
-
 plugins {
-    kotlin("jvm")
-    java
+    alias(libs.plugins.android.application)
 }
 
-repositories {
-    mavenCentral()
+android {
+    namespace = "com.example.phoneagent"
+    compileSdk {
+        version = release(36)
+    }
+
+    defaultConfig {
+        applicationId = "com.example.phoneagent"
+        minSdk = 26
+        targetSdk = 36
+        versionCode = 1
+        versionName = "1.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    kotlin {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        }
+    }
 }
 
 dependencies {
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    testImplementation("junit:junit:4.13.2")
-}
+    implementation(libs.appcompat)
+    implementation(libs.okhttp)
 
-tasks.register<Test>("testDebugUnitTest") {
-    testClassesDirs = sourceSets["test"].output.classesDirs
-    classpath = sourceSets["test"].runtimeClasspath
-    useJUnit()
-}
-
-tasks.withType<Test>().configureEach {
-    useJUnit()
+    testImplementation(libs.junit)
 }

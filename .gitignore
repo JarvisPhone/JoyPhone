@@ -3,3 +3,6 @@ android/.gradle/
 android/build/
 android/app/build/
 android/.kotlin/
+android/local.properties
+android/captures/
+*.log
