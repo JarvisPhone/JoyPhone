@@ -1,0 +1,99 @@
+import json
+from typing import Literal, Optional, Union
+
+from pydantic import BaseModel, Field
+
+
+class Node(BaseModel):
+    id: str
+    text: Optional[str] = None
+    desc: Optional[str] = None
+    className: Optional[str] = None
+    bounds: Optional[list[int]] = None  # [left, top, right, bottom]
+    clickable: bool = False
+    editable: bool = False
+
+
+# ---- 上行：App -> 云端 ----
+class Perception(BaseModel):
+    type: Literal["perception"] = "perception"
+    nodeTree: list[Node] = Field(default_factory=list)
+    screenshot: Optional[str] = None  # base64，可选
+    pkg: str = ""
+    activity: str = ""
+    ts: int = 0
+
+
+class ActionResult(BaseModel):
+    type: Literal["action.result"] = "action.result"
+    actionId: str
+    ok: bool
+    error: Optional[str] = None
+    ts: int = 0
+
+
+class NewMessage(BaseModel):
+    type: Literal["event.newMessage"] = "event.newMessage"
+    app: str
+    sender: str
+    text: str
+    ts: int = 0
+
+
+class Heartbeat(BaseModel):
+    type: Literal["heartbeat"] = "heartbeat"
+    deviceId: str
+    ts: int = 0
+
+
+Uplink = Union[Perception, ActionResult, NewMessage, Heartbeat]
+
+_UPLINK_MAP = {
+    "perception": Perception,
+    "action.result": ActionResult,
+    "event.newMessage": NewMessage,
+    "heartbeat": Heartbeat,
+}
+
+
+def parse_uplink(raw: str) -> Uplink:
+    data = json.loads(raw)
+    t = data.get("type")
+    cls = _UPLINK_MAP.get(t)
+    if cls is None:
+        raise ValueError(f"unknown uplink type: {t}")
+    return cls(**data)
+
+
+# ---- 下行：云端 -> App ----
+class _Downlink(BaseModel):
+    def to_json(self) -> str:
+        return self.model_dump_json()
+
+
+class TaskStart(_Downlink):
+    type: Literal["task.start"] = "task.start"
+    taskId: str
+    goal: str
+    target: str
+
+
+class Action(_Downlink):
+    type: Literal["action"] = "action"
+    actionId: str
+    # op: open_app / tap / input / swipe / back / home / wait / read_screen
+    op: str
+    params: dict = Field(default_factory=dict)
+
+
+class TaskDone(_Downlink):
+    type: Literal["task.done"] = "task.done"
+    taskId: str
+    result: str
+    summary: str = ""
+
+
+class TaskAbort(_Downlink):
+    type: Literal["task.abort"] = "task.abort"
+    taskId: str
+    reason: str
