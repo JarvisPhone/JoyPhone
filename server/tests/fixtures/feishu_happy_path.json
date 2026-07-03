@@ -1,1 +1,7 @@
-{"type":"heartbeat","deviceId":"device-1","ts":1720000000}
+[
+  {"op":"open_app","params":{"pkg":"com.ss.android.lark"}},
+  {"op":"tap","params":{"match_text":"通讯录"}},
+  {"op":"tap","params":{"match_text":"搜索"}},
+  {"op":"input","params":{"text":"张三"}},
+  {"op":"tap","params":{"match_text":"发送"}}
+]

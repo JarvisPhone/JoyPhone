@@ -1,7 +1,18 @@
+import json
+from pathlib import Path
+
 from fastapi import FastAPI, WebSocket
 from starlette.websockets import WebSocketDisconnect
 
 from app.protocol import Action, TaskAbort, TaskDone, TaskStart, parse_uplink
+
+_FIXTURE = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "feishu_happy_path.json"
+
+
+def _load_fixture_steps() -> list[dict]:
+    if not _FIXTURE.exists():
+        return []
+    return json.loads(_FIXTURE.read_text(encoding="utf-8"))
 
 
 def create_app() -> FastAPI:
