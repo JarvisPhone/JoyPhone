@@ -1,66 +1,57 @@
 import json
+import uuid
 
-from app.protocol import Action, Perception
 from app.decision import DecisionEngine
+from app.llm import FakeLLM
+from app.protocol import Node, Perception
+from app.skills import SkillLibrary
 
 
-class DummySkills:
-    def __init__(self, step):
-        self.step = step
-
-    def next_step(self, goal, perception, skill_name, cursor, history):
-        return self.step
+def _perc(nodes: list[Node]) -> Perception:
+    return Perception(nodeTree=nodes, pkg="com.ss.android.lark", activity="Main", ts=1)
 
 
-class DummyLLM:
-    def __init__(self, response):
-        self.response = response
-        self.called = False
-        self.last_request = None
+def test_skill_hit_without_llm(monkeypatch):
+    llm = FakeLLM(['{"op":"back","params":{}}'])
 
-    def complete(self, system, user):
-        self.called = True
-        self.last_request = {"system": system, "user": user}
-        return json.dumps(self.response, ensure_ascii=False)
+    def _should_not_be_called(system: str, user: str, image_b64: str | None = None) -> str:
+        raise AssertionError("LLM should not be called when skill hits")
 
+    monkeypatch.setattr(llm, "complete", _should_not_be_called)
+    engine = DecisionEngine(llm=llm, skills=SkillLibrary())
+    p = _perc([Node(id="n1", text="通讯录", clickable=True)])
 
-def make_perception() -> Perception:
-    return Perception(
-        nodeTree=[{"id": "n1", "text": "通讯录", "clickable": True}],
-        pkg="com.ss.android.lark",
-        activity="MainActivity",
-        ts=1,
-    )
+    action = engine.decide(goal="发消息", perception=p, skill_name="feishu_send", cursor=0, history=[])
 
-
-def test_skill_hit_returns_tap_without_llm():
-    llm = DummyLLM({"op": "back", "params": {}})
-    skills = DummySkills({"op": "tap", "match_text": "通讯录"})
-    engine = DecisionEngine(llm=llm, skills=skills)
-
-    action = engine.decide(
-        goal="打开通讯录",
-        perception=make_perception(),
-        skill_name="contacts",
-        cursor=0,
-        history=[],
-    )
-
-    assert isinstance(action, Action)
     assert action.op == "tap"
     assert action.params == {"match_text": "通讯录"}
-    assert llm.called is False
+    uuid.UUID(action.actionId)
 
 
-def test_skill_miss_fallback_llm_returns_back():
-    llm = DummyLLM({"op": "back", "params": {}})
-    skills = DummySkills(None)
-    engine = DecisionEngine(llm=llm, skills=skills)
+def test_fallback_to_llm_when_skill_miss(monkeypatch):
+    llm = FakeLLM(['{"op":"back","params":{}}'])
+    captured: dict[str, str] = {}
 
-    action = engine.decide("返回", make_perception(), "contacts", 0, [])
+    def _capture_complete(system: str, user: str, image_b64: str | None = None) -> str:
+        captured["system"] = system
+        captured["user"] = user
+        return '{"op":"back","params":{}}'
 
-    assert isinstance(action, Action)
+    monkeypatch.setattr(llm, "complete", _capture_complete)
+    engine = DecisionEngine(llm=llm, skills=SkillLibrary())
+    p = _perc([Node(id="n1", text="首页")])
+
+    action = engine.decide(goal="发消息", perception=p, skill_name="feishu_send", cursor=0, history=[])
+
     assert action.op == "back"
     assert action.params == {}
-    assert llm.called is True
-    assert llm.last_request["system"] == "decide next UI action"
+    uuid.UUID(action.actionId)
+    assert captured["system"] == "decide next UI action"
+
+    payload = json.loads(captured["user"])
+    assert set(payload.keys()) == {"goal", "nodes", "history"}
+    assert payload["goal"] == "发消息"
+    assert payload["history"] == []
+    assert payload["nodes"] == [
+        {"id": "n1", "text": "首页", "clickable": False, "editable": False}
+    ]
