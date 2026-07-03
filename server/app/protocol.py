@@ -9,7 +9,7 @@ class Node(BaseModel):
     text: Optional[str] = None
     desc: Optional[str] = None
     className: Optional[str] = None
-    bounds: Optional[list[int]] = None  # [left, top, right, bottom]
+    bounds: Optional[tuple[int, int, int, int]] = None  # [left, top, right, bottom]
     clickable: bool = False
     editable: bool = False
 
@@ -57,7 +57,14 @@ _UPLINK_MAP = {
 
 
 def parse_uplink(raw: str) -> Uplink:
-    data = json.loads(raw)
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"malformed JSON: {exc.msg}") from exc
+
+    if not isinstance(data, dict):
+        raise ValueError(f"JSON root must be object, got {type(data).__name__}")
+
     t = data.get("type")
     cls = _UPLINK_MAP.get(t)
     if cls is None:
