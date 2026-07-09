@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">JoyPhoneAgent</string>
+    <string name="accessibility_service_desc">用于感知屏幕节点并执行点击/输入等操作，驱动飞书完成协商闭环。</string>
+</resources>
