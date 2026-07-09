@@ -12,7 +12,7 @@ class PhoneAgentService : AccessibilityService() {
 
     companion object {
         // 真机联调：填 Mac 局域网 IP，如 "ws://192.168.1.20:8000"
-        const val WS_URL = "ws://10.0.2.2:8000"
+        const val WS_URL = "ws://10.253.61.158:8000"
         private const val DEBOUNCE_MS = 400L
     }
 

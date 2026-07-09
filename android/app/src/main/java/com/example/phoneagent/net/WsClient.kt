@@ -1,5 +1,6 @@
 package com.example.phoneagent.net
 
+import android.util.Log
 import com.example.phoneagent.protocol.DownAction
 import com.example.phoneagent.protocol.UplinkActionResult
 import com.example.phoneagent.protocol.UplinkPerception
@@ -22,18 +23,33 @@ class WsClient(
     private var ws: WebSocket? = null
     private val dispatcher = WsDispatcher(onTaskStart, onAction, onTaskEnd)
 
+    private companion object {
+        const val TAG = "PhoneAgentWs"
+    }
+
     private val listener = object : WebSocketListener() {
+        override fun onOpen(webSocket: WebSocket, response: Response) {
+            Log.i(TAG, "WS onOpen: ${response.code}")
+      }
+
         override fun onMessage(webSocket: WebSocket, text: String) {
+            Log.d(TAG, "WS onMessage: $text")
             dispatcher.dispatch(text)
         }
 
+        override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+            Log.i(TAG, "WS onClosing: $code $reason")
+        }
+
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-            // 连接失败：交由上层通过重连策略处理（MVP 暂仅记录）
+            Log.e(TAG, "WS onFailure: ${t.message}", t)
         }
     }
 
     fun connect(deviceId: String) {
-        val req = Request.Builder().url("$baseUrl/ws/$deviceId").build()
+        val url = "$baseUrl/ws/$deviceId"
+        Log.i(TAG, "WS connecting: $url")
+        val req = Request.Builder().url(url).build()
         ws = client.newWebSocket(req, listener)
     }
 
