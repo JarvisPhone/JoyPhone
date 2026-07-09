@@ -1,7 +1,7 @@
 import json
 from typing import Any, Literal, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class Node(BaseModel):
@@ -101,6 +101,15 @@ class Action(_Downlink):
         "abort",
     ]
     params: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("params", mode="before")
+    @classmethod
+    def _coerce_params_to_str(cls, v: Any) -> dict[str, str]:
+        # 端侧 DownAction.params 是 Map<String,String>，此处统一将所有 value 强转为字符串，
+        # 覆盖 SkillCache / SkillLibrary / LLM 三条决策分支，防止端侧反序列化抛异常。
+        if not isinstance(v, dict):
+            return v
+        return {str(k): str(val) for k, val in v.items()}
 
 
 class TaskDone(_Downlink):

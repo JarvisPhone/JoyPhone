@@ -28,6 +28,33 @@ class FakeLLM(LLM):
 
 
 import os
+import re
+
+
+def _extract_json(text: str | None) -> str:
+    """清洗 LLM 原始输出：剥离 <think> 推理标签并提取首个完整 JSON 对象。
+
+    MiniMax-M2.x thinking 无法关闭，content 会带 <think>...</think>；
+    部分模型还会在 JSON 前后夹杂说明文字。此函数保证下游 json.loads 可用。
+    """
+    if not text:
+        return ""
+    # 去掉 <think>...</think> 段
+    cleaned = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+    # 提取首个大括号平衡的 JSON 对象
+    start = cleaned.find("{")
+    if start == -1:
+        return cleaned
+    depth = 0
+    for i in range(start, len(cleaned)):
+        ch = cleaned[i]
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return cleaned[start : i + 1]
+    return cleaned
 
 
 class RealLLM(LLM):
@@ -44,10 +71,10 @@ class RealLLM(LLM):
             ],
             temperature=0,
         )
-        return resp.choices[0].message.content
-
+        return _extract_json(resp.choices[0].message.content)
 
 def build_llm() -> LLM:
+    _load_env_file()
     api_key = os.environ.get("LLM_API_KEY")
     if not api_key:
         return FakeLLM(['{"op":"read_screen","params":{}}'])
@@ -58,3 +85,16 @@ def build_llm() -> LLM:
     model = os.environ.get("LLM_MODEL", "gpt-4o-mini")
     client = OpenAI(api_key=api_key, base_url=base_url)
     return RealLLM(client=client, model=model)
+
+
+def _load_env_file() -> None:
+    # 自动加载 server/.env（若存在），不覆盖已存在的进程环境变量。
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+    from pathlib import Path
+
+    env_path = Path(__file__).resolve().parent.parent / ".env"
+    if env_path.exists():
+        load_dotenv(env_path, override=False)

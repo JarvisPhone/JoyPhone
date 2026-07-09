@@ -11,5 +11,7 @@ __pycache__/
 server/.pytest_cache/
 server/.venv/
 server/data/skill_cache.json
+server/.env
+.env
 .DS_Store
 **/.DS_Store

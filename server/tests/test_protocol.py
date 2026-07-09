@@ -38,6 +38,20 @@ def test_action_rejects_unknown_op():
         Action(actionId="a1", op="unknown_op", params={})
 
 
+def test_action_coerces_non_string_params_to_string():
+    # 端侧 DownAction.params 是 Map<String,String>，云端须保证所有 value 为字符串，
+    # 否则端侧 kotlinx.serialization 反序列化会抛异常。
+    action = Action(actionId="a1", op="wait", params={"ms": 500, "flag": True, "ratio": 0.5})
+    assert action.params == {"ms": "500", "flag": "True", "ratio": "0.5"}
+    loaded = json.loads(action.to_json())
+    assert all(isinstance(v, str) for v in loaded["params"].values())
+
+
+def test_action_keeps_string_params_unchanged():
+    action = Action(actionId="a1", op="tap", params={"nodeId": "n1", "match_text": "通讯录"})
+    assert action.params == {"nodeId": "n1", "match_text": "通讯录"}
+
+
 def test_task_start_build():
     task = TaskStart(taskId="t1", goal="确认还款时间", target="张三")
     assert task.type == "task.start"
