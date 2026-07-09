@@ -23,8 +23,8 @@ def _result(action_id, ok=True):
     )
 
 
-def test_gateway_starts_task_on_connect(monkeypatch):
-    monkeypatch.setenv("SKILL_CACHE_PATH", "/tmp/test_gw_cache.json")
+def test_gateway_starts_task_on_connect(monkeypatch, tmp_path):
+    monkeypatch.setenv("SKILL_CACHE_PATH", str(tmp_path / "cache.json"))
     monkeypatch.setenv("PHONEAGENT_FAKE_LLM", '["{\\"op\\":\\"done\\",\\"params\\":{}}"]')
 
     app = create_app()
@@ -37,8 +37,8 @@ def test_gateway_starts_task_on_connect(monkeypatch):
     assert first["goal"]
 
 
-def test_gateway_perception_yields_action_then_done(monkeypatch):
-    monkeypatch.setenv("SKILL_CACHE_PATH", "/tmp/test_gw_cache2.json")
+def test_gateway_perception_yields_action_then_done(monkeypatch, tmp_path):
+    monkeypatch.setenv("SKILL_CACHE_PATH", str(tmp_path / "cache.json"))
     monkeypatch.setenv(
         "PHONEAGENT_FAKE_LLM",
         json.dumps(
@@ -66,8 +66,8 @@ def test_gateway_perception_yields_action_then_done(monkeypatch):
         assert done["type"] == "task.done"
 
 
-def test_gateway_budget_exhausted_aborts(monkeypatch):
-    monkeypatch.setenv("SKILL_CACHE_PATH", "/tmp/test_gw_cache3.json")
+def test_gateway_budget_exhausted_aborts(monkeypatch, tmp_path):
+    monkeypatch.setenv("SKILL_CACHE_PATH", str(tmp_path / "cache.json"))
     monkeypatch.setenv("PHONEAGENT_FAKE_LLM", '["{\\"op\\":\\"wait\\",\\"params\\":{}}"]')
     monkeypatch.setenv("PHONEAGENT_MAX_STEPS", "2")
 
@@ -87,8 +87,8 @@ def test_gateway_budget_exhausted_aborts(monkeypatch):
         assert seen_abort
 
 
-def test_gateway_heartbeat_still_returns_action(monkeypatch):
-    monkeypatch.setenv("SKILL_CACHE_PATH", "/tmp/test_gw_cache4.json")
+def test_gateway_heartbeat_still_returns_action(monkeypatch, tmp_path):
+    monkeypatch.setenv("SKILL_CACHE_PATH", str(tmp_path / "cache.json"))
     monkeypatch.setenv("PHONEAGENT_FAKE_LLM", '["{\\"op\\":\\"read_screen\\",\\"params\\":{}}"]')
 
     app = create_app()
