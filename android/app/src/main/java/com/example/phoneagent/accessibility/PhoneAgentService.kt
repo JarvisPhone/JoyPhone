@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import com.example.phoneagent.data.AgentStateRepository
 import com.example.phoneagent.domain.ActionLog
@@ -22,6 +23,7 @@ class PhoneAgentService : AccessibilityService() {
     companion object {
         const val WS_URL = "ws://10.253.61.158:8000"
         private const val DEBOUNCE_MS = 400L
+        private const val TAG = "PhoneAgent"
     }
 
     @Inject lateinit var wsClient: WsClient
@@ -42,13 +44,16 @@ class PhoneAgentService : AccessibilityService() {
             deviceId = deviceId,
             onTaskStart = { goal, _ ->
                 taskActive = true
+                Log.i(TAG, "↓ task.start goal=$goal → taskActive=true")
                 repo.appendTrace(TraceEvent(System.currentTimeMillis(), TraceDirection.DOWN, "task.start", goal))
                 repo.updateTask(TaskState.Running(goal))
                 reportScreen()
             },
             onAction = { action ->
+                Log.i(TAG, "↓ action ${action.op} ${action.params} (taskActive=$taskActive)")
                 repo.appendTrace(TraceEvent(System.currentTimeMillis(), TraceDirection.DOWN, "action", "${action.op} ${action.params}"))
                 val ok = executor.execute(action.op, action.params)
+                Log.i(TAG, "↑ action.result ${action.op} ok=$ok")
                 repo.appendTrace(TraceEvent(System.currentTimeMillis(), TraceDirection.UP, "action.result", "${action.op} ok=$ok"))
                 wsClient.sendActionResult(action.actionId, ok)
                 repo.appendActionLog(ActionLog(System.currentTimeMillis(), action.op, ok))
@@ -56,6 +61,7 @@ class PhoneAgentService : AccessibilityService() {
             },
             onTaskEnd = { reason ->
                 taskActive = false
+                Log.i(TAG, "↓ task.end reason=$reason → taskActive=false")
                 repo.appendTrace(TraceEvent(System.currentTimeMillis(), TraceDirection.DOWN, "task.end", reason))
                 repo.updateTask(TaskState.Idle)
             },
@@ -80,6 +86,7 @@ class PhoneAgentService : AccessibilityService() {
             ts = System.currentTimeMillis(),
         )
         wsClient.sendPerception(perception)
+        Log.i(TAG, "↑ perception pkg=${perception.pkg} nodes=${nodes.size} (taskActive=$taskActive)")
         repo.appendTrace(TraceEvent(System.currentTimeMillis(), TraceDirection.UP, "perception", "pkg=${perception.pkg} nodes=${nodes.size}"))
     }
 

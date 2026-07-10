@@ -30,7 +30,7 @@ class MainViewModel @Inject constructor(
 
     private companion object {
         const val UNLOCK_THRESHOLD = 7
-        const val TEST_GOAL = "在飞书里找到「Android」群并发送一条消息"
+        const val TEST_GOAL = "在飞书里切换到「飞书个人账户」，点击左下角的「消息」，上下滑动找到群「Android AI 开发组」，点进去停留在发送消息的页面"
     }
 
     private val _debugUnlocked = MutableStateFlow(false)
