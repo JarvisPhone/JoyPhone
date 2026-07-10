@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import uuid
 from pathlib import Path
@@ -17,6 +18,20 @@ from app.protocol import (
 )
 from app.skill_cache import SkillCache
 from app.skills import SkillLibrary
+
+logger = logging.getLogger("phoneagent.gateway")
+if not logger.handlers:
+    _fmt = logging.Formatter("%(asctime)s [phoneagent] %(message)s")
+    _h = logging.StreamHandler()
+    _h.setFormatter(_fmt)
+    logger.addHandler(_h)
+    _log_dir = Path(__file__).resolve().parents[1] / "logs"
+    _log_dir.mkdir(exist_ok=True)
+    _fh = logging.FileHandler(_log_dir / "gateway.log", encoding="utf-8")
+    _fh.setFormatter(_fmt)
+    logger.addHandler(_fh)
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
 
 _FIXTURE = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "feishu_happy_path.json"
 
@@ -45,6 +60,7 @@ def create_app() -> FastAPI:
     @app.websocket("/ws/{device_id}")
     async def ws_gateway(websocket: WebSocket, device_id: str) -> None:
         await websocket.accept()
+        logger.info("WS connected device=%s", device_id)
         from app.session import Session
 
         engine = _build_engine()
@@ -67,6 +83,7 @@ def create_app() -> FastAPI:
             try:
                 raw = await websocket.receive_text()
             except WebSocketDisconnect:
+                logger.info("WS disconnected device=%s", device_id)
                 break
 
             try:
@@ -99,6 +116,9 @@ def create_app() -> FastAPI:
                 break
 
             last_pkg = uplink.pkg or last_pkg
+            logger.info(
+                "perception pkg=%s nodes=%d cursor=%d", uplink.pkg, len(uplink.nodeTree), cursor
+            )
             action = engine.decide(
                 goal=session.goal,
                 perception=uplink,
@@ -107,6 +127,7 @@ def create_app() -> FastAPI:
                 history=history,
             )
             session.record_step()
+            logger.info("decided op=%s params=%s", action.op, action.params)
 
             if action.op == "done":
                 if applied_steps:

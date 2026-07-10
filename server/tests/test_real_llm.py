@@ -41,6 +41,17 @@ def test_real_llm_sends_prompt_and_returns_content():
     assert msgs[1] == {"role": "user", "content": "usr"}
 
 
+def test_real_llm_disables_thinking_and_uses_recommended_temperature():
+    # MiniMax-M3 支持 thinking 关闭；文档推荐 temperature=1.0。
+    client = _FakeClient('{"op":"read_screen","params":{}}')
+    llm = RealLLM(client=client, model="MiniMax-M3")
+
+    llm.complete(system="sys", user="usr")
+
+    assert client.captured["temperature"] == 1.0
+    assert client.captured["extra_body"] == {"thinking": {"type": "disabled"}}
+
+
 def test_real_llm_strips_think_tags():
     # MiniMax-M2.x 系列 thinking 无法关闭，content 会带 <think>...</think>，
     # 需剥离后才能被 decision 层 json.loads 解析。

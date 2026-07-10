@@ -69,7 +69,8 @@ class RealLLM(LLM):
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-            temperature=0,
+            temperature=1.0,
+            extra_body={"thinking": {"type": "disabled"}},
         )
         return _extract_json(resp.choices[0].message.content)
 
@@ -82,7 +83,7 @@ def build_llm() -> LLM:
     from openai import OpenAI
 
     base_url = os.environ.get("LLM_BASE_URL")
-    model = os.environ.get("LLM_MODEL", "gpt-4o-mini")
+    model = os.environ.get("LLM_MODEL", "MiniMax-M3")
     client = OpenAI(api_key=api_key, base_url=base_url)
     return RealLLM(client=client, model=model)
 

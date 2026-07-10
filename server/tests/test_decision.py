@@ -47,7 +47,13 @@ def test_fallback_to_llm_when_skill_miss(monkeypatch):
     assert action.op == "back"
     assert action.params == {}
     uuid.UUID(action.actionId)
-    assert captured["system"] == "decide next UI action"
+
+    # 系统提示词必须约束 LLM 扮演决策器、列出合法 op、强制 JSON-only 输出，
+    # 否则真实模型会返回自然语言导致 json.loads 崩溃（真机联调实测暴露）。
+    system = captured["system"]
+    assert "JSON" in system
+    for op in ("open_app", "tap", "input", "swipe", "done", "abort", "read_screen"):
+        assert op in system
 
     payload = json.loads(captured["user"])
     assert set(payload.keys()) == {"goal", "nodes", "history"}
@@ -88,3 +94,27 @@ def test_cache_miss_when_node_not_matchable_falls_through(tmp_path):
     action = engine.decide(goal="发消息", perception=p, skill_name=None, cursor=0, history=[])
 
     assert action.op == "back"  # 回退到 LLM
+
+
+def test_llm_non_json_falls_back_to_read_screen(monkeypatch):
+    # 真机联调实测：真实 LLM 可能返回自然语言/空串，json.loads 会崩溃并断连。
+    # 决策层必须兜底为 read_screen（重新观察），保证 WS 循环不中断。
+    llm = FakeLLM(["这不是 JSON，我需要更多信息"])
+    engine = DecisionEngine(llm=llm, skills=SkillLibrary())
+    p = _perc([Node(id="n1", text="首页")])
+
+    action = engine.decide(goal="发消息", perception=p, skill_name=None, cursor=0, history=[])
+
+    assert action.op == "read_screen"
+    assert action.params == {}
+    uuid.UUID(action.actionId)
+
+
+def test_llm_empty_string_falls_back_to_read_screen():
+    llm = FakeLLM([""])
+    engine = DecisionEngine(llm=llm, skills=SkillLibrary())
+    p = _perc([Node(id="n1", text="首页")])
+
+    action = engine.decide(goal="发消息", perception=p, skill_name=None, cursor=0, history=[])
+
+    assert action.op == "read_screen"
