@@ -5,6 +5,9 @@ import androidx.lifecycle.viewModelScope
 import com.example.phoneagent.data.AgentStateRepository
 import com.example.phoneagent.domain.AgentStatus
 import com.example.phoneagent.domain.DebugInfo
+import com.example.phoneagent.domain.TraceDirection
+import com.example.phoneagent.domain.TraceEvent
+import com.example.phoneagent.net.WsClient
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -22,10 +25,12 @@ data class AgentUiState(
 @HiltViewModel
 class MainViewModel @Inject constructor(
     private val repo: AgentStateRepository,
+    private val wsClient: WsClient,
 ) : ViewModel() {
 
- private companion object {
+    private companion object {
         const val UNLOCK_THRESHOLD = 7
+        const val TEST_GOAL = "在飞书里找到「Android」群并发送一条消息"
     }
 
     private val _debugUnlocked = MutableStateFlow(false)
@@ -52,5 +57,18 @@ class MainViewModel @Inject constructor(
     fun onHideDebug() {
         _debugUnlocked.value = false
         titleTapCount = 0
+    }
+
+    /** 点击「运行测试任务」：通过 WS 上行 task.request 指定目标，触发云端下发 task.start。 */
+    fun onRunTestTask() {
+        wsClient.sendTaskRequest(TEST_GOAL)
+        repo.appendTrace(
+            TraceEvent(
+                ts = System.currentTimeMillis(),
+                direction = TraceDirection.UP,
+                kind = "task.request",
+                summary = TEST_GOAL,
+            )
+        )
     }
 }
