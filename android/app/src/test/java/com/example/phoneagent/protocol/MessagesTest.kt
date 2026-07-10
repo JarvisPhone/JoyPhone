@@ -54,4 +54,13 @@ class MessagesTest {
         assertEquals("read_screen", action.op)
         assertTrue(action.params.isEmpty())
     }
+
+    @Test
+    fun task_request_serializes_with_goal() {
+        val req = UplinkTaskRequest(goal = "帮我完成一件事")
+        val out = json.encodeToString(req)
+
+        assertTrue(out.contains("\"type\":\"task.request\""))
+        assertTrue(out.contains("\"goal\":\"帮我完成一件事\""))
+    }
 }

@@ -41,6 +41,12 @@ data class UplinkHeartbeat(
 )
 
 @Serializable
+data class UplinkTaskRequest(
+    val type: String = "task.request",
+    val goal: String,
+)
+
+@Serializable
 data class DownAction(
     val type: String = "action",
     val actionId: String,
