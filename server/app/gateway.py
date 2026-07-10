@@ -35,7 +35,7 @@ if not logger.handlers:
 
 _FIXTURE = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "feishu_happy_path.json"
 
-_DEFAULT_GOAL = "在飞书里给指定联系人发送消息"
+_DEFAULT_GOAL = "等待用户下发任务目标"
 
 
 def _load_fixture_steps() -> list[dict]:
@@ -75,10 +75,6 @@ def create_app() -> FastAPI:
         applied_steps: list[dict] = []
         last_pkg = ""
 
-        await websocket.send_text(
-            TaskStart(taskId=session.task_id, goal=session.goal, target=device_id).to_json()
-        )
-
         while True:
             try:
                 raw = await websocket.receive_text()
@@ -103,6 +99,14 @@ def create_app() -> FastAPI:
             if uplink.type == "heartbeat":
                 await websocket.send_text(
                     Action(actionId=str(uuid.uuid4()), op="read_screen", params={}).to_json()
+                )
+                continue
+
+            if uplink.type == "task.request":
+                session.goal = uplink.goal
+                logger.info("task.request goal=%s", uplink.goal)
+                await websocket.send_text(
+                    TaskStart(taskId=session.task_id, goal=session.goal, target=device_id).to_json()
                 )
                 continue
 

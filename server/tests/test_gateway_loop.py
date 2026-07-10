@@ -23,18 +23,53 @@ def _result(action_id, ok=True):
     )
 
 
-def test_gateway_starts_task_on_connect(monkeypatch, tmp_path):
+def _task_request(goal="帮我完成一件事"):
+    return json.dumps({"type": "task.request", "goal": goal})
+
+
+def test_gateway_starts_task_on_request(monkeypatch, tmp_path):
     monkeypatch.setenv("SKILL_CACHE_PATH", str(tmp_path / "cache.json"))
     monkeypatch.setenv("PHONEAGENT_FAKE_LLM", '["{\\"op\\":\\"done\\",\\"params\\":{}}"]')
 
     app = create_app()
     client = TestClient(app)
     with client.websocket_connect("/ws/device-1") as ws:
+        ws.send_text(_task_request("帮我完成一件事"))
         first = ws.receive_json()
 
     assert first["type"] == "task.start"
     assert first["taskId"]
-    assert first["goal"]
+    assert first["goal"] == "帮我完成一件事"
+
+
+def test_gateway_stays_idle_until_task_request(monkeypatch, tmp_path):
+    monkeypatch.setenv("SKILL_CACHE_PATH", str(tmp_path / "cache.json"))
+    monkeypatch.setenv("PHONEAGENT_FAKE_LLM", '["{\\"op\\":\\"done\\",\\"params\\":{}}"]')
+
+    app = create_app()
+    client = TestClient(app)
+    with client.websocket_connect("/ws/device-1") as ws:
+        # connect 后服务器不自动下发任何消息；只有收到 task.request 后
+        # 第一条收到的消息才是 task.start。
+        ws.send_text(_task_request("处理一个事项"))
+        first = ws.receive_json()
+
+    assert first["type"] == "task.start"
+    assert first["goal"] == "处理一个事项"
+
+
+def test_gateway_task_request_drives_goal(monkeypatch, tmp_path):
+    monkeypatch.setenv("SKILL_CACHE_PATH", str(tmp_path / "cache.json"))
+    monkeypatch.setenv("PHONEAGENT_FAKE_LLM", '["{\\"op\\":\\"done\\",\\"params\\":{}}"]')
+
+    app = create_app()
+    client = TestClient(app)
+    with client.websocket_connect("/ws/device-1") as ws:
+        ws.send_text(_task_request("帮我完成一件事"))
+        start = ws.receive_json()
+
+    assert start["type"] == "task.start"
+    assert start["goal"] == "帮我完成一件事"
 
 
 def test_gateway_perception_yields_action_then_done(monkeypatch, tmp_path):
@@ -54,6 +89,7 @@ def test_gateway_perception_yields_action_then_done(monkeypatch, tmp_path):
     nodes = [{"id": "n1", "text": "搜索", "clickable": True}]
 
     with client.websocket_connect("/ws/device-1") as ws:
+        ws.send_text(_task_request())
         ws.receive_json()  # task.start
         ws.send_text(_perception(nodes, pkg="com.ss.android.lark"))
         action = ws.receive_json()
@@ -76,6 +112,7 @@ def test_gateway_budget_exhausted_aborts(monkeypatch, tmp_path):
     nodes = [{"id": "n1", "text": "x", "clickable": True}]
 
     with client.websocket_connect("/ws/device-1") as ws:
+        ws.send_text(_task_request())
         ws.receive_json()  # task.start
         seen_abort = False
         for _ in range(5):
@@ -95,6 +132,7 @@ def test_gateway_heartbeat_still_returns_action(monkeypatch, tmp_path):
     client = TestClient(app)
     heartbeat = json.dumps({"type": "heartbeat", "deviceId": "device-1", "ts": 1})
     with client.websocket_connect("/ws/device-1") as ws:
+        ws.send_text(_task_request())
         ws.receive_json()  # task.start
         ws.send_text(heartbeat)
         msg = ws.receive_json()
