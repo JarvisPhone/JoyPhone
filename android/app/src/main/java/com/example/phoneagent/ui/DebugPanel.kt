@@ -15,6 +15,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.example.phoneagent.domain.DebugInfo
+import com.example.phoneagent.domain.TraceDirection
+import com.example.phoneagent.domain.TraceEvent
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun DebugPanel(
@@ -60,7 +65,30 @@ fun DebugPanel(
                 }
             }
 
+            Text("实时事件流", style = MaterialTheme.typography.titleSmall)
+            if (debug.traceEvents.isEmpty()) {
+                Text("（暂无）", style = MaterialTheme.typography.bodySmall)
+            } else {
+                debug.traceEvents.takeLast(30).reversed().forEach { ev ->
+                    Text(
+                        formatLine(ev),
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                }
+            }
+
             TextButton(onClick = onHide) { Text("收起调试视图") }
         }
     }
+}
+
+private fun formatLine(ev: TraceEvent): String {
+    val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(ev.ts))
+    val arrow = when (ev.direction) {
+        TraceDirection.UP -> "↑"
+        TraceDirection.DOWN -> "↓"
+        TraceDirection.INFO -> "·"
+    }
+    return "$time $arrow ${ev.kind} ${ev.summary}"
 }
