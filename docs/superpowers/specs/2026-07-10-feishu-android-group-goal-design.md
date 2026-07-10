@@ -26,6 +26,8 @@
 - `net/WsClient.kt`：新增 `sendTaskRequest(goal: String)`。
 - 测试 UI：新增"运行测试任务"按钮，点击调用 `sendTaskRequest(TEST_GOAL)`；
   `TEST_GOAL` 为测试常量（飞书找 Android 群任务描述），置于 UI 层。
+- `accessibility/PhoneAgentService.kt`：引入 `taskActive` 门控——待命期 `onAccessibilityEvent`
+  不触发 `reportScreen()`；收到 `task.start` 置 true 开始上报；收到 task.done/abort 置 false 停止上报。
 
 ### 云端（server）
 
@@ -44,14 +46,30 @@
 > 4. 点击输入框使其获得焦点（弹出键盘/光标在输入框）即完成；
 > 5. 禁止发送任何消息。
 
+## 任务激活开关（关键决策）
+
+端侧引入"任务激活"状态（`taskActive: Boolean`），默认 false：
+
+- **待命期（未点按钮 / taskActive=false）**：`onAccessibilityEvent` **不触发 `reportScreen()`，端侧完全不上传 perception**。省流量、不采集、更干净。
+- **点测试按钮**：端侧置 `taskActive=true`，发 `task.request(goal)`；云端下发 `task.start`；
+  端侧收到 `task.start` 后开始上报 perception，进入决策循环。
+- **任务结束（收到 task.done / task.abort）**：端侧置 `taskActive=false`，恢复待命、停止上报。
+
+这样"没有明确 goal 时端侧不上传，只有开始执行需要 LLM 决策时才上传"。
+
 ## 数据流（新）
 
-端侧连接（待命，不开跑）→ 用户点测试按钮 → 端侧发 `task.request(goal)`
-→ 云端收 goal 覆盖 session.goal → 下发 `task.start` → 进入 perception/decide 循环。
+1. 端侧连接（待命，taskActive=false，**不上报 perception**）
+2. 用户点测试按钮 → 端侧 taskActive=true，发 `task.request(goal)`
+3. 云端收 goal → 覆盖 session.goal → 下发 `task.start`
+4. 端侧收 `task.start` → 开始 reportScreen → 上行 perception
+5. 云端 perception → engine.decide → 下发 action → … 循环
+6. 收到 task.done / task.abort → 端侧 taskActive=false → 停止上报，回待命
 
 ## 错误处理
 
-- 未收到 `task.request` 前，云端只接收 perception 但不主动决策开跑（或忽略，待定实现细节）。
+- 待命期端侧不上报，云端自然不决策；无需云端侧特殊忽略逻辑。
+- 极端情况：若云端在无 active goal 时仍收到 perception（如时序竞态），直接忽略不决策（防御）。
 - LLM 输出非 JSON：`decision.py` 已有兜底，返回 `read_screen`，不受影响。
 
 ## 测试
