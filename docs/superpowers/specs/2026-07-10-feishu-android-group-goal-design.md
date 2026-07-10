@@ -1,52 +1,99 @@
-# 飞书「找 Android 群并准备发送」目标定义 — 设计文档
+# 通用 Agent：目标由 app 端指定 — 设计文档
 
 日期：2026-07-10
-方案：A（仅改目标定义 + 环境变量覆盖）
+方案：A'（通用化 —— 核心代码场景无关，goal 由端侧上行指定）
 
-## 背景
+## 背景与核心约束
 
-真机联调时，Agent 全链路（WS 连接 → 感知上报 → LLM 决策 → 动作执行）已跑通，但因默认目标
-`_DEFAULT_GOAL = "在飞书里给指定联系人发送消息"` 缺少具体联系人，LLM 反复 `abort`。
-同时手机飞书处于多账号状态，Agent 曾误点企业账号入口。
+最终形态是**通用手机操作 Agent**：云端只负责通用决策，**不得硬编码任何单一场景**
+（如飞书 / Android 群 / 环球资讯等具体业务词）。飞书找群仅为一次性测试任务。
 
-## 目标（新 goal）
+当前架构：端侧连上 → 云端主动下发 `task.start(goal)` 用硬编码 `_DEFAULT_GOAL` → 端侧被动执行。
+问题：goal 硬编码在云端 `gateway.py`，且连接即自动开跑，不符合通用 Agent 形态。
 
-在飞书里完成以下任务链，**全程不发送任何消息**：
+## 目标
 
-1. 打开飞书后，先检测当前账号。
-2. 若当前为企业账号（标识："环球资讯"），主动切换到个人账号（标识："飞书个人用户"）。
-3. 在个人账号下，找到群名包含 "Android" 字样的群聊并进入。
-4. 进入群聊后，点击输入框使其获得焦点（弹出键盘 / 光标停在输入框）。
-5. 到达上述状态即判定完成（`done`）。**禁止发送任何消息。**
+1. 云端 `gateway.py` 不含任何具体场景 goal，`_DEFAULT_GOAL` 改为通用中性兜底。
+2. goal 由 **app 端指定**：新增上行消息 `task.request`，端侧把 goal 发给云端。
+3. 连接后**不自动开跑**，必须点 app 里的测试按钮才下发 goal 并开始任务。
+4. 飞书找 Android 群的 goal 文本作为**测试用常量放在端侧 UI 层**，不进核心逻辑。
 
 ## 改动范围
 
-仅 `server/app/gateway.py`：
+### 端侧（android）
 
-- 将 `_DEFAULT_GOAL` 改为覆盖完整任务链的详细中文描述（含账号切换、找群、进输入框、禁发约束）。
-- 目标读取支持环境变量覆盖：`goal = os.getenv("PHONEAGENT_GOAL", _DEFAULT_GOAL)`，
-  用于联调临时改目标而不改代码。
+- `protocol/Messages.kt`：新增 `UplinkTaskRequest(type="task.request", goal: String)`。
+- `net/WsClient.kt`：新增 `sendTaskRequest(goal: String)`。
+- 测试 UI：新增"运行测试任务"按钮，点击调用 `sendTaskRequest(TEST_GOAL)`；
+  `TEST_GOAL` 为测试常量（飞书找 Android 群任务描述），置于 UI 层。
 
-不改系统提示词 `_SYSTEM_PROMPT`；不加状态机；不动端侧 Kotlin 代码。
+### 云端（server）
 
-## 数据流（不变）
+- `gateway.py`：
+  - `_DEFAULT_GOAL` 改为通用中性描述（不含任何场景词）。
+  - 连接后**不再自动下发 task.start 开跑**；仅在收到上行 `task.request` 后，
+    用其 goal 覆盖 session.goal，再下发 `task.start` 启动决策循环。
+  - WS 接收循环新增分支：解析 `task.request`，取 `goal` 字段。
 
-goal → `Session` → `TaskStart` 下发端侧 → 每轮随 perception 传入 `engine.decide()`
-→ LLM 依据 `_SYSTEM_PROMPT` + goal 自主决策。
+## 测试用 goal 文本（端侧常量，仅测试）
+
+> 在飞书里完成以下任务链，全程不发送任何消息：
+> 1. 打开飞书后检测当前账号；
+> 2. 若当前为企业账号"环球资讯"，切换到个人账号"飞书个人用户"；
+> 3. 找到群名包含 "Android" 的群聊并进入；
+> 4. 点击输入框使其获得焦点（弹出键盘/光标在输入框）即完成；
+> 5. 禁止发送任何消息。
+
+## 数据流（新）
+
+端侧连接（待命，不开跑）→ 用户点测试按钮 → 端侧发 `task.request(goal)`
+→ 云端收 goal 覆盖 session.goal → 下发 `task.start` → 进入 perception/decide 循环。
 
 ## 错误处理
 
-- LLM 输出非 JSON：已有 `decision.py` 兜底返回 `read_screen`，不受本次改动影响。
-- 找不到 Android 群 / 无法切换账号：LLM 可能 `abort`，属预期行为，由后续观测决定是否补策略。
+- 未收到 `task.request` 前，云端只接收 perception 但不主动决策开跑（或忽略，待定实现细节）。
+- LLM 输出非 JSON：`decision.py` 已有兜底，返回 `read_screen`，不受影响。
 
 ## 测试
 
-新增单元测试，断言默认 goal 含关键约束词：
-`"飞书个人用户"`、`"Android"`、以及"不发送/不要发送"类禁发表述。
-防止后续误改丢失约束。
+- 云端单测：`_DEFAULT_GOAL` **不含**任何场景硬编码词（不含"飞书""Android""环球资讯"）。
+- 云端单测：收到 `task.request` 后 session.goal 被正确覆盖并下发 `task.start`。
+- 端侧：`task.request` 序列化格式正确（如已有协议测试则补一条）。
+
+## 实时可读日志（app 内，本次一并做）
+
+### 现状
+
+- Debug 后门：主界面连点标题 7 次解锁 `DebugPanel`（`MainViewModel.UNLOCK_THRESHOLD=7`）。
+- 已展示：WS_URL / deviceId / 重连次数 / 最近动作(op ✓✗) / WS 底层事件。
+- 短板：非流式、看不到收发内容（LLM 决策 params、感知上报、task.start/done/abort）、无人话状态。
+
+### 方案：DebugPanel 内新增「实时事件流」
+
+- `domain/AgentModels.kt`：新增统一日志模型 `TraceEvent(ts, direction, kind, summary)`，
+  direction ∈ {UP, DOWN, INFO}，kind 如 perception/action/task.start/task.done/task.request 等。
+- `data/AgentStateRepository.kt`：新增 `traceEvents` StateFlow + `appendTrace()`（takeLast(MAX_LOG)）。
+- 在收发关键节点埋点：
+  - 上行：发 perception（pkg/节点数）、发 action.result、发 task.request(goal)。
+  - 下行：收 task.start(goal)、收 action(op+params)、收 task.done、收 task.abort(reason)。
+- `ui/DebugPanel.kt`：新增「实时事件流」区块，按时间倒序滚动展示 `TraceEvent`，
+  格式如 `12:34:56 ↑ perception pkg=lark nodes=30` / `12:34:57 ↓ action tap {id:0-0-6}`，
+  等宽字体、方向箭头(↑↓·)、彩色/图标区分，一眼看懂当前收发。
+- 顶部再加一行「当前状态」人话摘要（复用已有 TaskState.Running(description)）。
+
+### 端侧日志测试
+
+- `AgentStateRepository`：`appendTrace` 追加与 `takeLast(MAX_LOG)` 截断正确。
+- `TraceEvent` 格式化字符串符合预期（便于阅读）。
 
 ## 不做（YAGNI）
 
-- 不做账号切换的确定性状态机（交给 LLM）。
+- 不做多任务队列、不做 goal 输入框（先用固定测试按钮）。
+- 不做账号切换状态机（交给 LLM）。
 - 不改系统提示词。
-- 不改端侧代码。
+- 不做日志导出/持久化到文件（先内存流式；云端已有 gateway.log 兜底）。
+
+## 安全约束
+
+核心代码（云端 gateway/decision/llm）保持场景无关；任何飞书专属内容只允许出现在
+端侧测试 UI 常量与联调脚本中，绝不进入决策核心。
