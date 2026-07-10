@@ -12,6 +12,7 @@ server/.pytest_cache/
 server/.venv/
 server/data/skill_cache.json
 server/.env
+server/logs/
 .env
 .DS_Store
 **/.DS_Store
