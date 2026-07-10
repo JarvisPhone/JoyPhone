@@ -9,6 +9,8 @@ import android.view.accessibility.AccessibilityEvent
 import com.example.phoneagent.data.AgentStateRepository
 import com.example.phoneagent.domain.ActionLog
 import com.example.phoneagent.domain.TaskState
+import com.example.phoneagent.domain.TraceDirection
+import com.example.phoneagent.domain.TraceEvent
 import com.example.phoneagent.net.WsClient
 import com.example.phoneagent.protocol.UplinkPerception
 import dagger.hilt.android.AndroidEntryPoint
@@ -28,6 +30,7 @@ class PhoneAgentService : AccessibilityService() {
     private lateinit var executor: Executor
     private val handler = Handler(Looper.getMainLooper())
     private var pendingReport: Runnable? = null
+    @Volatile private var taskActive: Boolean = false
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -38,20 +41,29 @@ class PhoneAgentService : AccessibilityService() {
             baseUrl = WS_URL,
             deviceId = deviceId,
             onTaskStart = { goal, _ ->
+                taskActive = true
+                repo.appendTrace(TraceEvent(System.currentTimeMillis(), TraceDirection.DOWN, "task.start", goal))
                 repo.updateTask(TaskState.Running(goal))
                 reportScreen()
             },
             onAction = { action ->
+                repo.appendTrace(TraceEvent(System.currentTimeMillis(), TraceDirection.DOWN, "action", "${action.op} ${action.params}"))
                 val ok = executor.execute(action.op, action.params)
+                repo.appendTrace(TraceEvent(System.currentTimeMillis(), TraceDirection.UP, "action.result", "${action.op} ok=$ok"))
                 wsClient.sendActionResult(action.actionId, ok)
                 repo.appendActionLog(ActionLog(System.currentTimeMillis(), action.op, ok))
                 if (action.op == "read_screen") reportScreen()
             },
-            onTaskEnd = { repo.updateTask(TaskState.Idle) },
+            onTaskEnd = { reason ->
+                taskActive = false
+                repo.appendTrace(TraceEvent(System.currentTimeMillis(), TraceDirection.DOWN, "task.end", reason))
+                repo.updateTask(TaskState.Idle)
+            },
         )
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (!taskActive) return
         pendingReport?.let { handler.removeCallbacks(it) }
         val r = Runnable { reportScreen() }
         pendingReport = r
@@ -68,6 +80,7 @@ class PhoneAgentService : AccessibilityService() {
             ts = System.currentTimeMillis(),
         )
         wsClient.sendPerception(perception)
+        repo.appendTrace(TraceEvent(System.currentTimeMillis(), TraceDirection.UP, "perception", "pkg=${perception.pkg} nodes=${nodes.size}"))
     }
 
     override fun onInterrupt() {
