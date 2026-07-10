@@ -5,6 +5,7 @@ import com.example.phoneagent.domain.AgentStatus
 import com.example.phoneagent.domain.ConnectionState
 import com.example.phoneagent.domain.DebugInfo
 import com.example.phoneagent.domain.TaskState
+import com.example.phoneagent.domain.TraceEvent
 import com.example.phoneagent.domain.WsEventLog
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -53,5 +54,9 @@ class AgentStateRepository @Inject constructor() {
 
     fun appendWsEvent(log: WsEventLog) {
         _debug.update { it.copy(wsEvents = (it.wsEvents + log).takeLast(MAX_LOG)) }
+    }
+
+    fun appendTrace(event: TraceEvent) {
+        _debug.update { it.copy(traceEvents = (it.traceEvents + event).takeLast(MAX_LOG)) }
     }
 }

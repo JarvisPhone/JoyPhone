@@ -31,6 +31,17 @@ data class WsEventLog(
     val detail: String = "",
 )
 
+/** 事件流方向：上行↑ / 下行↓ / 本地信息· */
+enum class TraceDirection { UP, DOWN, INFO }
+
+/** 统一收发事件（app 内实时日志流用）。 */
+data class TraceEvent(
+    val ts: Long,
+    val direction: TraceDirection,
+    val kind: String,
+    val summary: String = "",
+)
+
 /** 调试专用信息（后门才展示）。 */
 data class DebugInfo(
     val wsUrl: String = "",
@@ -38,4 +49,5 @@ data class DebugInfo(
     val recentActions: List<ActionLog> = emptyList(),
     val wsEvents: List<WsEventLog> = emptyList(),
     val reconnectAttempts: Int = 0,
+    val traceEvents: List<TraceEvent> = emptyList(),
 )
