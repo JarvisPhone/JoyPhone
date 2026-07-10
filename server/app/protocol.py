@@ -46,13 +46,19 @@ class Heartbeat(BaseModel):
     ts: int = 0
 
 
-Uplink = Union[Perception, ActionResult, NewMessage, Heartbeat]
+class TaskRequest(BaseModel):
+    type: Literal["task.request"] = "task.request"
+    goal: str
+
+
+Uplink = Union[Perception, ActionResult, NewMessage, Heartbeat, TaskRequest]
 
 _UPLINK_MAP = {
     "perception": Perception,
     "action.result": ActionResult,
     "event.newMessage": NewMessage,
     "heartbeat": Heartbeat,
+    "task.request": TaskRequest,
 }
 
 

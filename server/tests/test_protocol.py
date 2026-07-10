@@ -3,7 +3,7 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from app.protocol import Action, Perception, TaskStart, parse_uplink
+from app.protocol import Action, Perception, TaskRequest, TaskStart, parse_uplink
 
 
 def test_parse_perception_uplink():
@@ -55,6 +55,18 @@ def test_action_keeps_string_params_unchanged():
 def test_task_start_build():
     task = TaskStart(taskId="t1", goal="确认还款时间", target="张三")
     assert task.type == "task.start"
+
+
+def test_parse_task_request_uplink():
+    raw = '{"type":"task.request","goal":"帮我完成一件事"}'
+    msg = parse_uplink(raw)
+    assert isinstance(msg, TaskRequest)
+    assert msg.goal == "帮我完成一件事"
+
+
+def test_task_request_rejects_missing_goal():
+    with pytest.raises(ValidationError):
+        parse_uplink('{"type":"task.request"}')
 
 
 def test_parse_uplink_malformed_json_raises_value_error():
