@@ -6,6 +6,7 @@ import com.example.phoneagent.domain.WsEventLog
 import com.example.phoneagent.protocol.DownAction
 import com.example.phoneagent.protocol.UplinkActionResult
 import com.example.phoneagent.protocol.UplinkPerception
+import com.example.phoneagent.protocol.UplinkTaskRequest
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -116,6 +117,10 @@ class WsClient @Inject constructor(
 
     fun sendActionResult(actionId: String, ok: Boolean, error: String? = null) {
         ws?.send(json.encodeToString(UplinkActionResult(actionId = actionId, ok = ok, error = error)))
+    }
+
+    fun sendTaskRequest(goal: String) {
+        ws?.send(json.encodeToString(UplinkTaskRequest(goal = goal)))
     }
 
     fun close() {
