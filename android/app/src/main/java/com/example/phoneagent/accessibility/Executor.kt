@@ -22,7 +22,6 @@ class Executor(
             "swipe" -> swipe(params)
             "back" -> service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
             "home" -> service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
-            "open_app" -> openApp(AppTarget.fromParams(params))
             "read_screen", "wait" -> true
             else -> false
         }
@@ -82,27 +81,5 @@ class Executor(
             .addStroke(GestureDescription.StrokeDescription(path, 0, 50))
             .build()
         return service.dispatchGesture(gesture, null, null)
-    }
-
-    private fun openApp(target: AppTarget): Boolean {
-        val pkg = when (target) {
-            is AppTarget.ByPackage -> target.pkg
-            is AppTarget.ByLabel -> resolvePackageByLabel(target.label) ?: return false
-            AppTarget.None -> return false
-        }
-        val intent = context.packageManager.getLaunchIntentForPackage(pkg) ?: return false
-        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-        context.startActivity(intent)
-        return true
-    }
-
-    /** framework 集成：遍历已安装应用，按显示名（label）反查包名。真机验证。 */
-    private fun resolvePackageByLabel(label: String): String? {
-        val pm = context.packageManager
-        val apps = pm.getInstalledApplications(android.content.pm.PackageManager.GET_META_DATA)
-        // 先精确匹配，再退化到包含匹配
-        val exact = apps.firstOrNull { pm.getApplicationLabel(it).toString() == label }
-        if (exact != null) return exact.packageName
-        return apps.firstOrNull { pm.getApplicationLabel(it).toString().contains(label) }?.packageName
     }
 }

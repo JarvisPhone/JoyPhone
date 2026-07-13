@@ -1,5 +1,4 @@
 [
-  {"op":"open_app","params":{"pkg":"com.ss.android.lark"}},
   {"op":"tap","params":{"match_text":"通讯录"}},
   {"op":"tap","params":{"match_text":"搜索"}},
   {"op":"input","params":{"text":"张三"}},

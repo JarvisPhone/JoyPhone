@@ -29,7 +29,7 @@ def test_load_fixture_steps_returns_action_sequence():
     steps = _load_fixture_steps()
 
     assert isinstance(steps, list)
-    assert len(steps) == 5
-    assert steps[0]["op"] == "open_app"
+    assert len(steps) == 4
+    assert steps[0]["op"] == "tap"
     assert steps[-1]["op"] == "tap"
     assert steps[-1]["params"]["match_text"] == "发送"

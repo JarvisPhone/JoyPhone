@@ -52,7 +52,7 @@ def test_fallback_to_llm_when_skill_miss(monkeypatch):
     # 否则真实模型会返回自然语言导致 json.loads 崩溃（真机联调实测暴露）。
     system = captured["system"]
     assert "JSON" in system
-    for op in ("open_app", "tap", "input", "swipe", "done", "abort", "read_screen"):
+    for op in ("tap", "input", "swipe", "done", "abort", "read_screen"):
         assert op in system
 
     payload = json.loads(captured["user"])

@@ -95,7 +95,6 @@ class Action(_Downlink):
     type: Literal["action"] = "action"
     actionId: str
     op: Literal[
-        "open_app",
         "tap",
         "input",
         "swipe",
