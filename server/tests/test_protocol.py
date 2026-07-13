@@ -39,7 +39,7 @@ def test_action_rejects_unknown_op():
         Action(actionId="a1", op="unknown_op", params={})
 
 
-def test_action_op_includes_page_operators():
+def test_action_op_excludes_open_app():
     # 打开应用改为真人式翻屏找图标：Action.op 须支持桌面归位/翻页算子，且不再有直启的 open_app。
     op_field = Action.model_fields["op"]
     valid_ops = set(typing.get_args(op_field.annotation))

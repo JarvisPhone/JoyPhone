@@ -5,6 +5,7 @@ import android.accessibilityservice.GestureDescription
 import android.content.Context
 import android.graphics.Path
 import android.os.Bundle
+import android.util.Log
 import android.view.accessibility.AccessibilityNodeInfo
 
 /** 单步动作执行结果。atEnd 仅在桌面翻页(next_page)到底时为 true。 */
@@ -137,9 +138,9 @@ class Executor(
             val after = snapshotFingerprint()
             if (after == before) return ExecResult(ok = true)
         }
+        Log.w("PhoneAgent", "homeFirstPage 用尽 MAX_PAGES 仍未检测到归位")
         return ExecResult(ok = true)
     }
-
     /** 桌面向后翻一屏(看右屏)。翻页前后同屏说明已到最后一屏 -> atEnd=true。 */
     private fun nextPage(): ExecResult {
         val before = snapshotFingerprint()
