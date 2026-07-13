@@ -106,6 +106,8 @@ def test_llm_non_json_falls_back_to_read_screen(monkeypatch):
     action = engine.decide(goal="发消息", perception=p, skill_name=None, cursor=0, history=[])
 
     assert action.op == "read_screen"
+    assert action.params == {}
+    uuid.UUID(action.actionId)
 
 
 def test_llm_empty_string_falls_back_to_read_screen():
