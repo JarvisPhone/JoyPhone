@@ -118,3 +118,26 @@ def test_llm_empty_string_falls_back_to_read_screen():
     action = engine.decide(goal="发消息", perception=p, skill_name=None, cursor=0, history=[])
 
     assert action.op == "read_screen"
+
+
+from app.decision import _encode_nodes
+
+
+def test_encode_nodes_formats_numbered_lines():
+    nodes = [
+        Node(id="a", text="首页", clickable=True),
+        Node(id="b", text="搜索", editable=True),
+        Node(id="c", desc="微博", clickable=True),
+        Node(id="d", text="正文"),
+    ]
+    out = _encode_nodes(nodes)
+    assert out == '[0] button "首页"\n[1] input "搜索"\n[2] button "微博"\n[3] text "正文"'
+
+
+def test_encode_nodes_empty_is_empty_string():
+    assert _encode_nodes([]) == ""
+
+
+def test_encode_nodes_blank_text_and_desc_keeps_empty_quotes():
+    nodes = [Node(id="x", clickable=True)]
+    assert _encode_nodes(nodes) == '[0] button ""'
