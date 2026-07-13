@@ -56,12 +56,10 @@ def test_fallback_to_llm_when_skill_miss(monkeypatch):
         assert op in system
 
     payload = json.loads(captured["user"])
-    assert set(payload.keys()) == {"goal", "nodes", "history"}
+    assert set(payload.keys()) == {"goal", "screen", "history"}
     assert payload["goal"] == "发消息"
     assert payload["history"] == []
-    assert payload["nodes"] == [
-        {"id": "n1", "text": "首页", "clickable": False, "editable": False}
-    ]
+    assert payload["screen"] == '[0] text "首页"'
 
 
 def test_cache_hit_returns_step_without_llm(tmp_path, monkeypatch):
@@ -141,3 +139,40 @@ def test_encode_nodes_empty_is_empty_string():
 def test_encode_nodes_blank_text_and_desc_keeps_empty_quotes():
     nodes = [Node(id="x", clickable=True)]
     assert _encode_nodes(nodes) == '[0] button ""'
+
+
+def test_large_node_tree_capped_and_encoded(monkeypatch):
+    captured = {}
+    llm = FakeLLM(['{"op":"back","params":{}}'])
+
+    def _capture(system, user, image_b64=None):
+        captured["user"] = user
+        return '{"op":"back","params":{}}'
+
+    monkeypatch.setattr(llm, "complete", _capture)
+    engine = DecisionEngine(llm=llm, skills=SkillLibrary())
+    nodes = [Node(id=f"n{i}", text=f"item{i}") for i in range(3000)]
+    engine.decide(goal="发消息", perception=_perc(nodes), skill_name=None, cursor=0, history=[])
+
+    payload = json.loads(captured["user"])
+    assert "screen" in payload and "nodes" not in payload
+    line_count = len(payload["screen"].splitlines())
+    assert line_count <= DecisionEngine.MAX_LLM_NODES
+
+
+def test_capping_prefers_interactive_nodes(monkeypatch):
+    captured = {}
+    llm = FakeLLM(['{"op":"back","params":{}}'])
+
+    def _capture(system, user, image_b64=None):
+        captured["user"] = user
+        return '{"op":"back","params":{}}'
+
+    monkeypatch.setattr(llm, "complete", _capture)
+    engine = DecisionEngine(llm=llm, skills=SkillLibrary())
+    nodes = [Node(id=f"t{i}", text=f"text{i}") for i in range(3000)]
+    nodes.append(Node(id="target", text="飞书", clickable=True))
+    engine.decide(goal="打开飞书", perception=_perc(nodes), skill_name=None, cursor=0, history=[])
+
+    payload = json.loads(captured["user"])
+    assert '飞书' in payload["screen"]
