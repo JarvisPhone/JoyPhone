@@ -37,17 +37,40 @@ object NodeFlattener {
         return out
     }
 
+    /**
+     * 递归收集节点：
+     * - 可交互(clickable/editable/scrollable/checkable)或有 contentDescription 才收录。
+     * - 子树向上合并：可交互节点自身 text 为空时，取子树中最近的非空 text/desc 补上。
+     * - 合并后不再单独收录被吸收的纯文本叶子。
+     * framework 集成，真机验证。
+     */
     private fun walk(node: AccessibilityNodeInfo, path: List<Int>, out: MutableList<NodeDto>) {
         val rect = Rect().also { node.getBoundsInScreen(it) }
         val visible = rect.width() > 0 && rect.height() > 0
         val text = node.text?.toString()
-        // 与云端 PerceptionFilter 对齐：可见且(可点击或有文本)才上报
-        if (visible && (node.isClickable || !text.isNullOrBlank())) {
+        val desc = node.contentDescription?.toString()
+        val interactive = node.isClickable || node.isEditable || node.isScrollable || node.isCheckable
+        val keep = visible && shouldKeep(
+            clickable = node.isClickable,
+            editable = node.isEditable,
+            scrollable = node.isScrollable,
+            checkable = node.isCheckable,
+            hasDesc = !desc.isNullOrBlank(),
+        )
+
+        if (keep) {
+            // 可交互但自身无文本 -> 向下摘一个最近的非空 text/desc 补上
+            val label = when {
+                !text.isNullOrBlank() -> text
+                !desc.isNullOrBlank() -> desc
+                interactive -> firstDescendantLabel(node)
+                else -> null
+            }
             out.add(
                 NodeDto(
                     id = makeId(path),
-                    text = text,
-                    desc = node.contentDescription?.toString(),
+                    text = truncate(label),
+                    desc = truncate(desc),
                     className = node.className?.toString(),
                     bounds = rectToBounds(rect),
                     clickable = node.isClickable,
@@ -55,9 +78,24 @@ object NodeFlattener {
                 )
             )
         }
+
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
             walk(child, path + i, out)
         }
+    }
+
+    /** 深度优先取子树中第一个非空 text/desc（供可交互父容器合并用）。 */
+    private fun firstDescendantLabel(node: AccessibilityNodeInfo):String? {
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val t = child.text?.toString()
+            if (!t.isNullOrBlank()) return t
+            val d = child.contentDescription?.toString()
+            if (!d.isNullOrBlank()) return d
+            val deeper = firstDescendantLabel(child)
+            if (deeper != null) return deeper
+        }
+        return null
     }
 }
