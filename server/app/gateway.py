@@ -91,7 +91,7 @@ def create_app() -> FastAPI:
                 break
 
             if uplink.type == "action.result":
-                history.append({"actionId": uplink.actionId, "ok": uplink.ok})
+                history.append({"actionId": uplink.actionId, "ok": uplink.ok, "atEnd": uplink.atEnd})
                 if uplink.ok:
                     cursor += 1
                 continue

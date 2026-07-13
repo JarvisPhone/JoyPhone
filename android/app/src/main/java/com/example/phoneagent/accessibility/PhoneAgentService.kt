@@ -52,11 +52,11 @@ class PhoneAgentService : AccessibilityService() {
             onAction = { action ->
                 Log.i(TAG, "↓ action ${action.op} ${action.params} (taskActive=$taskActive)")
                 repo.appendTrace(TraceEvent(System.currentTimeMillis(), TraceDirection.DOWN, "action", "${action.op} ${action.params}"))
-                val ok = executor.execute(action.op, action.params)
-                Log.i(TAG, "↑ action.result ${action.op} ok=$ok")
-                repo.appendTrace(TraceEvent(System.currentTimeMillis(), TraceDirection.UP, "action.result", "${action.op} ok=$ok"))
-                wsClient.sendActionResult(action.actionId, ok)
-                repo.appendActionLog(ActionLog(System.currentTimeMillis(), action.op, ok))
+                val result = executor.execute(action.op, action.params)
+                Log.i(TAG, "↑ action.result ${action.op} ok=${result.ok} atEnd=${result.atEnd}")
+                repo.appendTrace(TraceEvent(System.currentTimeMillis(), TraceDirection.UP, "action.result", "${action.op} ok=${result.ok} atEnd=${result.atEnd}"))
+                wsClient.sendActionResult(action.actionId, result.ok, result.atEnd)
+                repo.appendActionLog(ActionLog(System.currentTimeMillis(), action.op, result.ok))
                 if (action.op == "read_screen") reportScreen()
             },
             onTaskEnd = { reason ->

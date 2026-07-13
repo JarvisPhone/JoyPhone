@@ -115,8 +115,8 @@ class WsClient @Inject constructor(
         ws?.send(json.encodeToString(p))
     }
 
-    fun sendActionResult(actionId: String, ok: Boolean, error: String? = null) {
-        ws?.send(json.encodeToString(UplinkActionResult(actionId = actionId, ok = ok, error = error)))
+    fun sendActionResult(actionId: String, ok: Boolean, atEnd: Boolean = false, error: String? = null) {
+        ws?.send(json.encodeToString(UplinkActionResult(actionId = actionId, ok = ok, atEnd = atEnd, error = error)))
     }
 
     fun sendTaskRequest(goal: String) {

@@ -1,4 +1,5 @@
 import json
+import typing
 
 import pytest
 from pydantic import ValidationError
@@ -36,6 +37,15 @@ def test_action_serializes_roundtrip_model_consistency():
 def test_action_rejects_unknown_op():
     with pytest.raises(ValidationError):
         Action(actionId="a1", op="unknown_op", params={})
+
+
+def test_action_op_includes_page_operators():
+    # 打开应用改为真人式翻屏找图标：Action.op 须支持桌面归位/翻页算子，且不再有直启的 open_app。
+    op_field = Action.model_fields["op"]
+    valid_ops = set(typing.get_args(op_field.annotation))
+    assert "home_first_page" in valid_ops
+    assert "next_page" in valid_ops
+    assert "open_app" not in valid_ops
 
 
 def test_action_coerces_non_string_params_to_string():
