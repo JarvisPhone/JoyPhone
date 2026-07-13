@@ -29,6 +29,7 @@ data class UplinkActionResult(
     val type: String = "action.result",
     val actionId: String,
     val ok: Boolean,
+    val atEnd: Boolean = false,
     val error: String? = null,
     val ts: Long = 0,
 )

@@ -56,6 +56,14 @@ class MessagesTest {
     }
 
     @Test
+    fun uplinkActionResult_serializes_atEnd() {
+        val result = UplinkActionResult(actionId = "a1", ok = true, atEnd = true)
+        val out = json.encodeToString(result)
+
+        assertTrue(out.contains("\"atEnd\":true"))
+    }
+
+    @Test
     fun task_request_serializes_with_goal() {
         val req = UplinkTaskRequest(goal = "帮我完成一件事")
         val out = json.encodeToString(req)

@@ -28,6 +28,7 @@ class ActionResult(BaseModel):
     type: Literal["action.result"] = "action.result"
     actionId: str
     ok: bool
+    atEnd: bool = False
     error: Optional[str] = None
     ts: int = 0
 

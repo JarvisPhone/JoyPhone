@@ -3,7 +3,7 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from app.protocol import Action, Perception, TaskRequest, TaskStart, parse_uplink
+from app.protocol import ActionResult, Action, Perception, TaskRequest, TaskStart, parse_uplink
 
 
 def test_parse_perception_uplink():
@@ -50,6 +50,18 @@ def test_action_coerces_non_string_params_to_string():
 def test_action_keeps_string_params_unchanged():
     action = Action(actionId="a1", op="tap", params={"nodeId": "n1", "match_text": "通讯录"})
     assert action.params == {"nodeId": "n1", "match_text": "通讯录"}
+
+
+def test_action_result_parses_at_end():
+    result = ActionResult.model_validate(
+        {"type": "action.result", "actionId": "a1", "ok": True, "atEnd": True}
+    )
+    assert result.atEnd is True
+
+
+def test_action_result_at_end_defaults_false():
+    result = ActionResult(actionId="a1", ok=True)
+    assert result.atEnd is False
 
 
 def test_task_start_build():
