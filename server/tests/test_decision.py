@@ -13,7 +13,7 @@ def _perc(nodes: list[Node]) -> Perception:
 
 
 def test_skill_hit_without_llm(monkeypatch):
-    llm = FakeLLM(['{"op":"back","params":{}}'])
+    llm = FakeLLM(["back"])
 
     def _should_not_be_called(system: str, user: str, image_b64: str | None = None) -> str:
         raise AssertionError("LLM should not be called when skill hits")
@@ -22,38 +22,42 @@ def test_skill_hit_without_llm(monkeypatch):
     engine = DecisionEngine(llm=llm, skills=SkillLibrary())
     p = _perc([Node(id="n1", text="通讯录", clickable=True)])
 
-    action = engine.decide(goal="发消息", perception=p, skill_name="feishu_send", cursor=0, history=[])
+    actions = engine.decide(goal="发消息", perception=p, skill_name="feishu_send", cursor=0, history=[])
 
-    assert action.op == "tap"
-    assert action.params == {"match_text": "通讯录"}
-    uuid.UUID(action.actionId)
+    assert isinstance(actions, list)
+    assert len(actions) == 1
+    assert actions[0].op == "tap"
+    assert actions[0].params == {"match_text": "通讯录"}
+    uuid.UUID(actions[0].actionId)
 
 
 def test_fallback_to_llm_when_skill_miss(monkeypatch):
-    llm = FakeLLM(['{"op":"back","params":{}}'])
+    llm = FakeLLM(["back"])
     captured: dict[str, str] = {}
 
     def _capture_complete(system: str, user: str, image_b64: str | None = None) -> str:
         captured["system"] = system
         captured["user"] = user
-        return '{"op":"back","params":{}}'
+        return "back"
 
     monkeypatch.setattr(llm, "complete", _capture_complete)
     engine = DecisionEngine(llm=llm, skills=SkillLibrary())
     p = _perc([Node(id="n1", text="首页")])
 
-    action = engine.decide(goal="发消息", perception=p, skill_name="feishu_send", cursor=0, history=[])
+    actions = engine.decide(goal="发消息", perception=p, skill_name="feishu_send", cursor=0, history=[])
 
-    assert action.op == "back"
-    assert action.params == {}
-    uuid.UUID(action.actionId)
+    assert isinstance(actions, list)
+    assert len(actions) == 1
+    assert actions[0].op == "back"
+    assert actions[0].params == {}
+    uuid.UUID(actions[0].actionId)
 
-    # 系统提示词必须约束 LLM 扮演决策器、列出合法 op、强制 JSON-only 输出，
-    # 否则真实模型会返回自然语言导致 json.loads 崩溃（真机联调实测暴露）。
+    # 系统提示词必须教 LLM 用文本指令协议、列出合法指令名，并说明 screen 编码格式，
+    # 否则真实模型不知如何回复。文本协议下不再要求 JSON。
     system = captured["system"]
-    assert "JSON" in system
-    for op in ("tap", "input", "swipe", "done", "abort", "read_screen"):
+    for op in ("tap", "input", "swipe", "done", "abort", "read"):
         assert op in system
+    assert "每行一条" in system
 
     payload = json.loads(captured["user"])
     assert set(payload.keys()) == {"goal", "screen", "history"}
@@ -66,7 +70,7 @@ def test_cache_hit_returns_step_without_llm(tmp_path, monkeypatch):
     cache = SkillCache(tmp_path / "c.json")
     cache.learn("发消息", "com.ss.android.lark", [{"op": "tap", "params": {"match_text": "搜索"}}])
 
-    llm = FakeLLM(['{"op":"back","params":{}}'])
+    llm = FakeLLM(["back"])
 
     def _fail(system: str, user: str, image_b64: str | None = None) -> str:
         raise AssertionError("LLM must not be called on cache hit")
@@ -75,37 +79,41 @@ def test_cache_hit_returns_step_without_llm(tmp_path, monkeypatch):
     engine = DecisionEngine(llm=llm, skills=SkillLibrary(), cache=cache)
     p = _perc([Node(id="n1", text="搜索", clickable=True)])
 
-    action = engine.decide(goal="发消息", perception=p, skill_name=None, cursor=0, history=[])
+    actions = engine.decide(goal="发消息", perception=p, skill_name=None, cursor=0, history=[])
 
-    assert action.op == "tap"
-    assert action.params == {"match_text": "搜索"}
+    assert isinstance(actions, list)
+    assert len(actions) == 1
+    assert actions[0].op == "tap"
+    assert actions[0].params == {"match_text": "搜索"}
 
 
 def test_cache_miss_when_node_not_matchable_falls_through(tmp_path):
     cache = SkillCache(tmp_path / "c.json")
     cache.learn("发消息", "com.ss.android.lark", [{"op": "tap", "params": {"match_text": "搜索"}}])
 
-    llm = FakeLLM(['{"op":"back","params":{}}'])
+    llm = FakeLLM(["back"])
     engine = DecisionEngine(llm=llm, skills=SkillLibrary(), cache=cache)
     p = _perc([Node(id="n1", text="首页")])  # 无“搜索”节点，缓存步无法重定位
 
-    action = engine.decide(goal="发消息", perception=p, skill_name=None, cursor=0, history=[])
+    actions = engine.decide(goal="发消息", perception=p, skill_name=None, cursor=0, history=[])
 
-    assert action.op == "back"  # 回退到 LLM
+    assert actions[0].op == "back"  # 回退到 LLM
 
 
-def test_llm_non_json_falls_back_to_read_screen(monkeypatch):
-    # 真机联调实测：真实 LLM 可能返回自然语言/空串，json.loads 会崩溃并断连。
+def test_llm_non_instruction_falls_back_to_read_screen(monkeypatch):
+    # 真机联调实测：真实 LLM 可能返回无法识别为指令的自然语言/空串。
     # 决策层必须兜底为 read_screen（重新观察），保证 WS 循环不中断。
-    llm = FakeLLM(["这不是 JSON，我需要更多信息"])
+    llm = FakeLLM(["这不是指令，我需要更多信息"])
     engine = DecisionEngine(llm=llm, skills=SkillLibrary())
     p = _perc([Node(id="n1", text="首页")])
 
-    action = engine.decide(goal="发消息", perception=p, skill_name=None, cursor=0, history=[])
+    actions = engine.decide(goal="发消息", perception=p, skill_name=None, cursor=0, history=[])
 
-    assert action.op == "read_screen"
-    assert action.params == {}
-    uuid.UUID(action.actionId)
+    assert isinstance(actions, list)
+    assert len(actions) == 1
+    assert actions[0].op == "read_screen"
+    assert actions[0].params == {}
+    uuid.UUID(actions[0].actionId)
 
 
 def test_llm_empty_string_falls_back_to_read_screen():
@@ -113,9 +121,67 @@ def test_llm_empty_string_falls_back_to_read_screen():
     engine = DecisionEngine(llm=llm, skills=SkillLibrary())
     p = _perc([Node(id="n1", text="首页")])
 
-    action = engine.decide(goal="发消息", perception=p, skill_name=None, cursor=0, history=[])
+    actions = engine.decide(goal="发消息", perception=p, skill_name=None, cursor=0, history=[])
 
-    assert action.op == "read_screen"
+    assert actions[0].op == "read_screen"
+
+
+def test_decide_returns_action_list(monkeypatch):
+    # 文本协议批处理：N 条盲操作 + 最多 1 条 tap/input 收尾。
+    # 遇首个 tap/input 下发后本批结束（截断），tap 那条注入 x/y 坐标。
+    llm = FakeLLM(["home_first\nnext_page\ntap 2"])
+    engine = DecisionEngine(llm=llm, skills=SkillLibrary())
+    nodes = [
+        Node(id="a", text="微信", clickable=True, bounds=(0, 0, 100, 100)),
+        Node(id="b", text="qq", clickable=True, bounds=(0, 0, 50, 50)),
+        Node(id="c", text="飞书", clickable=True, bounds=(200, 300, 400, 500)),
+    ]
+    actions = engine.decide(goal="打开飞书", perception=_perc(nodes), skill_name=None, cursor=0, history=[])
+
+    assert isinstance(actions, list)
+    assert [a.op for a in actions] == ["home_first_page", "next_page", "tap"]
+    # tap 是收尾且注入了坐标：nodes[2] bounds=(200,300,400,500) -> 中心 (300,400)
+    assert actions[-1].params["x"] == "300"
+    assert actions[-1].params["y"] == "400"
+
+
+def test_decide_non_instruction_falls_back_to_read_screen_single(monkeypatch):
+    # LLM 返回完全无法识别为指令的内容 -> decide 返回 [read_screen 单元素]。
+    llm = FakeLLM(["blah blah 没有任何合法动词"])
+    engine = DecisionEngine(llm=llm, skills=SkillLibrary())
+    p = _perc([Node(id="n1", text="首页")])
+
+    actions = engine.decide(goal="发消息", perception=p, skill_name=None, cursor=0, history=[])
+
+    assert isinstance(actions, list)
+    assert len(actions) == 1
+    assert actions[0].op == "read_screen"
+
+
+def test_decide_stops_batch_at_first_tap(monkeypatch):
+    # 批处理截断：tap 之后的指令不下发（本批结束重抓帧）。
+    llm = FakeLLM(["home_first\ntap 0\nnext_page\ntap 1"])
+    engine = DecisionEngine(llm=llm, skills=SkillLibrary())
+    nodes = [
+        Node(id="a", text="飞书", clickable=True, bounds=(0, 0, 100, 100)),
+        Node(id="b", text="微信", clickable=True, bounds=(200, 200, 300, 300)),
+    ]
+    actions = engine.decide(goal="打开飞书", perception=_perc(nodes), skill_name=None, cursor=0, history=[])
+
+    assert [a.op for a in actions] == ["home_first_page", "tap"]
+    assert actions[-1].params["x"] == "50"
+    assert actions[-1].params["y"] == "50"
+
+
+def test_decide_stops_batch_at_first_input(monkeypatch):
+    # input 同样收尾截断。
+    llm = FakeLLM(["input 0 你好\ntap 0"])
+    engine = DecisionEngine(llm=llm, skills=SkillLibrary())
+    nodes = [Node(id="a", text="搜索框", editable=True, bounds=(0, 0, 100, 100))]
+    actions = engine.decide(goal="搜索", perception=_perc(nodes), skill_name=None, cursor=0, history=[])
+
+    assert [a.op for a in actions] == ["input"]
+    assert actions[0].params["text"] == "你好"
 
 
 from app.decision import _encode_nodes
@@ -143,11 +209,11 @@ def test_encode_nodes_blank_text_and_desc_keeps_empty_quotes():
 
 def test_large_node_tree_capped_and_encoded(monkeypatch):
     captured = {}
-    llm = FakeLLM(['{"op":"back","params":{}}'])
+    llm = FakeLLM(["back"])
 
     def _capture(system, user, image_b64=None):
         captured["user"] = user
-        return '{"op":"back","params":{}}'
+        return "back"
 
     monkeypatch.setattr(llm, "complete", _capture)
     engine = DecisionEngine(llm=llm, skills=SkillLibrary())
@@ -162,11 +228,11 @@ def test_large_node_tree_capped_and_encoded(monkeypatch):
 
 def test_capping_prefers_interactive_nodes(monkeypatch):
     captured = {}
-    llm = FakeLLM(['{"op":"back","params":{}}'])
+    llm = FakeLLM(["back"])
 
     def _capture(system, user, image_b64=None):
         captured["user"] = user
-        return '{"op":"back","params":{}}'
+        return "back"
 
     monkeypatch.setattr(llm, "complete", _capture)
     engine = DecisionEngine(llm=llm, skills=SkillLibrary())
@@ -185,44 +251,46 @@ def test_capping_prefers_interactive_nodes(monkeypatch):
 
 
 def test_tap_by_id_resolves_to_bounds_center(monkeypatch):
-    llm = FakeLLM(['{"op":"tap","params":{"id":"1"}}'])
+    llm = FakeLLM(["tap 1"])
     engine = DecisionEngine(llm=llm, skills=SkillLibrary())
     nodes = [
         Node(id="a", text="微信", clickable=True, bounds=(0, 0, 100, 100)),
         Node(id="b", text="飞书", clickable=True, bounds=(200, 300, 400, 500)),
     ]
-    action = engine.decide(goal="打开飞书", perception=_perc(nodes), skill_name=None, cursor=0, history=[])
+    actions = engine.decide(goal="打开飞书", perception=_perc(nodes), skill_name=None, cursor=0, history=[])
 
+    action = actions[-1]
     assert action.op == "tap"
     # 选中 nodes[1] "飞书" bounds=(200,300,400,500) -> 中心 (300, 400)
     assert action.params["x"] == "300"
     assert action.params["y"] == "400"
 
 
-def test_tap_only_resolves_by_id_not_match_text(monkeypatch):
-    # 节点引用键只认 [n] 下标(id)；match_text 不再参与 tap 解析。
-    # params 只给 match_text 时无法命中,不注入坐标,保留原 params。
-    llm = FakeLLM(['{"op":"tap","params":{"match_text":"飞书"}}'])
+def test_tap_empty_id_not_resolved(monkeypatch):
+    # 节点引用键只认 [n] 下标(id)；文本协议下无 id 的 tap 无法命中,
+    # 不注入坐标,保留原 params(此处 id 为空串)。
+    llm = FakeLLM(["tap"])
     engine = DecisionEngine(llm=llm, skills=SkillLibrary())
     nodes = [
         Node(id="a", text="微信", clickable=True, bounds=(0, 0, 100, 100)),
         Node(id="b", text="飞书", clickable=True, bounds=(200, 300, 400, 500)),
     ]
-    action = engine.decide(goal="打开飞书", perception=_perc(nodes), skill_name=None, cursor=0, history=[])
+    actions = engine.decide(goal="打开飞书", perception=_perc(nodes), skill_name=None, cursor=0, history=[])
 
+    action = actions[-1]
     assert action.op == "tap"
     assert "x" not in action.params
     assert "y" not in action.params
-    assert action.params.get("match_text") == "飞书"
 
 
 def test_tap_by_id_out_of_range_keeps_original(monkeypatch):
     # id 越界 -> 解析失败,不注入坐标,保留原 params。
-    llm = FakeLLM(['{"op":"tap","params":{"id":"99"}}'])
+    llm = FakeLLM(["tap 99"])
     engine = DecisionEngine(llm=llm, skills=SkillLibrary())
     nodes = [Node(id="a", text="飞书", clickable=True, bounds=(200, 300, 400, 500))]
-    action = engine.decide(goal="打开飞书", perception=_perc(nodes), skill_name=None, cursor=0, history=[])
+    actions = engine.decide(goal="打开飞书", perception=_perc(nodes), skill_name=None, cursor=0, history=[])
 
+    action = actions[-1]
     assert action.op == "tap"
     assert "x" not in action.params
     assert "y" not in action.params
@@ -231,11 +299,12 @@ def test_tap_by_id_out_of_range_keeps_original(monkeypatch):
 
 def test_tap_by_id_node_without_bounds_keeps_original(monkeypatch):
     # id 命中但该 node 无 bounds -> 不注入坐标,保留原 params。
-    llm = FakeLLM(['{"op":"tap","params":{"id":"0"}}'])
+    llm = FakeLLM(["tap 0"])
     engine = DecisionEngine(llm=llm, skills=SkillLibrary())
     nodes = [Node(id="a", text="飞书", clickable=True, bounds=None)]
-    action = engine.decide(goal="打开飞书", perception=_perc(nodes), skill_name=None, cursor=0, history=[])
+    actions = engine.decide(goal="打开飞书", perception=_perc(nodes), skill_name=None, cursor=0, history=[])
 
+    action = actions[-1]
     assert action.op == "tap"
     assert "x" not in action.params
     assert "y" not in action.params
@@ -243,15 +312,15 @@ def test_tap_by_id_node_without_bounds_keeps_original(monkeypatch):
 
 
 def test_tap_unresolvable_keeps_original_params(monkeypatch):
-    # 选中节点找不到或无 bounds -> 不注入坐标，保留原 params 供端侧兜底
-    llm = FakeLLM(['{"op":"tap","params":{"match_text":"不存在"}}'])
+    # 选中节点找不到(空 id) -> 不注入坐标，保留原 params 供端侧兜底
+    llm = FakeLLM(["tap"])
     engine = DecisionEngine(llm=llm, skills=SkillLibrary())
     nodes = [Node(id="a", text="飞书", clickable=True, bounds=(0, 0, 10, 10))]
-    action = engine.decide(goal="打开飞书", perception=_perc(nodes), skill_name=None, cursor=0, history=[])
+    actions = engine.decide(goal="打开飞书", perception=_perc(nodes), skill_name=None, cursor=0, history=[])
 
+    action = actions[-1]
     assert "x" not in action.params
     assert "y" not in action.params
-    assert action.params.get("match_text") == "不存在"
 
 
 def test_system_prompt_teaches_minus_one_screen_exit():

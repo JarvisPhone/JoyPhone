@@ -29,12 +29,12 @@ class _FakeClient:
 
 
 def test_real_llm_sends_prompt_and_returns_content():
-    client = _FakeClient('{"op":"tap","params":{"match_text":"搜索"}}')
+    client = _FakeClient("tap 5")
     llm = RealLLM(client=client, model="gpt-4o-mini")
 
     out = llm.complete(system="sys", user="usr")
 
-    assert out == '{"op":"tap","params":{"match_text":"搜索"}}'
+    assert out == "tap 5"
     assert client.captured["model"] == "gpt-4o-mini"
     msgs = client.captured["messages"]
     assert msgs[0] == {"role": "system", "content": "sys"}
@@ -43,7 +43,7 @@ def test_real_llm_sends_prompt_and_returns_content():
 
 def test_real_llm_disables_thinking_and_uses_recommended_temperature():
     # MiniMax-M3 支持 thinking 关闭；文档推荐 temperature=1.0。
-    client = _FakeClient('{"op":"read_screen","params":{}}')
+    client = _FakeClient("read")
     llm = RealLLM(client=client, model="MiniMax-M3")
 
     llm.complete(system="sys", user="usr")
@@ -53,26 +53,26 @@ def test_real_llm_disables_thinking_and_uses_recommended_temperature():
 
 
 def test_real_llm_strips_think_tags():
-    # MiniMax-M2.x 系列 thinking 无法关闭，content 会带 <think>...</think>，
-    # 需剥离后才能被 decision 层 json.loads 解析。
-    raw = '<think>\n用户要点搜索按钮\n</think>\n{"op":"tap","params":{"match_text":"搜索"}}'
+    # MiniMax-M2.x 系列 thinking 无法关��，content 会带 <think>...</think>，
+    # 需剥离后才能被 decision 层 parse_actions 解析。
+    raw = "<think>\n用户要点第 5 行\n</think>\ntap 5"
     client = _FakeClient(raw)
     llm = RealLLM(client=client, model="MiniMax-M2.5-highspeed")
 
     out = llm.complete(system="sys", user="usr")
 
-    assert out == '{"op":"tap","params":{"match_text":"搜索"}}'
+    assert out == "tap 5"
 
 
-def test_real_llm_extracts_json_from_prose():
-    # 兜底：即使模型在 JSON 前后夹杂说明文字，也应提取出首个完整 JSON 对象。
-    raw = 'Sure, here is the action:\n{"op":"back","params":{}}\nHope it helps.'
+def test_real_llm_returns_multiline_instructions_verbatim():
+    # 文本指令协议：多行盲操作 + 收尾 tap 必须原样返回，不做 JSON 截断。
+    raw = "home_first\nnext_page\ntap 2"
     client = _FakeClient(raw)
     llm = RealLLM(client=client, model="MiniMax-M3")
 
     out = llm.complete(system="sys", user="usr")
 
-    assert out == '{"op":"back","params":{}}'
+    assert out == "home_first\nnext_page\ntap 2"
 
 
 def test_build_llm_falls_back_to_fake_when_no_key(monkeypatch):

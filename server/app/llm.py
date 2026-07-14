@@ -31,30 +31,16 @@ import os
 import re
 
 
-def _extract_json(text: str | None) -> str:
-    """清洗 LLM 原始输出：剥离 <think> 推理标签并提取首个完整 JSON 对象。
+def _clean_text(text: str | None) -> str:
+    """清洗 LLM 原始输出：仅剥离 <think>...</think> 推理标签，返回纯文本指令。
 
-    MiniMax-M2.x thinking 无法关闭，content 会带 <think>...</think>；
-    部分模型还会在 JSON 前后夹杂说明文字。此函数保证下游 json.loads 可用。
+    文本指令协议下，LLM 返回多行「动词 + 参数」指令，不再是 JSON。
+    MiniMax-M2.x thinking 无法关闭，content 会带 <think>...</think>，剥掉即可。
+    None / 空输入返回空字符串。
     """
     if not text:
         return ""
-    # 去掉 <think>...</think> 段
-    cleaned = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
-    # 提取首个大括号平衡的 JSON 对象
-    start = cleaned.find("{")
-    if start == -1:
-        return cleaned
-    depth = 0
-    for i in range(start, len(cleaned)):
-        ch = cleaned[i]
-        if ch == "{":
-            depth += 1
-        elif ch == "}":
-            depth -= 1
-            if depth == 0:
-                return cleaned[start : i + 1]
-    return cleaned
+    return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
 
 
 class RealLLM(LLM):
@@ -77,13 +63,13 @@ class RealLLM(LLM):
         logging.getLogger("phoneagent.gateway").info(
             "[LLM-RAW-UNCLEANED] %r", _content
         )
-        return _extract_json(_content)
+        return _clean_text(_content)
 
 def build_llm() -> LLM:
     _load_env_file()
     api_key = os.environ.get("LLM_API_KEY")
     if not api_key:
-        return FakeLLM(['{"op":"read_screen","params":{}}'])
+        return FakeLLM(["read"])
 
     from openai import OpenAI
 

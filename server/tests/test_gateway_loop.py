@@ -29,7 +29,7 @@ def _task_request(goal="帮我完成一件事"):
 
 def test_gateway_starts_task_on_request(monkeypatch, tmp_path):
     monkeypatch.setenv("SKILL_CACHE_PATH", str(tmp_path / "cache.json"))
-    monkeypatch.setenv("PHONEAGENT_FAKE_LLM", '["{\\"op\\":\\"done\\",\\"params\\":{}}"]')
+    monkeypatch.setenv("PHONEAGENT_FAKE_LLM", json.dumps(["done"]))
 
     app = create_app()
     client = TestClient(app)
@@ -44,7 +44,7 @@ def test_gateway_starts_task_on_request(monkeypatch, tmp_path):
 
 def test_gateway_stays_idle_until_task_request(monkeypatch, tmp_path):
     monkeypatch.setenv("SKILL_CACHE_PATH", str(tmp_path / "cache.json"))
-    monkeypatch.setenv("PHONEAGENT_FAKE_LLM", '["{\\"op\\":\\"done\\",\\"params\\":{}}"]')
+    monkeypatch.setenv("PHONEAGENT_FAKE_LLM", json.dumps(["done"]))
 
     app = create_app()
     client = TestClient(app)
@@ -60,7 +60,7 @@ def test_gateway_stays_idle_until_task_request(monkeypatch, tmp_path):
 
 def test_gateway_task_request_drives_goal(monkeypatch, tmp_path):
     monkeypatch.setenv("SKILL_CACHE_PATH", str(tmp_path / "cache.json"))
-    monkeypatch.setenv("PHONEAGENT_FAKE_LLM", '["{\\"op\\":\\"done\\",\\"params\\":{}}"]')
+    monkeypatch.setenv("PHONEAGENT_FAKE_LLM", json.dumps(["done"]))
 
     app = create_app()
     client = TestClient(app)
@@ -78,8 +78,8 @@ def test_gateway_perception_yields_action_then_done(monkeypatch, tmp_path):
         "PHONEAGENT_FAKE_LLM",
         json.dumps(
             [
-                '{"op":"tap","params":{"match_text":"搜索"}}',
-                '{"op":"done","params":{}}',
+                "tap 0",
+                "done",
             ]
         ),
     )
@@ -104,7 +104,7 @@ def test_gateway_perception_yields_action_then_done(monkeypatch, tmp_path):
 
 def test_gateway_budget_exhausted_aborts(monkeypatch, tmp_path):
     monkeypatch.setenv("SKILL_CACHE_PATH", str(tmp_path / "cache.json"))
-    monkeypatch.setenv("PHONEAGENT_FAKE_LLM", '["{\\"op\\":\\"wait\\",\\"params\\":{}}"]')
+    monkeypatch.setenv("PHONEAGENT_FAKE_LLM", json.dumps(["wait 500"]))
     monkeypatch.setenv("PHONEAGENT_MAX_STEPS", "2")
 
     app = create_app()
@@ -126,7 +126,7 @@ def test_gateway_budget_exhausted_aborts(monkeypatch, tmp_path):
 
 def test_gateway_heartbeat_still_returns_action(monkeypatch, tmp_path):
     monkeypatch.setenv("SKILL_CACHE_PATH", str(tmp_path / "cache.json"))
-    monkeypatch.setenv("PHONEAGENT_FAKE_LLM", '["{\\"op\\":\\"read_screen\\",\\"params\\":{}}"]')
+    monkeypatch.setenv("PHONEAGENT_FAKE_LLM", json.dumps(["read_screen"]))
 
     app = create_app()
     client = TestClient(app)

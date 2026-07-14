@@ -123,31 +123,41 @@ def create_app() -> FastAPI:
             logger.info(
                 "perception pkg=%s nodes=%d cursor=%d", uplink.pkg, len(uplink.nodeTree), cursor
             )
-            action = engine.decide(
+            actions = engine.decide(
                 goal=session.goal,
                 perception=uplink,
                 skill_name=None,
                 cursor=cursor,
                 history=history,
             )
-            session.record_step()
-            logger.info("decided op=%s params=%s", action.op, action.params)
 
-            if action.op == "done":
-                if applied_steps:
-                    engine._cache.learn(session.goal, last_pkg, applied_steps)
-                await websocket.send_text(
-                    TaskDone(taskId=session.task_id, result="ok", summary="task completed").to_json()
-                )
+            terminate = False
+            for action in actions:
+                session.record_step()
+                logger.info("decided op=%s params=%s", action.op, action.params)
+
+                if action.op == "done":
+                    if applied_steps:
+                        engine._cache.learn(session.goal, last_pkg, applied_steps)
+                    await websocket.send_text(
+                        TaskDone(
+                            taskId=session.task_id, result="ok", summary="task completed"
+                        ).to_json()
+                    )
+                    terminate = True
+                    break
+
+                if action.op == "abort":
+                    await websocket.send_text(
+                        TaskAbort(taskId=session.task_id, reason="llm_abort").to_json()
+                    )
+                    terminate = True
+                    break
+
+                applied_steps.append({"op": action.op, "params": action.params})
+                await websocket.send_text(action.to_json())
+
+            if terminate:
                 break
-
-            if action.op == "abort":
-                await websocket.send_text(
-                    TaskAbort(taskId=session.task_id, reason="llm_abort").to_json()
-                )
-                break
-
-            applied_steps.append({"op": action.op, "params": action.params})
-            await websocket.send_text(action.to_json())
 
     return app

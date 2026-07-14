@@ -10,40 +10,49 @@ from app.skill_cache import SkillCache
 from app.skills import SkillLibrary
 
 
-_SYSTEM_PROMPT = """你是一个 Android 手机操作代理的决策核心。给定当前屏幕的可交互元素列表(screen)、任务目标和历史操作，你必须决定「下一步」执行的单个 UI 动作。
+_SYSTEM_PROMPT = """你是一个 Android 手机操作代理的决策核心。给定当前屏幕的可交互元素列表(screen)、任务目标和历史操作，你要决定接下来执行的一批 UI 动作。
 
-你必须只输出一个 JSON 对象，不要输出任何解释、思考过程、Markdown 代码块或额外文字。
+你必须只输出「文本指令」，每行一条，可以多行；不要输出 JSON、解释、思考过程、Markdown 代码块或任何额外文字。
 
-JSON 格式：{"op": "<操作类型>", "params": {<参数键值对，值必须为字符串>}}
+合法指令(每行一条)：
+- tap n          点击第 n 行元素(n 是 screen 里的行号)
+- input n 文本    在第 n 行输入框输入「文本」(文本可含空格，取本行剩余内容)
+- swipe up       滑动，方向可为 up|down|left|right
+- back           返回键
+- home           回到桌面
+- home_first     回到桌面并归位到最左第一屏(打开应用前必先执行)
+- next_page      在桌面向后翻一屏找应用图标
+- wait 500       等待若干毫秒
+- read           重新读取屏幕(信息不足以决策时用)
+- done           任务已完成
+- abort 原因      无法完成任务，放弃，并说明原因
 
-合法的 op 取值及其含义：
-- tap: 点击某个节点。params: {"match_text": "节点文本"} 或 {"id": "节点id"}
-- input: 在输入框输入文本。params: {"text": "要输入的内容", "match_text": "输入框附近文本(可选)"}
-- swipe: 滑动。params: {"direction": "up|down|left|right"}
-- back: 返回键。params: {}
-- home: 回到桌面。params: {}
-- home_first_page: 回到桌面并归位到最左第一屏(打开应用前必先执行)。params: {}
-- next_page: 在桌面向后翻一屏找应用图标。params: {}
-- wait: 等待。params: {"ms": "毫秒数"}
-- read_screen: 重新读取屏幕(当信息不足以决策时用)。params: {}
-- done: 任务已完成。params: {}
-- abort: 无法完成任务，放弃。params: {"reason": "原因"}
+批处理规则：你可以一次给出多行盲操作(如 home_first、next_page、swipe、back、wait)，最多以「一条 tap 或 input」收尾。系统只会执行到第一条 tap/input 为止，然后重新抓取屏幕再问你，所以 tap/input 之后不要再写别的指令。
 
-输入里的 screen 是当前屏可交互元素列表，每行格式为 `[序号] 类型 "文本"`，类型为 input(输入框)/button(可点击)/text(纯文本)。tap/input 的 match_text 填元素文本，也可用 {"id": "序号"} 指定行号。
+输入里的 screen 是当前屏可交互元素列表，每行格式为 `[序号] 类型 "文本"`，类型为 input(输入框)/button(可点击)/text(纯文本)。tap/input 用行号 n 定位元素。
 
 打开应用的流程：
-1. 先 home_first_page 回到桌面第一屏
-2. read_screen 读取当前屏，在节点里找目标应用图标(按名称匹配)
-3. 找到图标 -> tap 打开；没找到 -> next_page 翻到下一屏，再 read_screen 继续找
-4. 若某次 next_page 后返回的历史记录里 atEnd 为 true 且仍没找到图标 -> abort，reason 填「未找到应用<名称>」
+1. 先 home_first 回到桌面第一屏
+2. read 读取当前屏，在节点里找目标应用图标(按名称匹配)
+3. 找到图标 -> tap 打开；没找到 -> next_page 翻到下一屏，再 read 继续找
+4. 若某次 next_page 后历史记录里 atEnd 为 true 且仍没找到图标 -> abort，原因填「未找到应用<名称>」
 
-【重要·负一屏识别】桌面最左侧的「负一屏」(又称小布建议/智能助手页)不是真正的应用桌面，上面的「XX 有 N 条通知」「XX 推荐」等磁贴不是应用图标，误点会进入错误的 app。识别特征：屏幕里出现「小布建议」「小布」等文字，或大量「...有...条通知」「为你推荐」类磁贴。一旦判断当前在负一屏，必须先 swipe direction=right 向右滑动退出，回到真正的桌面第一屏后再找应用图标；绝不能在负一屏上 tap 任何磁贴。
+【重要·负一屏识别】桌面最左侧的「负一屏」(又称小布建议/智能助手页)不是真正的应用桌面，上面的「XX 有 N 条通知」「XX 推荐」等磁贴不是应用图标，误点会进入错误的 app。识别特征：屏幕里出现「小布建议」「小布」等文字，或大量「...有...条通知」「为你推荐」类磁贴。一旦判断当前在负一屏，必须先 swipe right 向右滑动退出，回到真正的桌面第一屏后再找应用图标；绝不能在负一屏上 tap 任何磁贴。
 
-【重要·tap 定位】优先用 {"id": "序号"} 指定要点击的行号，系统会自动把该节点解析为精确坐标点击，比 match_text 子串匹配更可靠(避免误命中同名文字)。
+【重要·tap 定位】tap n 用行号定位，系统会自动把该行节点解析为精确坐标点击，比文字匹配更可靠(避免误命中同名文字)。
 
-示例：
-看到搜索框 -> {"op": "input", "params": {"text": "张三", "match_text": "搜索"}}
-信息不足 -> {"op": "read_screen", "params": {}}"""
+示例(多行批处理)：
+home_first
+read
+
+示例(收尾 tap)：
+tap 5
+
+示例(输入)：
+input 3 张三
+
+信息不足时：
+read"""
 
 
 def _node_type(node: Node) -> str:
@@ -163,16 +172,18 @@ class DecisionEngine:
         skill_name: str | None,
         cursor: int,
         history: list[dict],
-    ) -> Action:
+    ) -> list[Action]:
         step = self._cache_step(goal, perception, cursor)
         if step is not None:
-            return Action(actionId=str(uuid.uuid4()), op=step["op"], params=step.get("params", {}))
+            return [
+                Action(actionId=str(uuid.uuid4()), op=step["op"], params=step.get("params", {}))
+            ]
 
         if skill_name:
             step = self._skills.next_step(skill_name, perception.nodeTree, cursor)
             if step is not None:
                 params = {k: v for k, v in step.items() if k != "op"}
-                return Action(actionId=str(uuid.uuid4()), op=step["op"], params=params)
+                return [Action(actionId=str(uuid.uuid4()), op=step["op"], params=params)]
 
         nodes = self._cap_nodes(perception.nodeTree)
         payload = {
@@ -240,35 +251,38 @@ class DecisionEngine:
             _diag.info("[FRAME-DUMP] 已写入 %s", _dump_path)
         except Exception as _e:  # 调试插桩不应影响主流程
             _diag.warning("[FRAME-DUMP] 写入失败: %s", _e)
-        try:
-            data = json.loads(raw)
-        except (json.JSONDecodeError, TypeError):
-            return Action(actionId=str(uuid.uuid4()), op="read_screen", params={})
-        if not isinstance(data, dict) or "op" not in data:
-            return Action(actionId=str(uuid.uuid4()), op="read_screen", params={})
-        op = data["op"]
-        params = dict(data.get("params", {}))
-        if op == "tap":
-            target = _resolve_tap_node(params, nodes)
-            if target is not None:
-                idx = next((i for i, n in enumerate(nodes) if n is target), -1)
-                center = _bounds_center(target.bounds)
-                _diag.info(
-                    "[TAP-RESOLVE] llm_params=%s -> picked idx=%d endId=%s "
-                    "text=%r desc=%r bounds=%s center=%s",
-                    dict(data.get("params", {})), idx, target.id,
-                    target.text, target.desc, target.bounds, center,
-                )
-                if center is not None:
-                    params["x"] = str(center[0])
-                    params["y"] = str(center[1])
-            else:
-                _diag.info(
-                    "[TAP-RESOLVE] llm_params=%s -> picked=NONE (端侧回退match_text)",
-                    dict(data.get("params", {})),
-                )
-        _diag.info("[ACTION] op=%s final_params=%s", op, params)
-        return Action(actionId=str(uuid.uuid4()), op=op, params=params)
+        specs = parse_actions(raw)
+        if not specs:
+            return [Action(actionId=str(uuid.uuid4()), op="read_screen", params={})]
+
+        actions: list[Action] = []
+        for spec in specs:
+            op = spec["op"]
+            params = {k: v for k, v in spec.items() if k != "op"}
+            if op in ("tap", "input"):
+                target = _resolve_tap_node(params, nodes)
+                if target is not None:
+                    idx = next((i for i, n in enumerate(nodes) if n is target), -1)
+                    center = _bounds_center(target.bounds)
+                    _diag.info(
+                        "[TAP-RESOLVE] spec=%s -> picked idx=%d endId=%s "
+                        "text=%r desc=%r bounds=%s center=%s",
+                        spec, idx, target.id,
+                        target.text, target.desc, target.bounds, center,
+                    )
+                    if center is not None:
+                        params["x"] = str(center[0])
+                        params["y"] = str(center[1])
+                else:
+                    _diag.info(
+                        "[TAP-RESOLVE] spec=%s -> picked=NONE (端侧回退)", spec
+                    )
+                _diag.info("[ACTION] op=%s final_params=%s", op, params)
+                actions.append(Action(actionId=str(uuid.uuid4()), op=op, params=params))
+                break  # 批处理截断：遇首个 tap/input 收尾，本批结束重抓帧
+            _diag.info("[ACTION] op=%s final_params=%s", op, params)
+            actions.append(Action(actionId=str(uuid.uuid4()), op=op, params=params))
+        return actions
 
     def _cap_nodes(self, nodes: list[Node]) -> list[Node]:
         if len(nodes) <= self.MAX_LLM_NODES:
