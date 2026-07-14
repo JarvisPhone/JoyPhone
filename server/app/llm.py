@@ -72,7 +72,12 @@ class RealLLM(LLM):
             temperature=1.0,
             extra_body={"thinking": {"type": "disabled"}},
         )
-        return _extract_json(resp.choices[0].message.content)
+        _content = resp.choices[0].message.content
+        import logging
+        logging.getLogger("phoneagent.gateway").info(
+            "[LLM-RAW-UNCLEANED] %r", _content
+        )
+        return _extract_json(_content)
 
 def build_llm() -> LLM:
     _load_env_file()

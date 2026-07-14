@@ -176,3 +176,91 @@ def test_capping_prefers_interactive_nodes(monkeypatch):
 
     payload = json.loads(captured["user"])
     assert '飞书' in payload["screen"]
+
+
+# ---- tap 坐标下发：云侧把 LLM 选中节点解析为 bounds 中心坐标 ----
+# 真机根因：LLM 发 tap id='26' 本可精确点中桌面飞书图标，但端侧只认 match_text，
+# 导致空点 + 全屏子串匹配误命中负一屏推荐磁贴进小红书。修复方案：云侧在 decide 出口
+# 把 tap 的 id/match_text 还原为选中 Node 的 bounds 中心坐标 (x,y) 下发，端侧按坐标点击。
+
+
+def test_tap_by_id_resolves_to_bounds_center(monkeypatch):
+    llm = FakeLLM(['{"op":"tap","params":{"id":"1"}}'])
+    engine = DecisionEngine(llm=llm, skills=SkillLibrary())
+    nodes = [
+        Node(id="a", text="微信", clickable=True, bounds=(0, 0, 100, 100)),
+        Node(id="b", text="飞书", clickable=True, bounds=(200, 300, 400, 500)),
+    ]
+    action = engine.decide(goal="打开飞书", perception=_perc(nodes), skill_name=None, cursor=0, history=[])
+
+    assert action.op == "tap"
+    # 选中 nodes[1] "飞书" bounds=(200,300,400,500) -> 中心 (300, 400)
+    assert action.params["x"] == "300"
+    assert action.params["y"] == "400"
+
+
+def test_tap_by_match_text_resolves_to_bounds_center(monkeypatch):
+    llm = FakeLLM(['{"op":"tap","params":{"match_text":"飞书"}}'])
+    engine = DecisionEngine(llm=llm, skills=SkillLibrary())
+    nodes = [
+        Node(id="a", text="微信", clickable=True, bounds=(0, 0, 100, 100)),
+        Node(id="b", text="飞书", clickable=True, bounds=(200, 300, 400, 500)),
+    ]
+    action = engine.decide(goal="打开飞书", perception=_perc(nodes), skill_name=None, cursor=0, history=[])
+
+    assert action.op == "tap"
+    assert action.params["x"] == "300"
+    assert action.params["y"] == "400"
+
+
+def test_tap_match_text_matches_desc(monkeypatch):
+    llm = FakeLLM(['{"op":"tap","params":{"match_text":"飞书"}}'])
+    engine = DecisionEngine(llm=llm, skills=SkillLibrary())
+    nodes = [Node(id="a", desc="飞书", clickable=True, bounds=(10, 20, 30, 40))]
+    action = engine.decide(goal="打开飞书", perception=_perc(nodes), skill_name=None, cursor=0, history=[])
+
+    # 中心 ((10+30)/2, (20+40)/2) = (20, 30)
+    assert action.params["x"] == "20"
+    assert action.params["y"] == "30"
+
+
+def test_tap_keeps_match_text_as_fallback(monkeypatch):
+    # 坐标下发后仍保留 match_text，端侧坐标点击失败时可回退子串匹配
+    llm = FakeLLM(['{"op":"tap","params":{"match_text":"飞书"}}'])
+    engine = DecisionEngine(llm=llm, skills=SkillLibrary())
+    nodes = [Node(id="a", text="飞书", clickable=True, bounds=(200, 300, 400, 500))]
+    action = engine.decide(goal="打开飞书", perception=_perc(nodes), skill_name=None, cursor=0, history=[])
+
+    assert action.params.get("match_text") == "飞书"
+
+
+def test_tap_unresolvable_keeps_original_params(monkeypatch):
+    # 选中节点找不到或无 bounds -> 不注入坐标，保留原 params 供端侧兜底
+    llm = FakeLLM(['{"op":"tap","params":{"match_text":"不存在"}}'])
+    engine = DecisionEngine(llm=llm, skills=SkillLibrary())
+    nodes = [Node(id="a", text="飞书", clickable=True, bounds=(0, 0, 10, 10))]
+    action = engine.decide(goal="打开飞书", perception=_perc(nodes), skill_name=None, cursor=0, history=[])
+
+    assert "x" not in action.params
+    assert "y" not in action.params
+    assert action.params.get("match_text") == "不存在"
+
+
+def test_tap_node_without_bounds_keeps_original_params(monkeypatch):
+    llm = FakeLLM(['{"op":"tap","params":{"match_text":"飞书"}}'])
+    engine = DecisionEngine(llm=llm, skills=SkillLibrary())
+    nodes = [Node(id="a", text="飞书", clickable=True, bounds=None)]
+    action = engine.decide(goal="打开飞书", perception=_perc(nodes), skill_name=None, cursor=0, history=[])
+
+    assert "x" not in action.params
+    assert action.params.get("match_text") == "飞书"
+
+
+def test_system_prompt_teaches_minus_one_screen_exit():
+    # 负一屏(小布建议/推荐磁贴)不是桌面，�点会进错 app。
+    # prompt 必须告诉 LLM 识别负一屏特征并向右滑动退出。
+    from app.decision import _SYSTEM_PROMPT
+
+    assert "负一屏" in _SYSTEM_PROMPT
+    assert "小布建议" in _SYSTEM_PROMPT
+    assert "right" in _SYSTEM_PROMPT

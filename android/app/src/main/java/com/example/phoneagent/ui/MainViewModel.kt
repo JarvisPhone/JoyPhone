@@ -31,6 +31,8 @@ class MainViewModel @Inject constructor(
     private companion object {
         const val UNLOCK_THRESHOLD = 7
         const val TEST_GOAL = "在飞书里切换到「飞书个人账户」，点击左下角的「消息」，上下滑动找到群「Android AI 开发组」，点进去停留在发送消息的页面"
+        /** 「测试按钮」专用：只读单帧调试目标，云侧据此前缀走完整决策+全套日志，端侧只记录不执行返回动作。 */
+        const val DEBUG_ONESHOT_GOAL = "[DEBUG-ONESHOT] 只读当前屏幕一帧用于调试"
     }
 
     private val _debugUnlocked = MutableStateFlow(false)
@@ -68,6 +70,19 @@ class MainViewModel @Inject constructor(
                 direction = TraceDirection.UP,
                 kind = "task.request",
                 summary = TEST_GOAL,
+            )
+        )
+    }
+
+    /** 点击「测试按钮」：上行带 DEBUG-ONESHOT 前缀的只读目标，仅用于逐帧调试。 */
+    fun onTestButton() {
+        wsClient.sendTaskRequest(DEBUG_ONESHOT_GOAL)
+        repo.appendTrace(
+            TraceEvent(
+                ts = System.currentTimeMillis(),
+                direction = TraceDirection.UP,
+                kind = "task.request",
+                summary = DEBUG_ONESHOT_GOAL,
             )
         )
     }

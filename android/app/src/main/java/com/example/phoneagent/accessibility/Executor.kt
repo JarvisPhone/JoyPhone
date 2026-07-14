@@ -28,7 +28,7 @@ class Executor(
 ) {
     fun execute(op: String, params: Map<String, String>): ExecResult {
         return when (op) {
-            "tap" -> ExecResult(ok = tap(params["match_text"].orEmpty()))
+            "tap" -> ExecResult(ok = tap(params))
             "input" -> ExecResult(ok = input(params["text"].orEmpty()))
             "swipe" -> ExecResult(ok = swipe(params))
             "back" -> ExecResult(ok = service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK))
@@ -47,7 +47,18 @@ class Executor(
         return matches.firstOrNull { it.isClickable } ?: matches.firstOrNull()
     }
 
-    private fun tap(matchText: String): Boolean {
+    /**
+     * tap 优先按云侧下发的 x/y 坐标点击(云侧已把选中节点解析为 bounds 中心，避免端侧全屏
+     * 子串匹配误命中负一屏磁贴)；坐标缺失时回退 match_text 子串匹配。
+     */
+    private fun tap(params: Map<String, String>): Boolean {
+        GestureGeometry.tapPointFromParams(params)?.let { (x, y) ->
+            return dispatchTap(x, y)
+        }
+        return tapByText(params["match_text"].orEmpty())
+    }
+
+    private fun tapByText(matchText: String): Boolean {
         val node = findByText(matchText) ?: return false
         val rect = android.graphics.Rect()
         node.getBoundsInScreen(rect)

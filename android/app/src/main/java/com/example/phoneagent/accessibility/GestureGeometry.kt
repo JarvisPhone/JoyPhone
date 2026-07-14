@@ -17,7 +17,16 @@ object GestureGeometry {
         return cx to cy
     }
 
-    /** 默认上滑：屏幕水平居中，从下方 80% 滑到 30%。 */
+    /** tap 坐标下发：云侧把选中节点解析为 x/y 中心坐标塞进 params，端侧优先按此坐标点击。
+     *  x 或 y 缺失/非法返回 null，调用方回退 match_text 子串匹配。 */
+    fun tapPointFromParams(params: Map<String, String>): Pair<Float, Float>? {
+        val x = params["x"]?.toFloatOrNull()
+        val y = params["y"]?.toFloatOrNull()
+        if (x == null || y == null) return null
+        return x to y
+    }
+
+    /** 默认上滑：屏�水平居中，从下方 80% 滑到 30%。 */
     fun defaultSwipeUp(width: Int, height: Int): Swipe {
         val x = width / 2f
         return Swipe(startX = x, startY = height * 0.8f, endX = x, endY = height * 0.3f)
