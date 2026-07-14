@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+from app.comm_log import log_llm_req, log_llm_resp
+
 
 class LLM(ABC):
     @abstractmethod
@@ -49,6 +51,7 @@ class RealLLM(LLM):
         self._model = model
 
     def complete(self, system: str, user: str, image_b64: str | None = None) -> str:
+        log_llm_req(system + "\n---\n" + user)
         resp = self._client.chat.completions.create(
             model=self._model,
             messages=[
@@ -59,6 +62,7 @@ class RealLLM(LLM):
             extra_body={"thinking": {"type": "disabled"}},
         )
         _content = resp.choices[0].message.content
+        log_llm_resp(_content)
         import logging
         logging.getLogger("phoneagent.gateway").info(
             "[LLM-RAW-UNCLEANED] %r", _content

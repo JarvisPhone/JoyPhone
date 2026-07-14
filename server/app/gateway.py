@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi import FastAPI, WebSocket
 from starlette.websockets import WebSocketDisconnect
 
+from app.comm_log import log_up, log_down
 from app.decision import DecisionEngine
 from app.llm import FakeLLM, build_llm
 from app.protocol import (
@@ -84,10 +85,11 @@ def create_app() -> FastAPI:
 
             try:
                 uplink = parse_uplink(raw)
+                log_up(uplink.type, raw)
             except ValueError:
-                await websocket.send_text(
-                    TaskAbort(taskId=session.task_id, reason="invalid_uplink").to_json()
-                )
+                _abort = TaskAbort(taskId=session.task_id, reason="invalid_uplink").to_json()
+                log_down("task.abort", _abort)
+                await websocket.send_text(_abort)
                 break
 
             if uplink.type == "action.result":
@@ -97,26 +99,26 @@ def create_app() -> FastAPI:
                 continue
 
             if uplink.type == "heartbeat":
-                await websocket.send_text(
-                    Action(actionId=str(uuid.uuid4()), op="read_screen", params={}).to_json()
-                )
+                _hb = Action(actionId=str(uuid.uuid4()), op="read_screen", params={}).to_json()
+                log_down("action", _hb)
+                await websocket.send_text(_hb)
                 continue
 
             if uplink.type == "task.request":
                 session.goal = uplink.goal
                 logger.info("task.request goal=%s", uplink.goal)
-                await websocket.send_text(
-                    TaskStart(taskId=session.task_id, goal=session.goal, target=device_id).to_json()
-                )
+                _ts_msg = TaskStart(taskId=session.task_id, goal=session.goal, target=device_id).to_json()
+                log_down("task.start", _ts_msg)
+                await websocket.send_text(_ts_msg)
                 continue
 
             if uplink.type != "perception":
                 continue
 
             if session.budget_exhausted():
-                await websocket.send_text(
-                    TaskAbort(taskId=session.task_id, reason="budget_exhausted").to_json()
-                )
+                _be = TaskAbort(taskId=session.task_id, reason="budget_exhausted").to_json()
+                log_down("task.abort", _be)
+                await websocket.send_text(_be)
                 break
 
             last_pkg = uplink.pkg or last_pkg
@@ -139,23 +141,25 @@ def create_app() -> FastAPI:
                 if action.op == "done":
                     if applied_steps:
                         engine._cache.learn(session.goal, last_pkg, applied_steps)
-                    await websocket.send_text(
-                        TaskDone(
-                            taskId=session.task_id, result="ok", summary="task completed"
-                        ).to_json()
-                    )
+                    _done = TaskDone(
+                        taskId=session.task_id, result="ok", summary="task completed"
+                    ).to_json()
+                    log_down("task.done", _done)
+                    await websocket.send_text(_done)
                     terminate = True
                     break
 
                 if action.op == "abort":
-                    await websocket.send_text(
-                        TaskAbort(taskId=session.task_id, reason="llm_abort").to_json()
-                    )
+                    _ab = TaskAbort(taskId=session.task_id, reason="llm_abort").to_json()
+                    log_down("task.abort", _ab)
+                    await websocket.send_text(_ab)
                     terminate = True
                     break
 
                 applied_steps.append({"op": action.op, "params": action.params})
-                await websocket.send_text(action.to_json())
+                _act = action.to_json()
+                log_down("action", _act)
+                await websocket.send_text(_act)
 
             if terminate:
                 break
