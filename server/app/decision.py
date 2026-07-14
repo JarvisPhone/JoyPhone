@@ -65,8 +65,8 @@ def _encode_nodes(nodes: list[Node]) -> str:
 def _resolve_tap_node(params: dict, nodes: list[Node]) -> Node | None:
     """把 LLM 的 tap 参数还原为被选中的 Node。
 
-    id 是 _encode_nodes 的列表下标(对 capped nodes 而言)；
-    match_text 匹配节点 text 或 desc 的子串。找不到返回 None。
+    id 是 _encode_nodes 的列表下标(对 capped nodes 而言),是唯一的节点引用键。
+    raw_id 为空 / 非 int / 越界时返回 None。
     """
     raw_id = params.get("id")
     if raw_id is not None and str(raw_id).strip() != "":
@@ -76,11 +76,6 @@ def _resolve_tap_node(params: dict, nodes: list[Node]) -> Node | None:
             idx = -1
         if 0 <= idx < len(nodes):
             return nodes[idx]
-    match_text = str(params.get("match_text", "")).strip()
-    if match_text:
-        for n in nodes:
-            if match_text in (n.text or "") or match_text in (n.desc or ""):
-                return n
     return None
 
 

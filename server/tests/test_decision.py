@@ -199,7 +199,9 @@ def test_tap_by_id_resolves_to_bounds_center(monkeypatch):
     assert action.params["y"] == "400"
 
 
-def test_tap_by_match_text_resolves_to_bounds_center(monkeypatch):
+def test_tap_only_resolves_by_id_not_match_text(monkeypatch):
+    # 节点引用键只认 [n] 下标(id)；match_text 不再参与 tap 解析。
+    # params 只给 match_text 时无法命中,不注入坐标,保留原 params。
     llm = FakeLLM(['{"op":"tap","params":{"match_text":"飞书"}}'])
     engine = DecisionEngine(llm=llm, skills=SkillLibrary())
     nodes = [
@@ -209,29 +211,35 @@ def test_tap_by_match_text_resolves_to_bounds_center(monkeypatch):
     action = engine.decide(goal="打开飞书", perception=_perc(nodes), skill_name=None, cursor=0, history=[])
 
     assert action.op == "tap"
-    assert action.params["x"] == "300"
-    assert action.params["y"] == "400"
+    assert "x" not in action.params
+    assert "y" not in action.params
+    assert action.params.get("match_text") == "飞书"
 
 
-def test_tap_match_text_matches_desc(monkeypatch):
-    llm = FakeLLM(['{"op":"tap","params":{"match_text":"飞书"}}'])
-    engine = DecisionEngine(llm=llm, skills=SkillLibrary())
-    nodes = [Node(id="a", desc="飞书", clickable=True, bounds=(10, 20, 30, 40))]
-    action = engine.decide(goal="打开飞书", perception=_perc(nodes), skill_name=None, cursor=0, history=[])
-
-    # 中心 ((10+30)/2, (20+40)/2) = (20, 30)
-    assert action.params["x"] == "20"
-    assert action.params["y"] == "30"
-
-
-def test_tap_keeps_match_text_as_fallback(monkeypatch):
-    # 坐标下发后仍保留 match_text，端侧坐标点击失败时可回退子串匹配
-    llm = FakeLLM(['{"op":"tap","params":{"match_text":"飞书"}}'])
+def test_tap_by_id_out_of_range_keeps_original(monkeypatch):
+    # id 越界 -> 解析失败,不注入坐标,保留原 params。
+    llm = FakeLLM(['{"op":"tap","params":{"id":"99"}}'])
     engine = DecisionEngine(llm=llm, skills=SkillLibrary())
     nodes = [Node(id="a", text="飞书", clickable=True, bounds=(200, 300, 400, 500))]
     action = engine.decide(goal="打开飞书", perception=_perc(nodes), skill_name=None, cursor=0, history=[])
 
-    assert action.params.get("match_text") == "飞书"
+    assert action.op == "tap"
+    assert "x" not in action.params
+    assert "y" not in action.params
+    assert action.params.get("id") == "99"
+
+
+def test_tap_by_id_node_without_bounds_keeps_original(monkeypatch):
+    # id 命中但该 node 无 bounds -> 不注入坐标,保留原 params。
+    llm = FakeLLM(['{"op":"tap","params":{"id":"0"}}'])
+    engine = DecisionEngine(llm=llm, skills=SkillLibrary())
+    nodes = [Node(id="a", text="飞书", clickable=True, bounds=None)]
+    action = engine.decide(goal="打开飞书", perception=_perc(nodes), skill_name=None, cursor=0, history=[])
+
+    assert action.op == "tap"
+    assert "x" not in action.params
+    assert "y" not in action.params
+    assert action.params.get("id") == "0"
 
 
 def test_tap_unresolvable_keeps_original_params(monkeypatch):
@@ -244,16 +252,6 @@ def test_tap_unresolvable_keeps_original_params(monkeypatch):
     assert "x" not in action.params
     assert "y" not in action.params
     assert action.params.get("match_text") == "不存在"
-
-
-def test_tap_node_without_bounds_keeps_original_params(monkeypatch):
-    llm = FakeLLM(['{"op":"tap","params":{"match_text":"飞书"}}'])
-    engine = DecisionEngine(llm=llm, skills=SkillLibrary())
-    nodes = [Node(id="a", text="飞书", clickable=True, bounds=None)]
-    action = engine.decide(goal="打开飞书", perception=_perc(nodes), skill_name=None, cursor=0, history=[])
-
-    assert "x" not in action.params
-    assert action.params.get("match_text") == "飞书"
 
 
 def test_system_prompt_teaches_minus_one_screen_exit():
