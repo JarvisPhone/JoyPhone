@@ -30,6 +30,28 @@ object NodeFlattener {
         hasDesc: Boolean,
     ): Boolean = clickable || editable || scrollable || checkable || hasDesc
 
+    /**
+     * view id 资源名转可读 label：取 `/` 后末段，把 `_` 换成空格并 trim。
+     * null/blank 返回 null。纯逻辑，可单测。
+     * 例：`"com.ss.android.lark:id/contacts_tab"` → `"contacts tab"`。
+     */
+    fun viewIdToLabel(viewId: String?): String? {
+        if (viewId.isNullOrBlank()) return null
+        val label = viewId.substringAfterLast('/').replace('_', ' ').trim()
+        return label.ifBlank { null }
+    }
+
+    /**
+     * 四级兜底选取 label：text → desc → descendant → viewIdToLabel(viewId)。
+     * 返回第一个非空非 blank 的结果，全空返回 null。纯逻辑，可单测。
+     */
+    fun pickLabel(text: String?, desc: String?, descendant: String?, viewId: String?): String? = when {
+        !text.isNullOrBlank() -> text
+        !desc.isNullOrBlank() -> desc
+        !descendant.isNullOrBlank() -> descendant
+        else -> viewIdToLabel(viewId)
+    }
+
     /** 递归收集节点（framework 集成，真机验证）。 */
     fun flatten(root: AccessibilityNodeInfo?): List<NodeDto> {
         val out = mutableListOf<NodeDto>()
@@ -59,13 +81,14 @@ object NodeFlattener {
         )
 
         if (keep) {
-            // 可交互但自身无文本 -> 向下摘一个最近的非空 text/desc 补上
-            val label = when {
-                !text.isNullOrBlank() -> text
-                !desc.isNullOrBlank() -> desc
-                interactive -> firstDescendantLabel(node)
-                else -> null
+            // 四级兜底选取 label：text → desc → descendant(仅可交互且 text/desc 都空时摘取) → viewId。
+            val viewId = node.viewIdResourceName
+            val descendantLabel = if (interactive && text.isNullOrBlank() && desc.isNullOrBlank()) {
+                firstDescendantLabel(node)
+            } else {
+                null
             }
+            val label = pickLabel(text, desc, descendantLabel, viewId)
             out.add(
                 NodeDto(
                     id = makeId(path),
@@ -75,6 +98,7 @@ object NodeFlattener {
                     bounds = rectToBounds(rect),
                     clickable = node.isClickable,
                     editable = node.isEditable,
+                    viewIdResourceName = viewId,
                 )
             )
         }
