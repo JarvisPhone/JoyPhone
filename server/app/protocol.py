@@ -9,6 +9,7 @@ class Node(BaseModel):
     text: Optional[str] = None
     desc: Optional[str] = None
     className: Optional[str] = None
+    viewIdResourceName: Optional[str] = None
     bounds: Optional[tuple[int, int, int, int]] = None  # [left, top, right, bottom]
     clickable: bool = False
     editable: bool = False

@@ -15,6 +15,19 @@ def test_parse_perception_uplink():
     assert msg.nodeTree[0].text == "通讯录"
 
 
+def test_node_accepts_view_id_resource_name():
+    raw = '{"type":"perception","nodeTree":[{"id":"n1","viewIdResourceName":"com.ss.android.lark:id/contacts"}],"pkg":"com.ss.android.lark","activity":"Main","ts":1}'
+    msg = parse_uplink(raw)
+    assert isinstance(msg, Perception)
+    assert msg.nodeTree[0].viewIdResourceName == "com.ss.android.lark:id/contacts"
+
+
+def test_node_view_id_resource_name_defaults_none():
+    raw = '{"type":"perception","nodeTree":[{"id":"n1"}],"pkg":"p","activity":"a","ts":0}'
+    msg = parse_uplink(raw)
+    assert msg.nodeTree[0].viewIdResourceName is None
+
+
 def test_perception_rejects_invalid_bounds_length():
     raw = '{"type":"perception","nodeTree":[{"id":"n1","bounds":[0,1,2]}]}'
     with pytest.raises(ValidationError):

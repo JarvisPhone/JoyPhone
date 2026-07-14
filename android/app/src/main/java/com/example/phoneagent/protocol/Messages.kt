@@ -9,6 +9,7 @@ data class NodeDto(
     val text: String? = null,
     val desc: String? = null,
     val className: String? = null,
+    val viewIdResourceName: String? = null,
     val bounds: List<Int>? = null,
     val clickable: Boolean = false,
     val editable: Boolean = false,
