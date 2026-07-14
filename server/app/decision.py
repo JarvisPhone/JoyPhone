@@ -86,6 +86,45 @@ def _bounds_center(bounds) -> tuple[int, int] | None:
     return (left + right) // 2, (top + bottom) // 2
 
 
+_NOARG_OPS = {
+    "back": "back",
+    "home": "home",
+    "home_first": "home_first_page",
+    "next_page": "next_page",
+    "read": "read_screen",
+    "done": "done",
+}
+
+
+def parse_actions(text: str) -> list[dict]:
+    """把 LLM 返回的纯文本指令(多行,每行一条)解析成结构化 spec 列表。
+
+    纯函数,无副作用。语法按首个空格切「动词 + 参数」。
+    空行 / 无法识别的动词 -> 跳过。返回的每个 dict 里所有值都是 str。
+    """
+    specs: list[dict] = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        verb, _, rest = line.partition(" ")
+        rest = rest.strip()
+        if verb == "tap":
+            specs.append({"op": "tap", "id": rest.partition(" ")[0]})
+        elif verb == "input":
+            idx, _, txt = rest.partition(" ")
+            specs.append({"op": "input", "id": idx.strip(), "text": txt.strip()})
+        elif verb == "swipe":
+            specs.append({"op": "swipe", "direction": rest.partition(" ")[0]})
+        elif verb == "wait":
+            specs.append({"op": "wait", "ms": rest.partition(" ")[0]})
+        elif verb == "abort":
+            specs.append({"op": "abort", "reason": rest})
+        elif verb in _NOARG_OPS:
+            specs.append({"op": _NOARG_OPS[verb]})
+    return specs
+
+
 def encode_nodes_debug(nodes: list[Node]) -> str:
     """诊断用：完整打印每帧屏节点明细(行号/类型/text/desc/clickable/bounds/端侧id)。"""
     lines = []
