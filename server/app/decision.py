@@ -63,7 +63,10 @@ read
 tap 12
 
 信息不足时：
-read"""
+read
+
+【idle 行为约束】当 target_pkg 为空字符串(说明还没收到用户的 task.request)时,任务尚未开始,这一阶段你只能输出 `wait 1000` 或 `read`,**禁止**输出 `done` / `abort` / 任何 tap / home_first,否则会立即结束会话。等待用户下发任务后再行动。
+"""
 
 
 def _node_type(node: Node) -> str:

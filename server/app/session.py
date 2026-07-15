@@ -14,7 +14,7 @@ class State(Enum):
 
 
 _ALLOWED: dict[State, set[State]] = {
-    State.NAVIGATING: {State.IN_CHAT, State.ABORT},
+    State.NAVIGATING: {State.IN_CHAT, State.DONE, State.ABORT},
     State.IN_CHAT: {State.SENT, State.ABORT},
     State.SENT: {State.WAITING_REPLY, State.ABORT},
     State.WAITING_REPLY: {State.NEGOTIATING, State.DONE, State.ABORT},
@@ -33,10 +33,16 @@ class Session:
         self.state = State.NAVIGATING
         self.steps = 0
 
-    def transition(self, to: State) -> None:
+    def transition(self, to: State) -> bool:
+        """状态迁移,允许则返回 True,非法迁移返回 False(不抛异常)。
+
+        非抛异常版:Gateway 调用方更易防御,避免 LLM 异常决策(echo `done`)或
+        状态机不一致造成整个 WS 异常断开(根因:2026-07-15 LLM 在 idle 状态 echo `done`)。
+        """
         if to not in _ALLOWED[self.state]:
-            raise ValueError(f"invalid transition: {self.state.value}->{to.value}")
+            return False
         self.state = to
+        return True
 
     def record_step(self) -> None:
         self.steps += 1
