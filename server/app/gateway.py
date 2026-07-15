@@ -82,6 +82,7 @@ def create_app() -> FastAPI:
         applied_steps: list[dict] = []
         last_pkg = ""
         negotiation_history: list[dict] = []
+        skill_name: str | None = None
 
         while True:
             try:

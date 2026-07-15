@@ -79,10 +79,11 @@ class PhoneAgentService : AccessibilityService() {
     private fun reportScreen() {
         val root = rootInActiveWindow ?: return
         val nodes = NodeFlattener.flatten(root)
+        val activity = root.packageName?.toString() ?: ""
         val perception = UplinkPerception(
             nodeTree = nodes,
             pkg = root.packageName?.toString() ?: "",
-            activity = "",
+            activity = activity,
             ts = System.currentTimeMillis(),
         )
         wsClient.sendPerception(perception)
