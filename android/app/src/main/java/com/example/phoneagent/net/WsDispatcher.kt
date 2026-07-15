@@ -1,6 +1,7 @@
 package com.example.phoneagent.net
 
 import com.example.phoneagent.protocol.DownAction
+import com.example.phoneagent.protocol.DownTaskConfirm
 import com.example.phoneagent.protocol.DownTaskDone
 import com.example.phoneagent.protocol.DownTaskStart
 import kotlinx.serialization.json.Json
@@ -15,6 +16,7 @@ class WsDispatcher(
     private val onTaskStart: (goal: String, taskId: String) -> Unit,
     private val onAction: (DownAction) -> Unit,
     private val onTaskEnd: (reason: String) -> Unit,
+    private val onTaskConfirm: (DownTaskConfirm) -> Unit = {},
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -34,6 +36,10 @@ class WsDispatcher(
                 onTaskEnd(m.result)
             }
             "task.abort" -> onTaskEnd("abort")
+            "task.confirm" -> {
+                val m = json.decodeFromString<DownTaskConfirm>(text)
+                onTaskConfirm(m)
+            }
             else -> Unit
         }
     }

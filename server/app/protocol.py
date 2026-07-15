@@ -53,7 +53,17 @@ class TaskRequest(BaseModel):
     goal: str
 
 
-Uplink = Union[Perception, ActionResult, NewMessage, Heartbeat, TaskRequest]
+class ConfirmResponse(BaseModel):
+    """上行:App 收到 task.confirm 后的结果(Toast 5秒倒计时结束,或飞书被切走视为取消)。"""
+    type: Literal["task.confirm_response"] = "task.confirm_response"
+    taskId: str
+    confirmId: str
+    approved: bool
+    reason: str = ""
+    ts: int = 0
+
+
+Uplink = Union[Perception, ActionResult, NewMessage, Heartbeat, TaskRequest, ConfirmResponse]
 
 _UPLINK_MAP = {
     "perception": Perception,
@@ -61,6 +71,7 @@ _UPLINK_MAP = {
     "event.newMessage": NewMessage,
     "heartbeat": Heartbeat,
     "task.request": TaskRequest,
+    "task.confirm_response": ConfirmResponse,
 }
 
 
@@ -108,6 +119,7 @@ class Action(_Downlink):
         "read_screen",
         "done",
         "abort",
+        "request_confirm",
     ]
     params: dict[str, Any] = Field(default_factory=dict)
 
@@ -132,3 +144,16 @@ class TaskAbort(_Downlink):
     type: Literal["task.abort"] = "task.abort"
     taskId: str
     reason: str
+
+
+class TaskConfirm(_Downlink):
+    """下行:发消息前的 Toast 确认请求。
+    Android 端弹 5 秒 Toast,到时自动 approved=true,
+    期间若飞书被切走(perception.pkg != target_pkg)则云端自动 approved=false。
+    """
+    type: Literal["task.confirm"] = "task.confirm"
+    taskId: str
+    confirmId: str
+    target: str       # 期望的群名/联系人
+    message: str      # 待发送文案(预览)
+    timeoutMs: int    # 等待毫秒,Android 到点自动确认

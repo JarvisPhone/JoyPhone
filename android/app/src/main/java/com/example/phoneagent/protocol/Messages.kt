@@ -78,3 +78,25 @@ data class DownTaskAbort(
     val taskId: String,
     val reason: String,
 )
+
+/** 下行:发消息前 Toast 确认请求。云端在检测到「即将点发送」时拦截。 */
+@Serializable
+data class DownTaskConfirm(
+    val type: String = "task.confirm",
+    val taskId: String,
+    val confirmId: String,
+    val target: String,
+    val message: String,
+    val timeoutMs: Int,
+)
+
+/** 上行:Toast 5 秒倒计时结束 / 飞书被切走(由云端感知)后的响应。 */
+@Serializable
+data class UplinkConfirmResponse(
+    val type: String = "task.confirm_response",
+    val taskId: String,
+    val confirmId: String,
+    val approved: Boolean,
+    val reason: String = "",
+    val ts: Long = 0,
+)

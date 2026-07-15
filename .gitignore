@@ -1,4 +1,5 @@
 .superpowers/
+.vscode/
 android/.gradle/
 android/build/
 android/app/build/
@@ -11,6 +12,7 @@ __pycache__/
 server/.pytest_cache/
 server/.venv/
 server/data/skill_cache.json
+server/data/metrics/
 server/.env
 server/logs/
 .env

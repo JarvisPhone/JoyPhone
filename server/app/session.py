@@ -6,6 +6,7 @@ from enum import Enum
 class State(Enum):
     NAVIGATING = "NAVIGATING"
     IN_CHAT = "IN_CHAT"
+    AWAITING_CONFIRM = "AWAITING_CONFIRM"  # 发送前 Toast 确认窗口(5 秒)
     SENT = "SENT"
     WAITING_REPLY = "WAITING_REPLY"
     NEGOTIATING = "NEGOTIATING"
@@ -14,8 +15,10 @@ class State(Enum):
 
 
 _ALLOWED: dict[State, set[State]] = {
-    State.NAVIGATING: {State.IN_CHAT, State.DONE, State.ABORT},
-    State.IN_CHAT: {State.SENT, State.ABORT},
+    State.NAVIGATING: {State.IN_CHAT, State.AWAITING_CONFIRM, State.DONE, State.ABORT},
+    # IN_CHAT 自迁移用于 confirm reject 后回到原状态,让 LLM 重新决策。
+    State.IN_CHAT: {State.AWAITING_CONFIRM, State.SENT, State.ABORT, State.IN_CHAT},
+    State.AWAITING_CONFIRM: {State.SENT, State.ABORT, State.IN_CHAT},
     State.SENT: {State.WAITING_REPLY, State.ABORT},
     State.WAITING_REPLY: {State.NEGOTIATING, State.DONE, State.ABORT},
     State.NEGOTIATING: {State.SENT, State.DONE, State.ABORT},

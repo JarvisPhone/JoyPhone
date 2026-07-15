@@ -4,7 +4,9 @@ import com.example.phoneagent.data.AgentStateRepository
 import com.example.phoneagent.domain.ConnectionState
 import com.example.phoneagent.domain.WsEventLog
 import com.example.phoneagent.protocol.DownAction
+import com.example.phoneagent.protocol.DownTaskConfirm
 import com.example.phoneagent.protocol.UplinkActionResult
+import com.example.phoneagent.protocol.UplinkConfirmResponse
 import com.example.phoneagent.protocol.UplinkPerception
 import com.example.phoneagent.protocol.UplinkTaskRequest
 import kotlinx.coroutines.CoroutineScope
@@ -53,10 +55,11 @@ class WsClient @Inject constructor(
         onTaskStart: (goal: String, taskId: String) -> Unit,
         onAction: (DownAction) -> Unit,
         onTaskEnd: (reason: String) -> Unit,
+        onTaskConfirm: (DownTaskConfirm) -> Unit = {},
     ) {
         this.baseUrl = baseUrl
         this.deviceId = deviceId
-        this.dispatcher = WsDispatcher(onTaskStart, onAction, onTaskEnd)
+        this.dispatcher = WsDispatcher(onTaskStart, onAction, onTaskEnd, onTaskConfirm)
         manuallyClosed = false
         retryCount = 0
         repo.setDebugMeta(baseUrl, deviceId)
@@ -121,6 +124,21 @@ class WsClient @Inject constructor(
 
     fun sendTaskRequest(goal: String) {
         ws?.send(json.encodeToString(UplinkTaskRequest(goal = goal)))
+    }
+
+    /** 发送 Toast 确认响应。approved=true 表示 5 秒内未切走 / 用户已确认,false 表示取消。 */
+    fun sendConfirmResponse(taskId: String, confirmId: String, approved: Boolean, reason: String = "") {
+        ws?.send(
+            json.encodeToString(
+                UplinkConfirmResponse(
+                    taskId = taskId,
+                    confirmId = confirmId,
+                    approved = approved,
+                    reason = reason,
+                    ts = System.currentTimeMillis(),
+                )
+            )
+        )
     }
 
     fun close() {

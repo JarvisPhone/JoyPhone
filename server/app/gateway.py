@@ -7,14 +7,21 @@ from pathlib import Path
 from fastapi import FastAPI, WebSocket
 from starlette.websockets import WebSocketDisconnect
 
+from app.app_goal_resolver import extract_target, resolve_target_pkg
+from app.chat_title_helpers import (
+    detect_chat_title,
+    is_send_button,
+    match_chat_title,
+)
 from app.comm_log import log_up, log_down
-from app.app_goal_resolver import resolve_target_pkg
 from app.decision import DecisionEngine
 from app.llm import FakeLLM, build_llm
 from app.metrics import get_metrics_collector
 from app.protocol import (
     Action,
+    ConfirmResponse,
     TaskAbort,
+    TaskConfirm,
     TaskDone,
     TaskStart,
     parse_uplink,
@@ -85,6 +92,15 @@ def create_app() -> FastAPI:
         negotiation_history: list[dict] = []
         skill_name: str | None = None
 
+        # Toast 确认相关状态
+        target_chat_name: str | None = extract_target(session.goal)
+        target_app_pkg: str | None = resolve_target_pkg(session.goal)
+        pending_send_action: Action | None = None  # 被拦截的 input action
+        pending_send_button_node: Node | None = None  # 当前屏的「发送」按钮节点
+        pending_confirm_id: str | None = None
+        pending_message_text: str = ""
+        confirm_count = 0  # 全程只确认一次,避免循环
+
         while True:
             try:
                 raw = await websocket.receive_text()
@@ -118,10 +134,91 @@ def create_app() -> FastAPI:
             if uplink.type == "task.request":
                 session.goal = uplink.goal
                 session.state = State.NAVIGATING
-                logger.info("task.request goal=%s", uplink.goal)
+                target_chat_name = extract_target(session.goal)
+                target_app_pkg = resolve_target_pkg(session.goal)
+                pending_send_action = None
+                pending_send_button_node = None
+                pending_confirm_id = None
+                pending_message_text = ""
+                confirm_count = 0
+                logger.info("task.request goal=%s target_chat=%s pkg=%s", uplink.goal, target_chat_name, target_app_pkg)
                 _ts_msg = TaskStart(taskId=session.task_id, goal=session.goal, target=device_id).to_json()
                 log_down("task.start", _ts_msg)
                 await websocket.send_text(_ts_msg)
+                continue
+
+            if uplink.type == "task.confirm_response":
+                if session.state != State.AWAITING_CONFIRM:
+                    logger.warning(
+                        "confirm_response in wrong state=%s (ignoring)",
+                        session.state.value,
+                    )
+                    continue
+                if uplink.confirmId != pending_confirm_id:
+                    logger.warning(
+                        "confirm_response id mismatch: got=%s expected=%s",
+                        uplink.confirmId, pending_confirm_id,
+                    )
+                    continue
+                logger.info(
+                    "task.confirm_response approved=%s reason=%s",
+                    uplink.approved, uplink.reason,
+                )
+                pending_confirm_id = None
+                if uplink.approved:
+                    # 用户确认(Toast 5 秒到点 / App 主动)
+                    session.transition(State.SENT)
+                    if pending_send_action is not None and pending_send_button_node is not None:
+                        msg_text = pending_send_action.params.get("text", "")
+                        input_id = pending_send_action.params.get("id", "")
+                        # 1) 下发 input（让 App 把文案填进编辑框;如果编辑框已经有内容则效果等同 noop）
+                        input_act = Action(
+                            actionId=str(uuid.uuid4()),
+                            op="input",
+                            params={
+                                **pending_send_action.params,
+                            },
+                        )
+                        _ia = input_act.to_json()
+                        log_down("action", _ia)
+                        await websocket.send_text(_ia)
+                        # 2) 下发 tap 发送按钮（坐标从 send_node.bounds 中心算出来）
+                        center = _bounds_center(pending_send_button_node.bounds)
+                        if center is None:
+                            logger.error("approved but send_button has no bounds → abort")
+                            _ab = TaskAbort(taskId=session.task_id, reason="approved_but_no_send_bounds").to_json()
+                            log_down("task.abort", _ab)
+                            await websocket.send_text(_ab)
+                            metrics.finish_task(session.task_id, "aborted", "approved_but_no_send_bounds")
+                            break
+                        send_act = Action(
+                            actionId=str(uuid.uuid4()),
+                            op="tap",
+                            params={"id": "", "x": str(center[0]), "y": str(center[1])},
+                        )
+                        _sa = send_act.to_json()
+                        log_down("action", _sa)
+                        await websocket.send_text(_sa)
+                        applied_steps.append({"op": "input", "params": pending_send_action.params})
+                        applied_steps.append({"op": "tap", "params": send_act.params})
+                        pending_send_action = None
+                        pending_send_button_node = None
+                    else:
+                        logger.error("approved but no pending action/button → abort")
+                        _ab = TaskAbort(taskId=session.task_id, reason="no_pending_after_approve").to_json()
+                        log_down("task.abort", _ab)
+                        await websocket.send_text(_ab)
+                        metrics.finish_task(session.task_id, "aborted", "no_pending_after_approve")
+                        break
+                else:
+                    # 取消:把 input 撤回不发,转入 IN_CHAT 让 LLM 重新决策(可改文案/重试)。
+                    # SENT<-IN_CHAT 不在 _ALLOWED,改用更宽松的处理:不转换状态但清掉 pending,
+                    # 让下一帧上行时由正常决策路径继续。
+                    pending_send_action = None
+                    pending_send_button_node = None
+                    session.transition(State.IN_CHAT)
+                    logger.info("[CONFIRM_REJECTED] reason=%s → back to IN_CHAT for re-decide", uplink.reason)
+                    continue
                 continue
 
             if uplink.type == "event.newMessage":
@@ -190,6 +287,24 @@ def create_app() -> FastAPI:
                 uplink.pkg, len(uplink.nodeTree), cursor, session.state.value,
             )
 
+            # 【AWAITING_CONFIRM 期间】飞书/微信被切走 -> 自动取消
+            if session.state == State.AWAITING_CONFIRM:
+                if target_app_pkg and uplink.pkg and uplink.pkg != target_app_pkg:
+                    logger.info(
+                        "[CONFIRM_CANCELLED] pkg=%s != target=%s during AWAITING_CONFIRM -> auto reject",
+                        uplink.pkg, target_app_pkg,
+                    )
+                    pending_confirm_id = None
+                    session.transition(State.ABORT)
+                    pending_send_action = None
+                    pending_send_button_node = None
+                    _ab = TaskAbort(taskId=session.task_id, reason="confirm_rejected:app_left_during_confirm").to_json()
+                    log_down("task.abort", _ab)
+                    await websocket.send_text(_ab)
+                    metrics.finish_task(session.task_id, "aborted", "confirm_rejected:app_left_during_confirm")
+                    break
+                continue
+
             skill_name = engine._select_skill(session.goal, uplink.pkg) if skill_name is None else None
 
             target_pkg = resolve_target_pkg(session.goal) or ""
@@ -233,6 +348,45 @@ def create_app() -> FastAPI:
                     terminate = True
                     break
 
+                # 【发送前确认】LLM 做完 input 之后,先不发给 App,改发 task.confirm 让用户确认。
+                # 收到 confirm_response 后再由 gateway 把 input 和「tap 发送按钮」两条动作一起发下去。
+                if (
+                    action.op == "input"
+                    and confirm_count == 0
+                    and target_app_pkg
+                    and uplink.pkg == target_app_pkg
+                    and target_chat_name
+                ):
+                    current_title = detect_chat_title(uplink.nodeTree)
+                    if current_title and match_chat_title(target_chat_name, current_title):
+                        # 群名匹配 -> 拦截 input,下发 confirm
+                        send_node = _find_send_button(uplink.nodeTree)
+                        if send_node is None:
+                            # 屏幕上没发送按钮 -> LLM 还在打字阶段,正常下发 input,等发送按钮出现
+                            logger.info("[CONFIRM_SKIP] no send_button in view yet → forward input as-is")
+                        else:
+                            confirm_id = f"cfm-{uuid.uuid4().hex[:8]}"
+                            pending_confirm_id = confirm_id
+                            pending_send_action = action
+                            pending_send_button_node = send_node
+                            pending_message_text = action.params.get("text", "")
+                            _confirm = TaskConfirm(
+                                taskId=session.task_id,
+                                confirmId=confirm_id,
+                                target=current_title,
+                                message=pending_message_text,
+                                timeoutMs=5000,
+                            )
+                            log_down("task.confirm", _confirm.to_json())
+                            await websocket.send_text(_confirm.to_json())
+                            session.transition(State.AWAITING_CONFIRM)
+                            confirm_count += 1
+                            logger.info(
+                                "[CONFIRM_SENT] target=%s current=%s msg=%r",
+                                target_chat_name, current_title, pending_message_text,
+                            )
+                            break
+
                 if action.op in ("tap", "input"):
                     if session.state == State.NAVIGATING:
                         session.transition(State.IN_CHAT)
@@ -246,3 +400,40 @@ def create_app() -> FastAPI:
                 break
 
     return app
+
+
+def _find_send_button(nodes) -> "Node | None":
+    """从当前屏节点树里找出「发送」按钮节点。
+    多个候选时取最靠右下、面积最小的(按钮通常比输入框小)。
+    """
+    from app.chat_title_helpers import is_send_button  # 局部 import
+
+    candidates = []
+    for n in nodes:
+        if is_send_button(n):
+            if not n.bounds or len(n.bounds) != 4:
+                continue
+            l, t, r, b = n.bounds
+            candidates.append((n, (r - l) * (b - t), l + r))
+    if not candidates:
+        return None
+    # 优先选面积小的(精准按钮),并列时取靠右
+    candidates.sort(key=lambda c: (c[1], -c[2]))
+    return candidates[0][0]
+
+
+def _bounds_center(bounds) -> tuple[int, int] | None:
+    if not bounds or len(bounds) != 4:
+        return None
+    left, top, right, bottom = bounds
+    return (left + right) // 2, (top + bottom) // 2
+
+
+def _extract_last_input_text(applied_steps: list[dict]) -> str:
+    """从 applied_steps 里取出最近一条 input 操作的文本,作为 Toast 预览用。"""
+    for step in reversed(applied_steps):
+        if step.get("op") == "input":
+            text = step.get("params", {}).get("text", "")
+            if text:
+                return text
+    return ""
