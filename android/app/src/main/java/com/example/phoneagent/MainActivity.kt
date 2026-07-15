@@ -1,6 +1,5 @@
 package com.example.phoneagent
 
-import android.content.ComponentName
 import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
@@ -9,7 +8,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.phoneagent.accessibility.PhoneAgentService
 import com.example.phoneagent.ui.AgentScreen
 import com.example.phoneagent.ui.MainViewModel
 import com.example.phoneagent.ui.theme.JoyPhoneTheme
@@ -30,7 +28,6 @@ class MainActivity : ComponentActivity() {
                     onTitleTap = viewModel::onTitleTap,
                     onOpenAccessibility = { openAccessibilitySettings() },
                     onRunTestTask = viewModel::onRunTestTask,
-                    onTestButton = viewModel::onTestButton,
                     onHideDebug = viewModel::onHideDebug,
                 )
             }

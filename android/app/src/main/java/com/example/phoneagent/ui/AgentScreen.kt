@@ -37,7 +37,6 @@ fun AgentScreen(
     onTitleTap: () -> Unit,
     onOpenAccessibility: () -> Unit,
     onRunTestTask: () -> Unit,
-    onTestButton: () -> Unit,
     onHideDebug: () -> Unit,
 ) {
     Scaffold { inner ->
@@ -60,7 +59,6 @@ fun AgentScreen(
             TestTaskCard(
                 enabled = uiState.status.connection == ConnectionState.CONNECTED,
                 onRunTestTask = onRunTestTask,
-                onTestButton = onTestButton,
             )
             TaskCard(uiState.status.task)
 
@@ -111,15 +109,12 @@ private fun ConnectionCard(state: ConnectionState) {
 }
 
 @Composable
-private fun TestTaskCard(enabled: Boolean, onRunTestTask: () -> Unit, onTestButton: () -> Unit) {
+private fun TestTaskCard(enabled: Boolean, onRunTestTask: () -> Unit) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("测试任务", style = MaterialTheme.typography.titleMedium)
             Button(onClick = onRunTestTask, enabled = enabled) {
                 Text("运行测试任务")
-            }
-            Button(onClick = onTestButton, enabled = enabled) {
-                Text("测试按钮")
             }
         }
     }
@@ -150,7 +145,7 @@ private fun PreviewConnected() {
                     task = TaskState.Running("打开飞书并回复消息"),
                 ),
             ),
-            onTitleTap = {}, onOpenAccessibility = {}, onRunTestTask = {}, onTestButton = {}, onHideDebug = {},
+            onTitleTap = {}, onOpenAccessibility = {}, onRunTestTask = {}, onHideDebug = {},
         )
     }
 }
@@ -169,7 +164,7 @@ private fun PreviewDisconnected() {
                 debug = DebugInfo(wsUrl = "ws://10.253.61.158:8000", deviceId = "abc123", reconnectAttempts = 2),
                 debugUnlocked = true,
             ),
-            onTitleTap = {}, onOpenAccessibility = {}, onRunTestTask = {}, onTestButton = {}, onHideDebug = {},
+            onTitleTap = {}, onOpenAccessibility = {}, onRunTestTask = {}, onHideDebug = {},
         )
     }
 }

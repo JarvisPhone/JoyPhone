@@ -24,10 +24,6 @@ class PhoneAgentService : AccessibilityService() {
         const val WS_URL = "ws://10.253.61.158:8000"
         private const val DEBOUNCE_MS = 400L
         private const val TAG = "PhoneAgent"
-        /** 与 MainViewModel.DEBUG_ONESHOT_GOAL 保持一致：只读单帧调试标记。 */
-        private const val DEBUG_ONESHOT_PREFIX = "[DEBUG-ONESHOT]"
-        /** 只读调试：点按钮后延迟抓帧，留时间手动导航到目标 App 页面。 */
-        private const val DEBUG_CAPTURE_DELAY_MS = 10000L
     }
 
     @Inject lateinit var wsClient: WsClient
@@ -37,8 +33,6 @@ class PhoneAgentService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
     private var pendingReport: Runnable? = null
     @Volatile private var taskActive: Boolean = false
-    /** 只读调试模式：上报一帧并跑云侧决策记日志，但端侧不执行返回动作。 */
-    @Volatile private var readOnlyMode: Boolean = false
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -49,43 +43,24 @@ class PhoneAgentService : AccessibilityService() {
             baseUrl = WS_URL,
             deviceId = deviceId,
             onTaskStart = { goal, _ ->
-                readOnlyMode = goal.startsWith(DEBUG_ONESHOT_PREFIX)
                 taskActive = true
-                Log.i(TAG, "↓ task.start goal=$goal → taskActive=true readOnly=$readOnlyMode")
+                Log.i(TAG, "↓ task.start goal=$goal → taskActive=true")
                 repo.appendTrace(TraceEvent(System.currentTimeMillis(), TraceDirection.DOWN, "task.start", goal))
                 repo.updateTask(TaskState.Running(goal))
-                if (readOnlyMode) {
-                    // 只读单帧：不回桌面，延迟抓帧，留时间手动导航到目标 App 页面。
-                    Log.i(TAG, "[READ-ONLY] ${DEBUG_CAPTURE_DELAY_MS}ms 后抓帧，请手动打开目标 App 页面")
-                    handler.postDelayed({
-                        reportScreen()
-                        taskActive = false
-                        Log.i(TAG, "[READ-ONLY] 单帧已上报，taskActive=false，后续 action 只记录不执行")
-                    }, DEBUG_CAPTURE_DELAY_MS)
-                } else {
-                    reportScreen()
-                }
+                reportScreen()
             },
             onAction = { action ->
-                Log.i(TAG, "↓ action ${action.op} ${action.params} (taskActive=$taskActive readOnly=$readOnlyMode)")
+                Log.i(TAG, "↓ action ${action.op} ${action.params} (taskActive=$taskActive)")
                 repo.appendTrace(TraceEvent(System.currentTimeMillis(), TraceDirection.DOWN, "action", "${action.op} ${action.params}"))
-                if (readOnlyMode) {
-                    // 只读调试：不执行，仅回报忽略，供云侧结束本次调试帧。
-                    Log.i(TAG, "[READ-ONLY] 忽略执行 action ${action.op}，仅记录")
-                    repo.appendTrace(TraceEvent(System.currentTimeMillis(), TraceDirection.INFO, "action.skipped", "${action.op} (readOnly)"))
-                    wsClient.sendActionResult(action.actionId, ok = true, atEnd = true)
-                } else {
-                    val result = executor.execute(action.op, action.params)
-                    Log.i(TAG, "↑ action.result ${action.op} ok=${result.ok} atEnd=${result.atEnd}")
-                    repo.appendTrace(TraceEvent(System.currentTimeMillis(), TraceDirection.UP, "action.result", "${action.op} ok=${result.ok} atEnd=${result.atEnd}"))
-                    wsClient.sendActionResult(action.actionId, result.ok, result.atEnd)
-                    repo.appendActionLog(ActionLog(System.currentTimeMillis(), action.op, result.ok))
-                    if (action.op == "read_screen") reportScreen()
-                }
+                val result = executor.execute(action.op, action.params)
+                Log.i(TAG, "↑ action.result ${action.op} ok=${result.ok} atEnd=${result.atEnd}")
+                repo.appendTrace(TraceEvent(System.currentTimeMillis(), TraceDirection.UP, "action.result", "${action.op} ok=${result.ok} atEnd=${result.atEnd}"))
+                wsClient.sendActionResult(action.actionId, result.ok, result.atEnd)
+                repo.appendActionLog(ActionLog(System.currentTimeMillis(), action.op, result.ok))
+                if (action.op == "read_screen") reportScreen()
             },
             onTaskEnd = { reason ->
                 taskActive = false
-                readOnlyMode = false
                 Log.i(TAG, "↓ task.end reason=$reason → taskActive=false")
                 repo.appendTrace(TraceEvent(System.currentTimeMillis(), TraceDirection.DOWN, "task.end", reason))
                 repo.updateTask(TaskState.Idle)

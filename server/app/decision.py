@@ -35,7 +35,7 @@ _SYSTEM_PROMPT = """你是一个 Android 手机操作代理的决策核心。给
 3. 找到图标 -> tap 打开；没找到 -> next_page 翻到下一屏，再 read 继续找
 4. 若某次 next_page 后历史记录里 atEnd 为 true 且仍没找到图标 -> abort，原因填「未找到应用<名称>」
 
-【重要·负一屏识别】桌面最左侧的「负一屏」(又称小布建议/智能助手页)不是真正的应用桌面，上面的「XX 有 N 条通知」「XX 推荐」等磁贴不是应用图标，误点会进入错误的 app。识别特征：屏幕里出现「小布建议」「小布」等文字，或大量「...有...条通知」「为你推荐」类磁贴。一旦判断当前在负一屏，必须先 swipe right 向右滑动退出，回到真正的桌面第一屏后再找应用图标；绝不能在负一屏上 tap 任何磁贴。
+【重要·负一屏识别】桌面最左侧的「负一屏」(又称小布建议/智能助手页)不是真正的应用桌面，上面的「XX 有 N 条通知」「XX 推荐」等磁贴不是应用图标，误点会进入错误的 app。识别特征：屏幕里出现「小布建议」「小布」等文字，或大量「...有...条通知」「为你推荐」类磁贴，一旦判断当前在负一屏，必须先 swipe right 向右滑动退出，回到真正的桌面第一屏后再找应用图标；绝不能在负一屏上 tap 任何磁贴。
 
 【重要·tap 定位】tap n 用行号定位，系统会自动把该行节点解析为精确坐标点击，比文字匹配更可靠(避免误命中同名文字)。
 
@@ -152,6 +152,11 @@ class DecisionEngine:
             return None  # 无法重定位 -> 回退
         return step
 
+    def _select_skill(self, goal: str, pkg: str) -> str | None:
+        if self._skills is None:
+            return None
+        return self._skills.select(goal, pkg)
+
     def decide(
         self,
         goal: str,
@@ -166,10 +171,13 @@ class DecisionEngine:
                 Action(actionId=str(uuid.uuid4()), op=step["op"], params=step.get("params", {}))
             ]
 
+        if skill_name is None:
+            skill_name = self._select_skill(goal, perception.pkg)
+
         if skill_name:
             step = self._skills.next_step(skill_name, perception.nodeTree, cursor)
             if step is not None:
-                params = {k: v for k, v in step.items() if k != "op"}
+                params = {k: str(v) for k, v in step.items() if k != "op"}
                 return [Action(actionId=str(uuid.uuid4()), op=step["op"], params=params)]
 
         nodes = self._cap_nodes(perception.nodeTree)
@@ -184,16 +192,9 @@ class DecisionEngine:
         )
         _diag = logging.getLogger("phoneagent.gateway")
         _diag.info(
-            "[FRAME] pkg=%s total_nodes=%d capped=%d cursor=%d goal=%s",
-            perception.pkg, len(perception.nodeTree), len(nodes), cursor, goal,
+            "[FRAME] pkg=%s total_nodes=%d capped=%d cursor=%d goal=%s skill=%s",
+            perception.pkg, len(perception.nodeTree), len(nodes), cursor, goal, skill_name,
         )
-        for _i, _n in enumerate(nodes):
-            _diag.info(
-                "[NODE] idx=%d endId=%s type=%s text=%r desc=%r clickable=%s bounds=%s",
-                _i, _n.id, _node_type(_n), _n.text, _n.desc, _n.clickable, _n.bounds,
-            )
-        _diag.info("[LLM-SCREEN-SENT]\n%s", payload["screen"])
-        _diag.info("[LLM-RAW-RETURN] %r", raw)
 
         specs = parse_actions(raw)
         if not specs:
@@ -202,29 +203,17 @@ class DecisionEngine:
         actions: list[Action] = []
         for spec in specs:
             op = spec["op"]
-            params = {k: v for k, v in spec.items() if k != "op"}
+            params = {k: str(v) for k, v in spec.items() if k != "op"}
             if op in ("tap", "input"):
                 target = _resolve_tap_node(params, nodes)
                 if target is not None:
                     idx = next((i for i, n in enumerate(nodes) if n is target), -1)
                     center = _bounds_center(target.bounds)
-                    _diag.info(
-                        "[TAP-RESOLVE] spec=%s -> picked idx=%d endId=%s "
-                        "text=%r desc=%r bounds=%s center=%s",
-                        spec, idx, target.id,
-                        target.text, target.desc, target.bounds, center,
-                    )
                     if center is not None:
                         params["x"] = str(center[0])
                         params["y"] = str(center[1])
-                else:
-                    _diag.info(
-                        "[TAP-RESOLVE] spec=%s -> picked=NONE (端侧回退)", spec
-                    )
-                _diag.info("[ACTION] op=%s final_params=%s", op, params)
                 actions.append(Action(actionId=str(uuid.uuid4()), op=op, params=params))
                 break  # 批处理截断：遇首个 tap/input 收尾，本批结束重抓帧
-            _diag.info("[ACTION] op=%s final_params=%s", op, params)
             actions.append(Action(actionId=str(uuid.uuid4()), op=op, params=params))
         return actions
 
