@@ -8,7 +8,7 @@ from app.skill_cache import SkillCache
 from app.skills import SkillLibrary
 
 
-_SYSTEM_PROMPT = """你是一个 Android 手机操作代理的决策核心。给定当前屏幕的可交互元素列表(screen)、任务目标和历史操作，你要决定接下来执行的一批 UI 动作。
+_SYSTEM_PROMPT = """你是一个 Android 手机操作代理的决策核心。给定当前屏幕的可交互元素列表(screen)、当前应用(pkg)、任务目标解析出的目标应用(target_pkg)、任务目标和历史操作，你要决定接下来执行的一批 UI 动作。
 
 你必须只输出「文本指令」，每行一条，可以多行；不要输出 JSON、解释、思考过程、Markdown 代码块或任何额外文字。
 
@@ -29,6 +29,13 @@ _SYSTEM_PROMPT = """你是一个 Android 手机操作代理的决策核心。给
 
 输入里的 screen 是当前屏可交互元素列表，每行格式为 `[序号] 类型 "文本"`，类型为 input(输入框)/button(可点击)/text(纯文本)。tap/input 用行号 n 定位元素。
 
+【重要·app 边界硬约束】
+- 输入里会有两个关键字段：pkg(当前正在前台的应用 package)和 target_pkg(任务目标对应的应用 package，可能为空字符串表示任务与具体 app 无关)。
+- 如果 target_pkg 非空 且 pkg != target_pkg：说明当前跑错了应用，你必须先输出 `back`(退出当前 app 的次级页)，然后 `home_first`，再 `read`，再 `tap` 目标 app 图标——禁止直接 tap 当前屏幕里的通知/磁贴/横幅跳到其他 app，那会把任务带偏。
+- 如果 target_pkg 非空 且 pkg == target_pkg：正常推进任务。
+- 如果 target_pkg 为空：无 app 约束，可以自由 tap。
+- 出现「XX 有 N 条新消息」「XX 推荐」「XX 回复了你」类通知横幅/磁贴时，即使 clickable 也一律忽略，除非这条通知就是任务目标本身(如「去通知中心打开微信」)。
+
 打开应用的流程：
 1. 先 home_first 回到桌面第一屏
 2. read 读取当前屏，在节点里找目标应用图标(按名称匹配)
@@ -48,6 +55,12 @@ tap 5
 
 示例(输入)：
 input 3 张三
+
+示例(跑错应用,回桌面重开目标 app)：
+back
+home_first
+read
+tap 12
 
 信息不足时：
 read"""
@@ -164,6 +177,7 @@ class DecisionEngine:
         skill_name: str | None,
         cursor: int,
         history: list[dict],
+        target_pkg: str = "",
     ) -> list[Action]:
         step = self._cache_step(goal, perception, cursor)
         if step is not None:
@@ -180,9 +194,21 @@ class DecisionEngine:
                 params = {k: str(v) for k, v in step.items() if k != "op"}
                 return [Action(actionId=str(uuid.uuid4()), op=step["op"], params=params)]
 
+        # pkg guard：若目标 app 已解析且与当前 pkg 不一致,直接强制回桌面重开,
+        # 跳过 LLM(避免 LLM 看到通知/磁贴就 tap,跑飞)。
+        if target_pkg and perception.pkg and perception.pkg != target_pkg:
+            _diag = logging.getLogger("phoneagent.gateway")
+            _diag.info(
+                "[PKG_GUARD] current_pkg=%s target_pkg=%s -> forced home_first_page",
+                perception.pkg, target_pkg,
+            )
+            return [Action(actionId=str(uuid.uuid4()), op="home_first_page", params={})]
+
         nodes = self._cap_nodes(perception.nodeTree)
         payload = {
             "goal": goal,
+            "pkg": perception.pkg,
+            "target_pkg": target_pkg,
             "screen": _encode_nodes(nodes),
             "history": history,
         }
@@ -192,8 +218,8 @@ class DecisionEngine:
         )
         _diag = logging.getLogger("phoneagent.gateway")
         _diag.info(
-            "[FRAME] pkg=%s total_nodes=%d capped=%d cursor=%d goal=%s skill=%s",
-            perception.pkg, len(perception.nodeTree), len(nodes), cursor, goal, skill_name,
+            "[FRAME] pkg=%s target_pkg=%s total_nodes=%d capped=%d cursor=%d goal=%s skill=%s",
+            perception.pkg, target_pkg, len(perception.nodeTree), len(nodes), cursor, goal, skill_name,
         )
 
         specs = parse_actions(raw)
@@ -207,7 +233,6 @@ class DecisionEngine:
             if op in ("tap", "input"):
                 target = _resolve_tap_node(params, nodes)
                 if target is not None:
-                    idx = next((i for i, n in enumerate(nodes) if n is target), -1)
                     center = _bounds_center(target.bounds)
                     if center is not None:
                         params["x"] = str(center[0])

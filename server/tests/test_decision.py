@@ -60,7 +60,7 @@ def test_fallback_to_llm_when_skill_miss(monkeypatch):
     assert "每行一条" in system
 
     payload = json.loads(captured["user"])
-    assert set(payload.keys()) == {"goal", "screen", "history"}
+    assert set(payload.keys()) == {"goal", "pkg", "target_pkg", "screen", "history"}
     assert payload["goal"] == "发消息"
     assert payload["history"] == []
     assert payload["screen"] == '[0] text "首页"'
@@ -386,3 +386,78 @@ def test_parse_actions_multi_line_preserves_order():
         {"op": "swipe", "direction": "left"},
         {"op": "done"},
     ]
+
+
+# ---- pkg guard: 跑错应用时强制回桌面重开,避免 LLM 顺手 tap 通知/磁贴 ----
+def test_pkg_guard_forces_home_first_when_current_pkg_mismatches(monkeypatch):
+    # 当前在前台的是微信,目标 app 是飞书 -> 必须直接 home_first_page,
+    # 完全跳过 LLM(即便节点里有通知/磁贴等 clickable 元素)。
+    def _should_not_be_called(system: str, user: str, image_b64=None) -> str:
+        raise AssertionError("LLM must not be called when pkg_guard fires")
+
+    llm = FakeLLM(["tap 0"])
+    monkeypatch.setattr(llm, "complete", _should_not_be_called)
+    engine = DecisionEngine(llm=llm, skills=SkillLibrary())
+    nodes = [
+        Node(id="n1", text="微信收到 3 条新消息", clickable=True),
+        Node(id="n2", text="张三 回复了你", clickable=True),
+    ]
+    p = Perception(nodeTree=nodes, pkg="com.tencent.mm", activity="Main", ts=1)
+
+    actions = engine.decide(
+        goal="打开飞书给张三发消息",
+        perception=p,
+        skill_name=None,
+        cursor=0,
+        history=[],
+        target_pkg="com.ss.android.lark",
+    )
+
+    assert len(actions) == 1
+    assert actions[0].op == "home_first_page"
+    assert actions[0].params == {}
+
+
+def test_pkg_guard_skips_when_pkg_matches(monkeypatch):
+    # 当前 pkg 与 target_pkg 一致 -> 不触发 guard,正常走到 LLM。
+    llm = FakeLLM(["tap 0"])
+    engine = DecisionEngine(llm=llm, skills=SkillLibrary())
+    p = Perception(nodeTree=[Node(id="n1", text="首页")], pkg="com.ss.android.lark", activity="Main", ts=1)
+
+    actions = engine.decide(
+        goal="打开飞书给张三发消息",
+        perception=p,
+        skill_name=None,
+        cursor=0,
+        history=[],
+        target_pkg="com.ss.android.lark",
+    )
+
+    assert actions[0].op == "tap"
+
+
+def test_pkg_guard_skips_when_target_pkg_unknown(monkeypatch):
+    # 目标 app 无法从 goal 解析(target_pkg="") -> 不触发 guard。
+    llm = FakeLLM(["tap 0"])
+    engine = DecisionEngine(llm=llm, skills=SkillLibrary())
+    p = Perception(nodeTree=[Node(id="n1", text="首页")], pkg="com.tencent.mm", activity="Main", ts=1)
+
+    actions = engine.decide(
+        goal="随便看看",
+        perception=p,
+        skill_name=None,
+        cursor=0,
+        history=[],
+        target_pkg="",
+    )
+
+    assert actions[0].op == "tap"
+
+
+def test_resolve_target_pkg_basic():
+    from app.app_goal_resolver import resolve_target_pkg
+
+    assert resolve_target_pkg("打开飞书给张三发消息") == "com.ss.android.lark"
+    assert resolve_target_pkg("微信里发消息给李四") == "com.tencent.mm"
+    assert resolve_target_pkg("看看通知") is None
+    assert resolve_target_pkg("") is None

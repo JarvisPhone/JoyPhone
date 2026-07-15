@@ -8,6 +8,7 @@ from fastapi import FastAPI, WebSocket
 from starlette.websockets import WebSocketDisconnect
 
 from app.comm_log import log_up, log_down
+from app.app_goal_resolver import resolve_target_pkg
 from app.decision import DecisionEngine
 from app.llm import FakeLLM, build_llm
 from app.metrics import get_metrics_collector
@@ -191,12 +192,14 @@ def create_app() -> FastAPI:
 
             skill_name = engine._select_skill(session.goal, uplink.pkg) if skill_name is None else None
 
+            target_pkg = resolve_target_pkg(session.goal) or ""
             actions = engine.decide(
                 goal=session.goal,
                 perception=uplink,
                 skill_name=skill_name,
                 cursor=cursor,
                 history=history,
+                target_pkg=target_pkg,
             )
 
             if skill_name:
