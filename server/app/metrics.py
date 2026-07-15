@@ -84,8 +84,9 @@ class MetricsCollector:
         del self._tasks[task_id]
 
     def _log(self, message: str) -> None:
-        log_file = self._log_dir / "metrics.log"
-        log_file.append_text(message + "\n")
+        log_file = Path(self._log_dir) / "metrics.log"
+        with log_file.open("a", encoding="utf-8") as f:
+            f.write(message + "\n")
 
     def _write_metrics_file(self, metrics: TaskMetrics) -> None:
         metrics_file = self._log_dir / f"{metrics.task_id}.json"
