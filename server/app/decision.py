@@ -1,7 +1,5 @@
 import json
 import logging
-import os
-import time
 import uuid
 
 from app.llm import LLM
@@ -134,17 +132,6 @@ def parse_actions(text: str) -> list[dict]:
     return specs
 
 
-def encode_nodes_debug(nodes: list[Node]) -> str:
-    """诊断用：完整打印每帧屏节点明细(行号/类型/text/desc/clickable/bounds/端侧id)。"""
-    lines = []
-    for i, n in enumerate(nodes):
-        lines.append(
-            f'[{i}] {_node_type(n)} text={n.text!r} desc={n.desc!r} '
-            f'clickable={n.clickable} bounds={n.bounds} nid={n.id!r}'
-        )
-    return "\n".join(lines) if lines else "(empty)"
-
-
 class DecisionEngine:
     MAX_LLM_NODES = 80
 
@@ -207,50 +194,7 @@ class DecisionEngine:
             )
         _diag.info("[LLM-SCREEN-SENT]\n%s", payload["screen"])
         _diag.info("[LLM-RAW-RETURN] %r", raw)
-        # 【调试插桩】把这一帧的全部原始数据 dump 到独立文件，供人工完整审阅。
-        try:
-            _dump = {
-                "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
-                "goal": goal,
-                "pkg": perception.pkg,
-                "activity": perception.activity,
-                "cursor": cursor,
-                "total_nodes": len(perception.nodeTree),
-                "capped_nodes": len(nodes),
-                "history": history,
-                # ① 端侧识别到的完整节点（含端侧稳定 id / bounds 绝对坐标 / 全部字段）
-                "nodes_raw": [
-                    {
-                        "idx": i,
-                        "endId": n.id,
-                        "type": _node_type(n),
-                        "text": n.text,
-                        "desc": n.desc,
-                        "className": getattr(n, "className", None),
-                        "clickable": n.clickable,
-                        "editable": n.editable,
-                        "bounds": n.bounds,
-                    }
-                    for i, n in enumerate(nodes)
-                ],
-                # ② 发送给 LLM 的完整内容（system + user payload 原文）
-                "llm_request": {
-                    "system": _SYSTEM_PROMPT,
-                    "user": json.dumps(payload, ensure_ascii=False),
-                    "screen_encoded": payload["screen"],
-                },
-                # ③ LLM 的原始回复
-                "llm_raw_return": raw,
-            }
-            _dump_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs")
-            os.makedirs(_dump_dir, exist_ok=True)
-            _dump_path = os.path.join(_dump_dir, "frame_dump.json")
-            with open(_dump_path, "a", encoding="utf-8") as _fp:
-                _fp.write(json.dumps(_dump, ensure_ascii=False, indent=2))
-                _fp.write("\n\n===== FRAME END =====\n\n")
-            _diag.info("[FRAME-DUMP] 已写入 %s", _dump_path)
-        except Exception as _e:  # 调试插桩不应影响主流程
-            _diag.warning("[FRAME-DUMP] 写入失败: %s", _e)
+
         specs = parse_actions(raw)
         if not specs:
             return [Action(actionId=str(uuid.uuid4()), op="read_screen", params={})]

@@ -107,9 +107,12 @@ class Executor(
         return service.dispatchGesture(gesture, null, null)
     }
 
+    /** 当前屏幕扁平节点快照。 */
+    private fun snapshotNodes() = NodeFlattener.flatten(service.rootInActiveWindow)
+
     /** 当前屏幕指纹快照，用于翻页前后同屏判定。 */
     private fun snapshotFingerprint(): String =
-        ScreenFingerprint.of(NodeFlattener.flatten(service.rootInActiveWindow))
+        ScreenFingerprint.of(snapshotNodes())
 
     /**
      * 水平滑动手势。
@@ -137,20 +140,33 @@ class Executor(
     }
 
     /**
-     * 回到桌面并归位到最左第一屏。先 HOME，再反复往回滑(看左屏)，
-     * 直到翻页前后同屏(已到最左)或达到 MAX_PAGES 上限。
+     * 回到桌面并归位到桌面第一屏。
+     *
+     * ColorOS 负一屏 ROM 坑：一路往回滑(看左屏)的最左端不是桌面第一屏，而是负一屏(小布助手)。
+     * 负一屏是 launcher 内嵌独立渲染层，不进无障碍节点树，无法直接识别；旧实现用「翻页前后
+     * 指纹相同」判定归位，会在最左端(负一屏)指纹稳定而误判成功、停在负一屏。
+     *
+     * 新归位判据：HomeDetector.isFirstPage —— launcher workspace 节点 bounds 满屏对齐(左边界==0)。
+     * 流程：HOME → 反复往回滑(看左屏)直到 isFirstPage 或指纹稳定；若指纹已稳定却仍非第一屏
+     * (已到最左=负一屏)，则往前翻一屏(看右屏)退出负一屏，此屏即桌面第一屏。
      */
     private fun homeFirstPage(): ExecResult {
         service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
         Thread.sleep(SETTLE_MS)
+        if (HomeDetector.isFirstPage(snapshotNodes())) return ExecResult(ok = true)
         repeat(MAX_PAGES) {
             val before = snapshotFingerprint()
             swipeHorizontal(toRight = true)
+            if (HomeDetector.isFirstPage(snapshotNodes())) return ExecResult(ok = true)
             val after = snapshotFingerprint()
-            if (after == before) return ExecResult(ok = true)
+            if (after == before) {
+                // 已到最左端仍非桌面第一屏 => 停在负一屏，往前翻一屏退出
+                swipeHorizontal(toRight = false)
+                return ExecResult(ok = HomeDetector.isFirstPage(snapshotNodes()))
+            }
         }
-        Log.w("PhoneAgent", "homeFirstPage 用尽 MAX_PAGES 仍未检测到归位")
-        return ExecResult(ok = true)
+        Log.w("PhoneAgent", "homeFirstPage 用尽 MAX_PAGES 仍未检测到桌面第一屏")
+        return ExecResult(ok = false)
     }
     /** 桌面向后翻一屏(看右屏)。翻页前后同屏说明已到最后一屏 -> atEnd=true。 */
     private fun nextPage(): ExecResult {
