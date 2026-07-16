@@ -43,6 +43,9 @@ class PhoneAgentService : AccessibilityService() {
     private var pendingReport: Runnable? = null
     @Volatile private var taskActive: Boolean = false
 
+    /** 最近一次窗口状态变更事件带来的 Activity 类名(带包名前缀补全)。用于采样元数据,与 taskActive 无关。 */
+    @Volatile private var lastActivity: String = ""
+
     /** Toast 确认窗口:5 秒倒计时,到点自动 approved=true。
      *  期间若云端检测到飞书被切走,会主动发 task.abort,我们无需做额外处理。
      */
@@ -131,6 +134,13 @@ class PhoneAgentService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            val cls = event.className?.toString()
+            val pkg = event.packageName?.toString()
+            if (!cls.isNullOrEmpty()) {
+                lastActivity = if (pkg != null && cls.startsWith(".")) "$pkg$cls" else cls
+            }
+        }
         if (!taskActive) return
         pendingReport?.let { handler.removeCallbacks(it) }
         val r = Runnable { reportScreen() }
@@ -163,17 +173,18 @@ class PhoneAgentService : AccessibilityService() {
         }
         val nodes = NodeFlattener.flatten(root)
         val pkg = root.packageName?.toString() ?: ""
+        val activity = lastActivity.ifEmpty { pkg }
         val sample = UplinkSampleCapture(
             label = label,
             nodeTree = nodes,
             pkg = pkg,
-            activity = pkg,
+            activity = activity,
             ts = System.currentTimeMillis(),
             device = "${Build.MANUFACTURER} ${Build.MODEL}",
         )
         wsClient.sendSampleCapture(sample)
         Toast.makeText(applicationContext, "已采样「$label」: ${nodes.size} 个节点", Toast.LENGTH_SHORT).show()
-        Log.i(TAG, "↑ sample.capture label=$label pkg=$pkg nodes=${nodes.size}")
+        Log.i(TAG, "↑ sample.capture label=$label pkg=$pkg activity=$activity nodes=${nodes.size}")
         repo.appendTrace(
             TraceEvent(System.currentTimeMillis(), TraceDirection.UP, "sample.capture", "label=$label nodes=${nodes.size}")
         )
