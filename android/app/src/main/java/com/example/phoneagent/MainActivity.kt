@@ -28,6 +28,7 @@ class MainActivity : ComponentActivity() {
                     onTitleTap = viewModel::onTitleTap,
                     onOpenAccessibility = { openAccessibilitySettings() },
                     onRunTestTask = viewModel::onRunTestTask,
+                    onCaptureSample = viewModel::onCaptureSample,
                     onHideDebug = viewModel::onHideDebug,
                 )
             }

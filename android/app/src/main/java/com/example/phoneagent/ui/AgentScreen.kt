@@ -16,9 +16,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -37,6 +42,7 @@ fun AgentScreen(
     onTitleTap: () -> Unit,
     onOpenAccessibility: () -> Unit,
     onRunTestTask: () -> Unit,
+    onCaptureSample: (String) -> Unit,
     onHideDebug: () -> Unit,
 ) {
     Scaffold { inner ->
@@ -59,6 +65,12 @@ fun AgentScreen(
             TestTaskCard(
                 enabled = uiState.status.connection == ConnectionState.CONNECTED,
                 onRunTestTask = onRunTestTask,
+            )
+            SampleCard(
+                enabled = uiState.status.connection == ConnectionState.CONNECTED,
+                countdown = uiState.sampleCountdown,
+                hint = uiState.sampleHint,
+                onCapture = onCaptureSample,
             )
             TaskCard(uiState.status.task)
 
@@ -121,6 +133,39 @@ private fun TestTaskCard(enabled: Boolean, onRunTestTask: () -> Unit) {
 }
 
 @Composable
+private fun SampleCard(
+    enabled: Boolean,
+    countdown: Int,
+    hint: String,
+    onCapture: (String) -> Unit,
+) {
+    var label by rememberSaveable { mutableStateOf("") }
+    val counting = countdown > 0
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("场景采样", style = MaterialTheme.typography.titleMedium)
+            OutlinedTextField(
+                value = label,
+                onValueChange = { label = it },
+                label = { Text("场景标签,如 home_first / minus_one") },
+                singleLine = true,
+                enabled = enabled && !counting,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Button(
+                onClick = { onCapture(label) },
+                enabled = enabled && !counting,
+            ) {
+                Text(if (counting) "倒计时 $countdown s…" else "开始采样(10s 后抓帧)")
+            }
+            if (hint.isNotBlank()) {
+                Text(hint, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+@Composable
 private fun TaskCard(task: TaskState) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -145,7 +190,7 @@ private fun PreviewConnected() {
                     task = TaskState.Running("打开飞书并回复消息"),
                 ),
             ),
-            onTitleTap = {}, onOpenAccessibility = {}, onRunTestTask = {}, onHideDebug = {},
+            onTitleTap = {}, onOpenAccessibility = {}, onRunTestTask = {}, onCaptureSample = {}, onHideDebug = {},
         )
     }
 }
@@ -164,7 +209,7 @@ private fun PreviewDisconnected() {
                 debug = DebugInfo(wsUrl = "ws://10.253.61.158:8000", deviceId = "abc123", reconnectAttempts = 2),
                 debugUnlocked = true,
             ),
-            onTitleTap = {}, onOpenAccessibility = {}, onRunTestTask = {}, onHideDebug = {},
+            onTitleTap = {}, onOpenAccessibility = {}, onRunTestTask = {}, onCaptureSample = {}, onHideDebug = {},
         )
     }
 }
