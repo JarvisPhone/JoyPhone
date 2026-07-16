@@ -114,7 +114,7 @@ def detect_scene(perception: Perception) -> Scene:
 # 即转移表提供「单步导航」,动作执行后重抓帧再判,直到 detect_scene==target。
 #
 # 目前只覆盖「收敛回 HOME」这一组(pkg guard 的核心诉求)。后续可按需扩展
-# 任意两场景间的最短路径。表里没有的 (from,to) 用 home_first_page 兜底。
+# 任意两场景间的最短路径。表里没有的 (from,to) 用 home 兜底。
 _TRANSITIONS: dict[tuple["Scene", "Scene"], tuple[str, dict]] = {
     # 负一屏在桌面最左侧,向右滑退出回到桌面
     (Scene.MINUS_ONE, Scene.HOME): ("swipe", {"direction": "right"}),
@@ -123,20 +123,20 @@ _TRANSITIONS: dict[tuple["Scene", "Scene"], tuple[str, dict]] = {
     # 下拉通知栏 / 控制中心 back 收起
     (Scene.NOTIFICATION, Scene.HOME): ("back", {}),
     (Scene.CONTROL_CENTER, Scene.HOME): ("back", {}),
-    # 在 App 内回桌面并归位到第一屏
-    (Scene.IN_APP, Scene.HOME): ("home_first_page", {}),
+    # 在 App 内回桌面
+    (Scene.IN_APP, Scene.HOME): ("home", {}),
 }
 
 
 def next_action(current: "Scene", target: "Scene") -> Optional[Action]:
     """朝 target 收敛的下一个动作;已在 target 返回 None。
 
-    表里没有精确 (current, target) 项时,用 home_first_page 兜底——它能把
+    表里没有精确 (current, target) 项时,用 home 兜底——它能把
     绝大多数异常场景(未知/锁屏等)拉回桌面确定起点,外层再重判 scene 继续收敛。
     """
     if current == target:
         return None
-    op, params = _TRANSITIONS.get((current, target), ("home_first_page", {}))
+    op, params = _TRANSITIONS.get((current, target), ("home", {}))
     return Action(actionId=str(uuid.uuid4()), op=op, params=dict(params))
 
 

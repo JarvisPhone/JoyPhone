@@ -63,6 +63,9 @@ data class UplinkSampleCapture(
 data class DownAction(
     val type: String = "action",
     val actionId: String,
+    // op 为云端收窄后的原子动作集合:
+    // tap/input/swipe/back/home/wait/read_screen/done/abort/request_confirm
+    // (复合导航 op home_first_page/next_page 已废弃,由云端 scene 状态机拆成 home/swipe)
     val op: String,
     val params: Map<String, String> = emptyMap(),
 )

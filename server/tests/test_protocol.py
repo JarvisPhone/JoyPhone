@@ -53,12 +53,21 @@ def test_action_rejects_unknown_op():
 
 
 def test_action_op_excludes_open_app():
-    # 打开应用改为真人式翻屏找图标：Action.op 须支持桌面归位/翻页算子，且不再有直启的 open_app。
+    # 打开应用改为真人式翻屏找图标：不再有直启的 open_app；
+    # 复合导航 op(home_first_page/next_page)已收窄为原子动作(home/swipe)。
     op_field = Action.model_fields["op"]
     valid_ops = set(typing.get_args(op_field.annotation))
-    assert "home_first_page" in valid_ops
-    assert "next_page" in valid_ops
     assert "open_app" not in valid_ops
+    assert "home_first_page" not in valid_ops
+    assert "next_page" not in valid_ops
+    assert "home" in valid_ops
+    assert "swipe" in valid_ops
+
+
+def test_action_op_rejects_deprecated_ops():
+    for dead in ("home_first_page", "next_page"):
+        with pytest.raises(Exception):
+            Action(actionId="x", op=dead)
 
 
 def test_action_coerces_non_string_params_to_string():

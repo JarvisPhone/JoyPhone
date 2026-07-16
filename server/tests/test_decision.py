@@ -129,7 +129,7 @@ def test_llm_empty_string_falls_back_to_read_screen():
 def test_decide_returns_action_list(monkeypatch):
     # 文本协议批处理：N 条盲操作 + 最多 1 条 tap/input 收尾。
     # 遇首个 tap/input 下发后本批结束（截断），tap 那条注入 x/y 坐标。
-    llm = FakeLLM(["home_first\nnext_page\ntap 2"])
+    llm = FakeLLM(["swipe left\nread\ntap 2"])
     engine = DecisionEngine(llm=llm, skills=SkillLibrary())
     nodes = [
         Node(id="a", text="微信", clickable=True, bounds=(0, 0, 100, 100)),
@@ -139,7 +139,7 @@ def test_decide_returns_action_list(monkeypatch):
     actions = engine.decide(goal="打开飞书", perception=_perc(nodes), skill_name=None, cursor=0, history=[])
 
     assert isinstance(actions, list)
-    assert [a.op for a in actions] == ["home_first_page", "next_page", "tap"]
+    assert [a.op for a in actions] == ["swipe", "read_screen", "tap"]
     # tap 是收尾且注入了坐标：nodes[2] bounds=(200,300,400,500) -> 中心 (300,400)
     assert actions[-1].params["x"] == "300"
     assert actions[-1].params["y"] == "400"
@@ -160,7 +160,7 @@ def test_decide_non_instruction_falls_back_to_read_screen_single(monkeypatch):
 
 def test_decide_stops_batch_at_first_tap(monkeypatch):
     # 批处理截断：tap 之后的指令不下发（本批结束重抓帧）。
-    llm = FakeLLM(["home_first\ntap 0\nnext_page\ntap 1"])
+    llm = FakeLLM(["swipe left\ntap 0\nnext_page\ntap 1"])
     engine = DecisionEngine(llm=llm, skills=SkillLibrary())
     nodes = [
         Node(id="a", text="飞书", clickable=True, bounds=(0, 0, 100, 100)),
@@ -168,7 +168,7 @@ def test_decide_stops_batch_at_first_tap(monkeypatch):
     ]
     actions = engine.decide(goal="打开飞书", perception=_perc(nodes), skill_name=None, cursor=0, history=[])
 
-    assert [a.op for a in actions] == ["home_first_page", "tap"]
+    assert [a.op for a in actions] == ["swipe", "tap"]
     assert actions[-1].params["x"] == "50"
     assert actions[-1].params["y"] == "50"
 
@@ -357,8 +357,13 @@ def test_parse_actions_noarg_ops():
 
 
 def test_parse_actions_alias_mapping():
-    assert parse_actions("home_first") == [{"op": "home_first_page"}]
     assert parse_actions("read") == [{"op": "read_screen"}]
+
+
+def test_parse_actions_home_first_and_next_page_no_longer_mapped():
+    # 复合 op 已废弃：home_first / next_page 不再解析为动作（跳过）。
+    assert parse_actions("home_first") == []
+    assert parse_actions("next_page") == []
 
 
 def test_parse_actions_wait():
@@ -377,9 +382,9 @@ def test_parse_actions_skips_blank_and_unknown_lines():
 
 
 def test_parse_actions_multi_line_preserves_order():
-    text = "home_first\nread\ntap 2\ninput 4 hi there\nswipe left\ndone"
+    text = "swipe left\nread\ntap 2\ninput 4 hi there\nswipe left\ndone"
     assert parse_actions(text) == [
-        {"op": "home_first_page"},
+        {"op": "swipe", "direction": "left"},
         {"op": "read_screen"},
         {"op": "tap", "id": "2"},
         {"op": "input", "id": "4", "text": "hi there"},
@@ -390,7 +395,7 @@ def test_parse_actions_multi_line_preserves_order():
 
 # ---- pkg guard: 跑错应用时强制回桌面重开,避免 LLM 顺手 tap 通知/磁贴 ----
 def test_pkg_guard_forces_home_first_when_current_pkg_mismatches(monkeypatch):
-    # 当前在前台的是微信,目标 app 是飞书 -> 必须直接 home_first_page,
+    # 当前在前台的是微信,目标 app 是飞书 -> 必须直接 home,
     # 完全跳过 LLM(即便节点里有通知/磁贴等 clickable 元素)。
     def _should_not_be_called(system: str, user: str, image_b64=None) -> str:
         raise AssertionError("LLM must not be called when pkg_guard fires")
@@ -414,7 +419,7 @@ def test_pkg_guard_forces_home_first_when_current_pkg_mismatches(monkeypatch):
     )
 
     assert len(actions) == 1
-    assert actions[0].op == "home_first_page"
+    assert actions[0].op == "home"
     assert actions[0].params == {}
 
 
@@ -500,7 +505,7 @@ def test_pkg_guard_recent_apps_presses_home(monkeypatch):
 
 
 def test_pkg_guard_in_app_still_home_first_page(monkeypatch):
-    # 跑偏且在别的 App 内(IN_APP) -> 仍 home_first_page(兼容原行为)。
+    # 跑偏且在别的 App 内(IN_APP) -> home 回桌面(兼容原行为)。
     llm = FakeLLM(["tap 0"])
     monkeypatch.setattr(
         llm, "complete",
@@ -515,7 +520,7 @@ def test_pkg_guard_in_app_still_home_first_page(monkeypatch):
         cursor=0, history=[], target_pkg="com.ss.android.lark",
     )
 
-    assert actions[0].op == "home_first_page"
+    assert actions[0].op == "home"
 
 
 def test_resolve_target_pkg_basic():
@@ -528,7 +533,7 @@ def test_resolve_target_pkg_basic():
 
 
 def test_pkg_guard_stall_escalates_to_llm(monkeypatch):
-    # 连续 STALL_THRESHOLD 帧同 scene 同 op（UNKNOWN 反复 home_first_page 无效）
+    # 连续 STALL_THRESHOLD 帧同 scene 同 op（UNKNOWN 反复 home 无效）
     # -> 触发 LLM 脱困，escalation_level 置 1。
     from app.session import Session
     from app.scene import STALL_THRESHOLD

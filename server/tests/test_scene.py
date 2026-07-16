@@ -103,21 +103,21 @@ def test_control_center_to_home_goes_back():
 
 
 def test_in_app_to_home_uses_home_first_page():
-    """在 App 内回桌面并归位到第一屏。"""
+    """在 App 内回桌面。"""
     act = next_action(Scene.IN_APP, Scene.HOME)
-    assert act.op == "home_first_page"
+    assert act.op == "home"
 
 
 def test_unknown_to_home_falls_back_to_home_first_page():
-    """未知场景兜底: home_first_page 尝试收敛回确定起点。"""
+    """未知场景兜底: home 尝试收敛回确定起点。"""
     act = next_action(Scene.UNKNOWN, Scene.HOME)
-    assert act.op == "home_first_page"
+    assert act.op == "home"
 
 
 def test_lock_screen_to_home_falls_back():
-    """锁屏暂无解锁能力,兜底 home_first_page(实际需人工/后续扩展解锁)。"""
+    """锁屏暂无解锁能力,兜底 home(实际需人工/后续扩展解锁)。"""
     act = next_action(Scene.LOCK_SCREEN, Scene.HOME)
-    assert act.op == "home_first_page"
+    assert act.op == "home"
 
 
 def test_fallback_action_minus_one_tries_home():

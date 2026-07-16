@@ -125,8 +125,6 @@ class Action(_Downlink):
         "swipe",
         "back",
         "home",
-        "home_first_page",
-        "next_page",
         "wait",
         "read_screen",
         "done",
