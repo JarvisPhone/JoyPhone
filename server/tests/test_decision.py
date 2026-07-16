@@ -454,6 +454,70 @@ def test_pkg_guard_skips_when_target_pkg_unknown(monkeypatch):
     assert actions[0].op == "tap"
 
 
+def test_pkg_guard_minus_one_swipes_right_not_home(monkeypatch):
+    # 跑偏且当前在【负一屏】(launcher, workspace 内缩) -> 场景导航吐 swipe right,
+    # 而非无脑 home_first_page(否则可能停在负一屏死循环)。
+    llm = FakeLLM(["tap 0"])
+    monkeypatch.setattr(
+        llm, "complete",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("LLM must not be called")),
+    )
+    engine = DecisionEngine(llm=llm, skills=SkillLibrary())
+    nodes = [
+        Node(id="n1", viewIdResourceName="com.android.launcher:id/workspace",
+             bounds=(43, 95, 1037, 2279)),
+        Node(id="n2", text="小布建议", clickable=True),
+    ]
+    p = Perception(nodeTree=nodes, pkg="com.android.launcher", activity="Launcher", ts=1)
+
+    actions = engine.decide(
+        goal="打开飞书给张三发消息", perception=p, skill_name=None,
+        cursor=0, history=[], target_pkg="com.ss.android.lark",
+    )
+
+    assert len(actions) == 1
+    assert actions[0].op == "swipe"
+    assert actions[0].params.get("direction") == "right"
+
+
+def test_pkg_guard_recent_apps_presses_home(monkeypatch):
+    # 跑偏且当前在【最近任务】(overview_panel) -> 场景导航吐 home。
+    llm = FakeLLM(["tap 0"])
+    monkeypatch.setattr(
+        llm, "complete",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("LLM must not be called")),
+    )
+    engine = DecisionEngine(llm=llm, skills=SkillLibrary())
+    nodes = [Node(id="n1", viewIdResourceName="com.android.launcher:id/overview_panel")]
+    p = Perception(nodeTree=nodes, pkg="com.android.launcher", activity="Recents", ts=1)
+
+    actions = engine.decide(
+        goal="打开飞书给张三发消息", perception=p, skill_name=None,
+        cursor=0, history=[], target_pkg="com.ss.android.lark",
+    )
+
+    assert actions[0].op == "home"
+
+
+def test_pkg_guard_in_app_still_home_first_page(monkeypatch):
+    # 跑偏且在别的 App 内(IN_APP) -> 仍 home_first_page(兼容原行为)。
+    llm = FakeLLM(["tap 0"])
+    monkeypatch.setattr(
+        llm, "complete",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("LLM must not be called")),
+    )
+    engine = DecisionEngine(llm=llm, skills=SkillLibrary())
+    p = Perception(nodeTree=[Node(id="n1", text="微信收到消息", clickable=True)],
+                   pkg="com.tencent.mm", activity="Main", ts=1)
+
+    actions = engine.decide(
+        goal="打开飞书给张三发消息", perception=p, skill_name=None,
+        cursor=0, history=[], target_pkg="com.ss.android.lark",
+    )
+
+    assert actions[0].op == "home_first_page"
+
+
 def test_resolve_target_pkg_basic():
     from app.app_goal_resolver import resolve_target_pkg
 
