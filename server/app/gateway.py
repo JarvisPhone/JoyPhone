@@ -20,6 +20,7 @@ from app.metrics import get_metrics_collector
 from app.protocol import (
     Action,
     ConfirmResponse,
+    SampleCapture,
     TaskAbort,
     TaskConfirm,
     TaskDone,
@@ -46,6 +47,18 @@ if not logger.handlers:
 _FIXTURE = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "feishu_happy_path.json"
 
 _DEFAULT_GOAL = "等待用户下发任务目标"
+
+
+_SAMPLES_DIR = Path(__file__).resolve().parents[1] / "data" / "samples"
+
+
+def _persist_sample(sample: "SampleCapture", base_dir: Path | None = None) -> Path:
+    """把一帧采样落盘为 <label>-<ts>.json,返回落盘路径。"""
+    target_dir = base_dir if base_dir is not None else _SAMPLES_DIR
+    target_dir.mkdir(parents=True, exist_ok=True)
+    path = target_dir / f"{sample.label}-{sample.ts}.json"
+    path.write_text(sample.model_dump_json(indent=2), encoding="utf-8")
+    return path
 
 
 def _load_fixture_steps() -> list[dict]:
@@ -123,6 +136,16 @@ def create_app() -> FastAPI:
                 if uplink.ok:
                     cursor += 1
                     metrics.record_step(session.task_id)
+                continue
+
+            if uplink.type == "sample.capture":
+                try:
+                    saved = _persist_sample(uplink)
+                    logger.info("sample.capture label=%s nodes=%d saved=%s",
+                                uplink.label, len(uplink.nodeTree), saved.name)
+                except OSError as exc:
+                    logger.error("sample.capture persist failed label=%s err=%s",
+                                 uplink.label, exc)
                 continue
 
             if uplink.type == "heartbeat":
