@@ -4,6 +4,10 @@ import uuid
 
 from app.llm import LLM
 from app.protocol import Action, Node, Perception
+from app.scene import (
+    Scene, detect_scene, next_action, fallback_action,
+    STALL_THRESHOLD, CYCLE_THRESHOLD, WINDOW, LLM_ESCALATION_TRIES, FALLBACK_TRIES,
+)
 from app.skill_cache import SkillCache
 from app.skills import SkillLibrary
 
@@ -148,6 +152,31 @@ def parse_actions(text: str) -> list[dict]:
     return specs
 
 
+_ESCAPE_PROMPT = (
+    "你是屏幕导航脱困助手。当前自动化在场景间反复横跳或停滞，无法到达目标场景。"
+    "根据 current_scene / target_scene / scene_history，判断应先前往哪个中间场景来脱困。"
+    "只输出一行：target_scene: <SCENE>，其中 <SCENE> 为大写枚举名"
+    "（HOME/MINUS_ONE/NOTIFICATION/CONTROL_CENTER/IN_APP/LOCK_SCREEN/RECENT_APPS/UNKNOWN）。"
+)
+
+
+def _parse_target_scene(raw: str) -> Scene | None:
+    """从 LLM 文本里解析出 target_scene: <SCENE>。识别不了返回 None。"""
+    if not raw:
+        return None
+    for line in raw.splitlines():
+        line = line.strip()
+        _, sep, rest = line.partition("target_scene:")
+        if not sep:
+            continue
+        name = rest.strip().upper()
+        try:
+            return Scene[name]
+        except KeyError:
+            return None
+    return None
+
+
 class DecisionEngine:
     MAX_LLM_NODES = 80
 
@@ -181,6 +210,7 @@ class DecisionEngine:
         cursor: int,
         history: list[dict],
         target_pkg: str = "",
+        guard: dict | None = None,
     ) -> list[Action]:
         step = self._cache_step(goal, perception, cursor)
         if step is not None:
@@ -197,15 +227,11 @@ class DecisionEngine:
                 params = {k: str(v) for k, v in step.items() if k != "op"}
                 return [Action(actionId=str(uuid.uuid4()), op=step["op"], params=params)]
 
-        # pkg guard：若目标 app 已解析且与当前 pkg 不一致,直接强制回桌面重开,
-        # 跳过 LLM(避免 LLM 看到通知/磁贴就 tap,跑飞)。
-        if target_pkg and perception.pkg and perception.pkg != target_pkg:
-            _diag = logging.getLogger("phoneagent.gateway")
-            _diag.info(
-                "[PKG_GUARD] current_pkg=%s target_pkg=%s -> forced home_first_page",
-                perception.pkg, target_pkg,
-            )
-            return [Action(actionId=str(uuid.uuid4()), op="home_first_page", params={})]
+        # pkg guard：若目标 app 已解析且与当前 pkg 不一致,接入 scene 状态机逐帧
+        # 收敛回 HOME(跳过 LLM,避免看到通知/磁贴就 tap 跑飞),并配收敛守卫脱困。
+        guarded = self._pkg_guard_action(perception, target_pkg, guard)
+        if guarded is not None:
+            return guarded
 
         nodes = self._cap_nodes(perception.nodeTree)
         payload = {
@@ -244,6 +270,69 @@ class DecisionEngine:
                 break  # 批处理截断：遇首个 tap/input 收尾，本批结束重抓帧
             actions.append(Action(actionId=str(uuid.uuid4()), op=op, params=params))
         return actions
+
+    def _pkg_guard_action(
+        self, perception: Perception, target_pkg: str, guard: dict | None
+    ) -> list[Action] | None:
+        if not (target_pkg and perception.pkg and perception.pkg != target_pkg):
+            return None
+        current = detect_scene(perception)
+        action = next_action(current, Scene.HOME)
+        if action is None:  # 已在 HOME，放行给正常任务决策
+            return None
+        _diag = logging.getLogger("phoneagent.gateway")
+        _diag.info(
+            "[PKG_GUARD] scene=%s target_pkg=%s -> op=%s",
+            current.value, target_pkg, action.op,
+        )
+        op = action.op
+        # ==== 收敛守卫 ====
+        # 停滞：相邻两帧 (scene, op) 相同则累加
+        gd = guard if guard is not None else {}
+        key = f"{current.value}|{op}"
+        if gd.get("last_op") == key:
+            gd["stall_count"] = gd.get("stall_count", 0) + 1
+        else:
+            gd["stall_count"] = 0
+        gd["last_op"] = key
+        # scene_history 滑窗
+        hist = gd.setdefault("scene_history", [])
+        hist.append(current.value)
+        if len(hist) > WINDOW:
+            del hist[0]
+        stalled = gd["stall_count"] >= STALL_THRESHOLD
+        oscillating = (
+            current != Scene.HOME
+            and hist.count(current.value) >= CYCLE_THRESHOLD + 1
+        )
+        # ==== 三级脱困阶梯 ====
+        if stalled or oscillating:
+            lvl = gd.get("escalation_level", 0)
+            if lvl == 0:
+                gd["escalation_level"] = 1
+                return self._llm_escape(perception, current, Scene.HOME, gd)
+            if lvl == 1:
+                gd["escalation_level"] = 2
+                fb = fallback_action(current, Scene.HOME)
+                if fb is not None:
+                    return [fb]
+            # lvl >= 2：机械降级仍卡 -> abort
+            return [Action(actionId=str(uuid.uuid4()), op="abort",
+                           params={"reason": f"pkg_guard_stuck:{current.value}"})]
+        return [action]
+
+    def _llm_escape(self, perception, current, target, guard) -> list[Action]:
+        raw = self._llm.complete(
+            system=_ESCAPE_PROMPT,
+            user=json.dumps({
+                "current_scene": current.value,
+                "target_scene": target.value,
+                "scene_history": guard.get("scene_history", []),
+            }, ensure_ascii=False),
+        )
+        new_target = _parse_target_scene(raw) or target
+        act = next_action(current, new_target) or next_action(current, Scene.HOME)
+        return [act] if act else [Action(actionId=str(uuid.uuid4()), op="home", params={})]
 
     def _cap_nodes(self, nodes: list[Node]) -> list[Node]:
         if len(nodes) <= self.MAX_LLM_NODES:

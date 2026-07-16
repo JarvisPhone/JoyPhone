@@ -525,3 +525,114 @@ def test_resolve_target_pkg_basic():
     assert resolve_target_pkg("微信里发消息给李四") == "com.tencent.mm"
     assert resolve_target_pkg("看看通知") is None
     assert resolve_target_pkg("") is None
+
+
+def test_pkg_guard_stall_escalates_to_llm(monkeypatch):
+    # 连续 STALL_THRESHOLD 帧同 scene 同 op（UNKNOWN 反复 home_first_page 无效）
+    # -> 触发 LLM 脱困，escalation_level 置 1。
+    from app.session import Session
+    from app.scene import STALL_THRESHOLD
+    calls = {"n": 0}
+
+    def _escape(system, user, image_b64=None):
+        calls["n"] += 1
+        return "target_scene: HOME"
+
+    llm = FakeLLM(["x"])
+    monkeypatch.setattr(llm, "complete", _escape)
+    engine = DecisionEngine(llm=llm, skills=SkillLibrary())
+    sess = Session("t", "打开飞书给张三发消息", "d")
+    p = Perception(nodeTree=[Node(id="n1", text="未知界面")],
+                   pkg="com.tencent.mm", activity="X", ts=1)
+    for _ in range(STALL_THRESHOLD + 1):
+        engine.decide(goal=sess.goal, perception=p, skill_name=None, cursor=0,
+                      history=[], target_pkg="com.ss.android.lark", guard=sess.guard)
+    assert calls["n"] >= 1
+    assert sess.guard["escalation_level"] >= 1
+
+
+def test_parse_target_scene():
+    from app.decision import _parse_target_scene
+    from app.scene import Scene
+
+    assert _parse_target_scene("target_scene: HOME") == Scene.HOME
+    assert _parse_target_scene("胡言乱语\ntarget_scene: MINUS_ONE") == Scene.MINUS_ONE
+    assert _parse_target_scene("target_scene: home") == Scene.HOME
+    assert _parse_target_scene("target_scene: NOT_A_SCENE") is None
+    assert _parse_target_scene("完全没有关键字") is None
+    assert _parse_target_scene("") is None
+
+
+def test_pkg_guard_oscillation_escalates_to_llm(monkeypatch):
+    # scene 在滑窗内反复出现(振荡) -> 触发 LLM 脱困，escalation_level 置 1。
+    from app.session import Session
+    from app.scene import CYCLE_THRESHOLD
+
+    calls = {"n": 0}
+
+    def _escape(system, user, image_b64=None):
+        calls["n"] += 1
+        return "target_scene: HOME"
+
+    llm = FakeLLM(["x"])
+    monkeypatch.setattr(llm, "complete", _escape)
+    engine = DecisionEngine(llm=llm, skills=SkillLibrary())
+    sess = Session("t", "打开飞书给张三发消息", "d")
+    # 交替两种活动/文本使 last_op 变化(避开停滞)，但 scene 反复回到同一 IN_APP
+    perceptions = [
+        Perception(nodeTree=[Node(id="a", text="界面A")],
+                   pkg="com.tencent.mm", activity="A", ts=1),
+        Perception(nodeTree=[Node(id="b", text="界面B")],
+                   pkg="com.tencent.mm", activity="B", ts=2),
+    ]
+    for i in range(2 * (CYCLE_THRESHOLD + 1)):
+        engine.decide(goal=sess.goal, perception=perceptions[i % 2], skill_name=None,
+                      cursor=0, history=[], target_pkg="com.ss.android.lark",
+                      guard=sess.guard)
+    assert calls["n"] >= 1
+    assert sess.guard["escalation_level"] >= 1
+
+
+def test_pkg_guard_level2_mechanical_fallback(monkeypatch):
+    # 已在 level 1 仍卡 -> 机械降级 fallback_action(不再问 LLM)。
+    from app.session import Session
+    from app.scene import STALL_THRESHOLD
+
+    def _escape(system, user, image_b64=None):
+        return "target_scene: HOME"
+
+    llm = FakeLLM(["x"])
+    monkeypatch.setattr(llm, "complete", _escape)
+    engine = DecisionEngine(llm=llm, skills=SkillLibrary())
+    sess = Session("t", "打开飞书给张三发消息", "d")
+    p = Perception(nodeTree=[Node(id="n1", text="未知界面")],
+                   pkg="com.tencent.mm", activity="X", ts=1)
+    last = None
+    for _ in range(STALL_THRESHOLD + 3):
+        last = engine.decide(goal=sess.goal, perception=p, skill_name=None, cursor=0,
+                             history=[], target_pkg="com.ss.android.lark",
+                             guard=sess.guard)
+    assert sess.guard["escalation_level"] >= 2
+
+
+def test_pkg_guard_level2_exhausted_aborts(monkeypatch):
+    # 三级脱困全部耗尽 -> abort，reason 前缀 pkg_guard_stuck。
+    from app.session import Session
+    from app.scene import STALL_THRESHOLD
+
+    def _escape(system, user, image_b64=None):
+        return "target_scene: HOME"
+
+    llm = FakeLLM(["x"])
+    monkeypatch.setattr(llm, "complete", _escape)
+    engine = DecisionEngine(llm=llm, skills=SkillLibrary())
+    sess = Session("t", "打开飞书给张三发消息", "d")
+    p = Perception(nodeTree=[Node(id="n1", text="未知界面")],
+                   pkg="com.tencent.mm", activity="X", ts=1)
+    last = None
+    for _ in range(STALL_THRESHOLD + 6):
+        last = engine.decide(goal=sess.goal, perception=p, skill_name=None, cursor=0,
+                             history=[], target_pkg="com.ss.android.lark",
+                             guard=sess.guard)
+    assert last[0].op == "abort"
+    assert last[0].params["reason"].startswith("pkg_guard_stuck")

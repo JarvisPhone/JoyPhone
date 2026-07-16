@@ -36,6 +36,14 @@ class Session:
         self.state = State.NAVIGATING
         self.steps = 0
 
+        # per-task 收敛守卫状态；task 生命周期内原地更新，随 Session 销毁。
+        self.guard: dict = {
+            "scene_history": [],   # 最近 WINDOW 帧 scene 值（str）
+            "stall_count": 0,
+            "last_op": "",
+            "escalation_level": 0,  # 0=正常 / 1=已问 LLM 脱困 / 2=已机械降级
+        }
+
     def transition(self, to: State) -> bool:
         """状态迁移,允许则返回 True,非法迁移返回 False(不抛异常)。
 

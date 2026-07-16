@@ -28,6 +28,13 @@ from app.protocol import Action, Perception
 _LAUNCHER = "launcher"
 _SYSTEMUI = "systemui"
 
+# ==== 收敛守卫常量（可调）====
+STALL_THRESHOLD = 3       # 连续同 scene 同 op 判停滞
+CYCLE_THRESHOLD = 2       # 非目标 scene 在窗口内重复次数判振荡
+WINDOW = 6                # scene_history 窗口长度
+LLM_ESCALATION_TRIES = 1  # 给 LLM 几次脱困机会
+FALLBACK_TRIES = 2        # 机械降级动作尝试次数
+
 class Scene(str, Enum):
     HOME = "home"                    # 桌面(首屏及其他屏,不区分第几屏)
     MINUS_ONE = "minus_one"          # 负一屏
@@ -130,4 +137,22 @@ def next_action(current: "Scene", target: "Scene") -> Optional[Action]:
     if current == target:
         return None
     op, params = _TRANSITIONS.get((current, target), ("home_first_page", {}))
+    return Action(actionId=str(uuid.uuid4()), op=op, params=dict(params))
+
+
+# 机械降级备选表：主转移动作失效时的次选动作（每个非目标 scene 至少一个）。
+_FALLBACK: dict[tuple["Scene", "Scene"], tuple[str, dict]] = {
+    (Scene.MINUS_ONE, Scene.HOME): ("home", {}),          # swipe right 失效 -> 按 home 键
+    (Scene.RECENT_APPS, Scene.HOME): ("back", {}),        # home 键失效 -> back
+    (Scene.NOTIFICATION, Scene.HOME): ("home", {}),
+    (Scene.CONTROL_CENTER, Scene.HOME): ("home", {}),
+    (Scene.IN_APP, Scene.HOME): ("home", {}),
+}
+
+
+def fallback_action(current: "Scene", target: "Scene") -> Optional[Action]:
+    """机械降级备选动作；已在 target 返回 None，无备选时默认按 home 键兜底。"""
+    if current == target:
+        return None
+    op, params = _FALLBACK.get((current, target), ("home", {}))
     return Action(actionId=str(uuid.uuid4()), op=op, params=dict(params))

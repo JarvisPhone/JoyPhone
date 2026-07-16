@@ -120,6 +120,23 @@ def test_lock_screen_to_home_falls_back():
     assert act.op == "home_first_page"
 
 
+def test_fallback_action_minus_one_tries_home():
+    from app.scene import fallback_action
+    act = fallback_action(Scene.MINUS_ONE, Scene.HOME)
+    assert act is not None and act.op == "home"  # 主动作 swipe right 失效后的备选
+
+
+def test_fallback_action_unknown_scene_returns_home():
+    from app.scene import fallback_action
+    act = fallback_action(Scene.UNKNOWN, Scene.HOME)
+    assert act is not None and act.op == "home"
+
+
+def test_fallback_action_already_at_target_none():
+    from app.scene import fallback_action
+    assert fallback_action(Scene.HOME, Scene.HOME) is None
+
+
 def test_next_action_generates_fresh_action_id():
     """每次返回的 Action 带唯一 actionId,不复用。"""
     a1 = next_action(Scene.MINUS_ONE, Scene.HOME)

@@ -338,6 +338,7 @@ def create_app() -> FastAPI:
                 cursor=cursor,
                 history=history,
                 target_pkg=target_pkg,
+                guard=session.guard,
             )
 
             if skill_name:
