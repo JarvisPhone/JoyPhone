@@ -124,6 +124,85 @@ def test_gateway_budget_exhausted_aborts(monkeypatch, tmp_path):
         assert seen_abort
 
 
+def test_gateway_idle_perception_yields_no_action(monkeypatch, tmp_path):
+    """未收到 task.request 时(session 不活跃),perception 帧应被忽略,
+    不产生任何 action 下发(修复空转轮询)。
+
+    验证手法:发 perception 后紧接发 heartbeat。若 perception 被正确忽略,
+    第一条收到的消息应是 heartbeat 的回复(read_screen),而不是 perception 的决策。
+    """
+    monkeypatch.setenv("SKILL_CACHE_PATH", str(tmp_path / "cache.json"))
+    monkeypatch.setenv("PHONEAGENT_FAKE_LLM", json.dumps(["tap 0", "done"]))
+
+    app = create_app()
+    client = TestClient(app)
+    nodes = [{"id": "n1", "text": "搜索", "clickable": True}]
+    heartbeat = json.dumps({"type": "heartbeat", "deviceId": "device-1", "ts": 1})
+
+    with client.websocket_connect("/ws/device-1") as ws:
+        # 未发 task.request,直接推 perception
+        ws.send_text(_perception(nodes, pkg="com.android.systemui"))
+        ws.send_text(heartbeat)
+        first = ws.receive_json()
+
+    # perception 被忽略,第一条回复应是 heartbeat 的 read_screen
+    assert first["type"] == "action"
+    assert first["op"] == "read_screen"
+
+
+def test_gateway_input_forwarded_when_in_target_chat(monkeypatch, tmp_path):
+    """在目标群内,LLM 决策的 input 应正常下发(文字先填进输入框),
+    而不是被拦截成 task.confirm(修复:拦截点移到 tap 发送前)。
+    """
+    monkeypatch.setenv("SKILL_CACHE_PATH", str(tmp_path / "cache.json"))
+    monkeypatch.setenv("PHONEAGENT_FAKE_LLM", json.dumps(["input 1 你好"]))
+
+    app = create_app()
+    client = TestClient(app)
+    # 目标群 + 输入框 + 发送按钮 都在当前屏
+    nodes = [
+        {"id": "t1", "text": "测试群", "viewIdResourceName": "com.ss.android.lark:id/toolbar_title"},
+        {"id": "e1", "text": "", "editable": True, "bounds": [0, 800, 900, 900]},
+        {"id": "s1", "text": "发送", "clickable": True, "viewIdResourceName": "com.ss.android.lark:id/btn_send", "bounds": [900, 800, 1000, 900]},
+    ]
+
+    with client.websocket_connect("/ws/device-1") as ws:
+        ws.send_text(_task_request("打开飞书,给群「测试群」发一条消息"))
+        ws.receive_json()  # task.start
+        ws.send_text(_perception(nodes, pkg="com.ss.android.lark"))
+        msg = ws.receive_json()
+
+    # input 应被正常下发,而不是拦截成 task.confirm
+    assert msg["type"] == "action"
+    assert msg["op"] == "input"
+
+
+def test_gateway_send_tap_intercepted_in_target_chat(monkeypatch, tmp_path):
+    """在目标群内,LLM 决策 tap 发送按钮时应被拦截,
+    发 task.confirm 停住(修复:拦截点在 tap 发送前)。
+    """
+    monkeypatch.setenv("SKILL_CACHE_PATH", str(tmp_path / "cache.json"))
+    # 第 0 行是 title,第 1 行是输入框,第 2 行是发送按钮(tap 2)
+    monkeypatch.setenv("PHONEAGENT_FAKE_LLM", json.dumps(["tap 2"]))
+
+    app = create_app()
+    client = TestClient(app)
+    nodes = [
+        {"id": "t1", "text": "测试群", "viewIdResourceName": "com.ss.android.lark:id/toolbar_title"},
+        {"id": "e1", "text": "你好", "editable": True, "bounds": [0, 800, 900, 900]},
+        {"id": "s1", "text": "发送", "clickable": True, "viewIdResourceName": "com.ss.android.lark:id/btn_send", "bounds": [900, 800, 1000, 900]},
+    ]
+
+    with client.websocket_connect("/ws/device-1") as ws:
+        ws.send_text(_task_request("打开飞书,给群「测试群」发一条消息"))
+        ws.receive_json()  # task.start
+        ws.send_text(_perception(nodes, pkg="com.ss.android.lark"))
+        msg = ws.receive_json()
+
+    assert msg["type"] == "task.confirm"
+    assert msg["target"] == "测试群"
+
+
 def test_gateway_heartbeat_still_returns_action(monkeypatch, tmp_path):
     monkeypatch.setenv("SKILL_CACHE_PATH", str(tmp_path / "cache.json"))
     monkeypatch.setenv("PHONEAGENT_FAKE_LLM", json.dumps(["read_screen"]))

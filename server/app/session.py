@@ -36,6 +36,11 @@ class Session:
         self.state = State.NAVIGATING
         self.steps = 0
 
+        # 活跃闸门:仅收到 task.request 后置 True;DONE/ABORT/发送流程结束置回 False。
+        # 不活跃时 gateway 忽略一切 perception 帧,杜绝空转轮询(端侧无障碍持续推帧
+        # 却每帧都 decide 出 wait/home 的问题)。
+        self.active = False
+
         # per-task 收敛守卫状态；task 生命周期内原地更新，随 Session 销毁。
         self.guard: dict = {
             "scene_history": [],   # 最近 WINDOW 帧 scene 值（str）

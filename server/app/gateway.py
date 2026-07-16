@@ -157,6 +157,7 @@ def create_app() -> FastAPI:
             if uplink.type == "task.request":
                 session.goal = uplink.goal
                 session.state = State.NAVIGATING
+                session.active = True
                 target_chat_name = extract_target(session.goal)
                 target_app_pkg = resolve_target_pkg(session.goal)
                 pending_send_action = None
@@ -191,43 +192,22 @@ def create_app() -> FastAPI:
                 if uplink.approved:
                     # 用户确认(Toast 5 秒到点 / App 主动)
                     session.transition(State.SENT)
-                    if pending_send_action is not None and pending_send_button_node is not None:
-                        msg_text = pending_send_action.params.get("text", "")
-                        input_id = pending_send_action.params.get("id", "")
-                        # 1) 下发 input（让 App 把文案填进编辑框;如果编辑框已经有内容则效果等同 noop）
-                        input_act = Action(
-                            actionId=str(uuid.uuid4()),
-                            op="input",
-                            params={
-                                **pending_send_action.params,
-                            },
-                        )
-                        _ia = input_act.to_json()
-                        log_down("action", _ia)
-                        await websocket.send_text(_ia)
-                        # 2) 下发 tap 发送按钮（坐标从 send_node.bounds 中心算出来）
-                        center = _bounds_center(pending_send_button_node.bounds)
-                        if center is None:
-                            logger.error("approved but send_button has no bounds → abort")
-                            _ab = TaskAbort(taskId=session.task_id, reason="approved_but_no_send_bounds").to_json()
-                            log_down("task.abort", _ab)
-                            await websocket.send_text(_ab)
-                            metrics.finish_task(session.task_id, "aborted", "approved_but_no_send_bounds")
-                            break
+                    if pending_send_action is not None:
+                        # 文案在拦截前已通过 input 放行进框,这里只需下发被拦截的
+                        # 「tap 发送按钮」动作把消息发出去。
                         send_act = Action(
                             actionId=str(uuid.uuid4()),
                             op="tap",
-                            params={"id": "", "x": str(center[0]), "y": str(center[1])},
+                            params={**pending_send_action.params},
                         )
                         _sa = send_act.to_json()
                         log_down("action", _sa)
                         await websocket.send_text(_sa)
-                        applied_steps.append({"op": "input", "params": pending_send_action.params})
                         applied_steps.append({"op": "tap", "params": send_act.params})
                         pending_send_action = None
                         pending_send_button_node = None
                     else:
-                        logger.error("approved but no pending action/button → abort")
+                        logger.error("approved but no pending action → abort")
                         _ab = TaskAbort(taskId=session.task_id, reason="no_pending_after_approve").to_json()
                         log_down("task.abort", _ab)
                         await websocket.send_text(_ab)
@@ -296,6 +276,11 @@ def create_app() -> FastAPI:
             if uplink.type != "perception":
                 continue
 
+            # 【空闲闸门】未收到 task.request(或任务已结束)时,忽略一切 perception 帧,
+            # 不决策、不下发任何 action。杜绝端侧持续推帧导致的空转轮询。
+            if not session.active:
+                continue
+
             if session.budget_exhausted():
                 session.transition(State.ABORT)
                 _be = TaskAbort(taskId=session.task_id, reason="budget_exhausted").to_json()
@@ -352,6 +337,7 @@ def create_app() -> FastAPI:
 
                 if action.op == "done":
                     session.transition(State.DONE)
+                    session.active = False
                     if applied_steps:
                         engine._cache.learn(session.goal, last_pkg, applied_steps)
                     _done = TaskDone(
@@ -365,6 +351,7 @@ def create_app() -> FastAPI:
 
                 if action.op == "abort":
                     session.transition(State.ABORT)
+                    session.active = False
                     _ab = TaskAbort(taskId=session.task_id, reason="llm_abort").to_json()
                     log_down("task.abort", _ab)
                     await websocket.send_text(_ab)
@@ -372,44 +359,43 @@ def create_app() -> FastAPI:
                     terminate = True
                     break
 
-                # 【发送前确认】LLM 做完 input 之后,先不发给 App,改发 task.confirm 让用户确认。
-                # 收到 confirm_response 后再由 gateway 把 input 和「tap 发送按钮」两条动作一起发下去。
+                # 【发送前确认】文案通过 input 正常放行进框;当 LLM 决策「tap 发送按钮」
+                # 时才拦截:先不发给 App,改发 task.confirm 让用户确认。收到 approve 后
+                # 再由 gateway 把这条 tap 发下去,把消息真正发出。
                 if (
-                    action.op == "input"
+                    action.op == "tap"
                     and confirm_count == 0
                     and target_app_pkg
                     and uplink.pkg == target_app_pkg
                     and target_chat_name
                 ):
                     current_title = detect_chat_title(uplink.nodeTree)
-                    if current_title and match_chat_title(target_chat_name, current_title):
-                        # 群名匹配 -> 拦截 input,下发 confirm
-                        send_node = _find_send_button(uplink.nodeTree)
-                        if send_node is None:
-                            # 屏幕上没发送按钮 -> LLM 还在打字阶段,正常下发 input,等发送按钮出现
-                            logger.info("[CONFIRM_SKIP] no send_button in view yet → forward input as-is")
-                        else:
-                            confirm_id = f"cfm-{uuid.uuid4().hex[:8]}"
-                            pending_confirm_id = confirm_id
-                            pending_send_action = action
-                            pending_send_button_node = send_node
-                            pending_message_text = action.params.get("text", "")
-                            _confirm = TaskConfirm(
-                                taskId=session.task_id,
-                                confirmId=confirm_id,
-                                target=current_title,
-                                message=pending_message_text,
-                                timeoutMs=5000,
-                            )
-                            log_down("task.confirm", _confirm.to_json())
-                            await websocket.send_text(_confirm.to_json())
-                            session.transition(State.AWAITING_CONFIRM)
-                            confirm_count += 1
-                            logger.info(
-                                "[CONFIRM_SENT] target=%s current=%s msg=%r",
-                                target_chat_name, current_title, pending_message_text,
-                            )
-                            break
+                    if (
+                        current_title
+                        and match_chat_title(target_chat_name, current_title)
+                        and _tap_hits_send_button(action, uplink.nodeTree)
+                    ):
+                        confirm_id = f"cfm-{uuid.uuid4().hex[:8]}"
+                        pending_confirm_id = confirm_id
+                        pending_send_action = action
+                        pending_send_button_node = None
+                        pending_message_text = _extract_last_input_text(applied_steps)
+                        _confirm = TaskConfirm(
+                            taskId=session.task_id,
+                            confirmId=confirm_id,
+                            target=current_title,
+                            message=pending_message_text,
+                            timeoutMs=5000,
+                        )
+                        log_down("task.confirm", _confirm.to_json())
+                        await websocket.send_text(_confirm.to_json())
+                        session.transition(State.AWAITING_CONFIRM)
+                        confirm_count += 1
+                        logger.info(
+                            "[CONFIRM_SENT] target=%s current=%s msg=%r (send tap intercepted)",
+                            target_chat_name, current_title, pending_message_text,
+                        )
+                        break
 
                 if action.op in ("tap", "input"):
                     if session.state == State.NAVIGATING:
@@ -426,31 +412,28 @@ def create_app() -> FastAPI:
     return app
 
 
-def _find_send_button(nodes) -> "Node | None":
-    """从当前屏节点树里找出「发送」按钮节点。
-    多个候选时取最靠右下、面积最小的(按钮通常比输入框小)。
+def _tap_hits_send_button(action: "Action", nodes) -> bool:
+    """判断一条 tap action 是否命中当前屏的「发送」按钮。
+
+    tap 的 params 里带 x/y(由 decision 从目标 node bounds 中心算出)。
+    遍历当前屏所有发送按钮节点,若 tap 坐标落在其 bounds 内即视为命中。
     """
     from app.chat_title_helpers import is_send_button  # 局部 import
 
-    candidates = []
+    try:
+        x = int(action.params.get("x", ""))
+        y = int(action.params.get("y", ""))
+    except (ValueError, TypeError):
+        return False
     for n in nodes:
-        if is_send_button(n):
-            if not n.bounds or len(n.bounds) != 4:
-                continue
-            l, t, r, b = n.bounds
-            candidates.append((n, (r - l) * (b - t), l + r))
-    if not candidates:
-        return None
-    # 优先选面积小的(精准按钮),并列时取靠右
-    candidates.sort(key=lambda c: (c[1], -c[2]))
-    return candidates[0][0]
-
-
-def _bounds_center(bounds) -> tuple[int, int] | None:
-    if not bounds or len(bounds) != 4:
-        return None
-    left, top, right, bottom = bounds
-    return (left + right) // 2, (top + bottom) // 2
+        if not is_send_button(n):
+            continue
+        if not n.bounds or len(n.bounds) != 4:
+            continue
+        left, top, right, bottom = n.bounds
+        if left <= x <= right and top <= y <= bottom:
+            return True
+    return False
 
 
 def _extract_last_input_text(applied_steps: list[dict]) -> str:
