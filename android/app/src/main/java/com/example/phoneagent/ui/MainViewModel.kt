@@ -42,6 +42,7 @@ class MainViewModel @Inject constructor(
     private val _sampleCountdown = MutableStateFlow(0)
     private val _sampleHint = MutableStateFlow("")
     private var titleTapCount = 0
+    private var sampleSeq = 0
 
     val uiState: StateFlow<AgentUiState> =
         combine(
@@ -84,26 +85,22 @@ class MainViewModel @Inject constructor(
         )
     }
 
-    /** 点击「开始采样」:校验 label,发采样请求,启动 UI 倒计时提示。 */
-    fun onCaptureSample(label: String) {
-        val trimmed = label.trim()
-        if (trimmed.isEmpty()) {
-            _sampleHint.value = "请先填场景标签"
-            return
-        }
-        val ok = repo.requestSample(trimmed, SAMPLE_DELAY_SECONDS)
+    /** 点击「开始采样」:自动生成自增序号 label,发采样请求,启动 UI 倒计时提示。 */
+    fun onCaptureSample() {
+        val label = "sample_%03d".format(++sampleSeq)
+        val ok = repo.requestSample(label, SAMPLE_DELAY_SECONDS)
         if (!ok) {
             _sampleHint.value = "无障碍服务未连接,无法采样"
             return
         }
         viewModelScope.launch {
-            _sampleHint.value = "切到目标场景,倒计时结束自动抓帧"
+            _sampleHint.value = "采样中 $label,切到目标场景,倒计时结束自动抓帧"
             for (s in SAMPLE_DELAY_SECONDS downTo 1) {
                 _sampleCountdown.value = s
                 delay(1000L)
             }
             _sampleCountdown.value = 0
-            _sampleHint.value = "已触发抓帧「$trimmed」"
+            _sampleHint.value = "已触发抓帧「$label」"
         }
     }
 }
