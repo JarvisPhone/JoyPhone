@@ -2,6 +2,7 @@ package com.example.phoneagent.accessibility
 
 import android.accessibilityservice.AccessibilityService
 import android.content.Intent
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
@@ -16,7 +17,13 @@ import com.example.phoneagent.domain.TraceEvent
 import com.example.phoneagent.net.WsClient
 import com.example.phoneagent.protocol.DownTaskConfirm
 import com.example.phoneagent.protocol.UplinkPerception
+import com.example.phoneagent.protocol.UplinkSampleCapture
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -56,6 +63,7 @@ class PhoneAgentService : AccessibilityService() {
         }
     }
     @Volatile private var pendingConfirm: DownTaskConfirm? = null
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -112,6 +120,14 @@ class PhoneAgentService : AccessibilityService() {
                 handler.postDelayed(confirmTimeoutRunnable, confirm.timeoutMs.toLong())
             },
         )
+
+        serviceScope.launch {
+            repo.sampleRequests.collect { req ->
+                Log.i(TAG, "sample request label=${req.label} delay=${req.delaySeconds}s")
+                delay(req.delaySeconds * 1000L)
+                captureSample(req.label)
+            }
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -137,6 +153,32 @@ class PhoneAgentService : AccessibilityService() {
         repo.appendTrace(TraceEvent(System.currentTimeMillis(), TraceDirection.UP, "perception", "pkg=${perception.pkg} nodes=${nodes.size}"))
     }
 
+    /** 采样专用抓帧:抓当前屏 nodeTree,组 sample.capture 上报。与决策链路解耦。 */
+    private fun captureSample(label: String) {
+        val root = rootInActiveWindow
+        if (root == null) {
+            Toast.makeText(applicationContext, "抓帧失败:请确认无障碍已开启", Toast.LENGTH_SHORT).show()
+            Log.w(TAG, "captureSample: rootInActiveWindow == null")
+            return
+        }
+        val nodes = NodeFlattener.flatten(root)
+        val pkg = root.packageName?.toString() ?: ""
+        val sample = UplinkSampleCapture(
+            label = label,
+            nodeTree = nodes,
+            pkg = pkg,
+            activity = pkg,
+            ts = System.currentTimeMillis(),
+            device = "${Build.MANUFACTURER} ${Build.MODEL}",
+        )
+        wsClient.sendSampleCapture(sample)
+        Toast.makeText(applicationContext, "已采样「$label」: ${nodes.size} 个节点", Toast.LENGTH_SHORT).show()
+        Log.i(TAG, "↑ sample.capture label=$label pkg=$pkg nodes=${nodes.size}")
+        repo.appendTrace(
+            TraceEvent(System.currentTimeMillis(), TraceDirection.UP, "sample.capture", "label=$label nodes=${nodes.size}")
+        )
+    }
+
     override fun onInterrupt() {
         wsClient.close()
     }
@@ -152,6 +194,7 @@ class PhoneAgentService : AccessibilityService() {
         handler.removeCallbacks(confirmTimeoutRunnable)
         repo.updateAccessibility(false)
         wsClient.close()
+        serviceScope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
         super.onDestroy()
     }
 }
