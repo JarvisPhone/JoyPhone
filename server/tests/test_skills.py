@@ -1,3 +1,5 @@
+import logging
+
 from app.protocol import Node
 from app.skills import SkillLibrary, SkillStep, SkillMatcher, Skill
 
@@ -99,6 +101,14 @@ class TestSkillLibrary:
 
         assert library.get("wechat_send") is not None
         assert library.select("打开微信发消息", "com.tencent.mm") == "wechat_send"
+
+    def test_next_step_logs_when_no_node_matches(self, caplog):
+        library = SkillLibrary()
+        nodes = []  # 空节点，必然匹配失败，回落 LLM
+        with caplog.at_level(logging.WARNING, logger="phoneagent.skills"):
+            result = library.next_step("feishu_send_message", nodes, cursor=0)
+        assert result is None
+        assert any("SKILL_NO_MATCH" in r.message for r in caplog.records)
 
 
 class TestSkillStep:

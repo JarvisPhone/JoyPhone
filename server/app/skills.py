@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -162,4 +163,8 @@ class SkillLibrary:
                     result["input_text"] = step.input_text
                 return result
 
+        logging.getLogger("phoneagent.skills").warning(
+            "[SKILL_NO_MATCH] skill=%s cursor=%s step_op=%s 当前帧无节点匹配，回落 LLM 决策",
+            skill_name, cursor, step.op,
+        )
         return None
