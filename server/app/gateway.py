@@ -10,6 +10,7 @@ from starlette.websockets import WebSocketDisconnect
 from app.app_goal_resolver import extract_target, resolve_target_pkg
 from app.chat_title_helpers import (
     detect_chat_title,
+    is_message_input,
     is_send_button,
     match_chat_title,
 )
@@ -397,6 +398,36 @@ def create_app() -> FastAPI:
                         )
                         break
 
+                # 【错群 input 正文守卫】LLM 决策「往聊天正文输入框输入正文」时,
+                # 若当前会话页顶部标题与 target_chat 不匹配(进错群),拦截该 input
+                # 不下发,改下发一个 back 回上一级列表,并记 [INPUT_GUARD] 日志。
+                # 搜索框的 input(输群名搜索,is_message_input=False)不进此分支,正常放行。
+                if (
+                    action.op == "input"
+                    and target_app_pkg
+                    and uplink.pkg == target_app_pkg
+                    and target_chat_name
+                ):
+                    input_node = _input_target_node(action, uplink.nodeTree)
+                    if input_node is not None and is_message_input(input_node):
+                        current_title = detect_chat_title(uplink.nodeTree)
+                        if not (
+                            current_title
+                            and match_chat_title(target_chat_name, current_title)
+                        ):
+                            logger.warning(
+                                "[INPUT_GUARD] target=%s current=%s text=%r "
+                                "(message input in wrong chat intercepted, forcing back)",
+                                target_chat_name, current_title,
+                                action.params.get("text", ""),
+                            )
+                            _back = Action(
+                                actionId=str(uuid.uuid4()), op="back", params={}
+                            ).to_json()
+                            log_down("action", _back)
+                            await websocket.send_text(_back)
+                            break
+
                 if action.op in ("tap", "input"):
                     if session.state == State.NAVIGATING:
                         session.transition(State.IN_CHAT)
@@ -410,6 +441,30 @@ def create_app() -> FastAPI:
                 break
 
     return app
+
+
+def _input_target_node(action: "Action", nodes):
+    """把一条 input action 还原为当前屏被输入的目标 Node。
+
+    与 _tap_hits_send_button 一致,用 params 里的 x/y 坐标(decision从目标
+    node bounds 中心算出)命中节点:遍历当前屏,返回坐标落入 bounds 的第一个
+    editable 节点。比 params["id"](实为 capped-nodes 列表下标,与完整
+    nodeTree 索引不一定一致)更可靠。
+    """
+    try:
+        x = int(action.params.get("x", ""))
+        y = int(action.params.get("y", ""))
+    except (ValueError, TypeError):
+        return None
+    for n in nodes:
+        if not n.editable:
+            continue
+        if not n.bounds or len(n.bounds) != 4:
+            continue
+        left, top, right, bottom = n.bounds
+        if left <= x <= right and top <= y <= bottom:
+            return n
+    return None
 
 
 def _tap_hits_send_button(action: "Action", nodes) -> bool:

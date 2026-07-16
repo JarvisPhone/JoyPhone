@@ -95,6 +95,48 @@ def is_send_button(node: Node) -> bool:
     return any(kw.lower() in label for kw in _SEND_BUTTON_TEXT_KEYWORDS)
 
 
+# 搜索框提示词:命中任一即认为是「搜索框」而非聊天正文框,input 放行(搜群名场景)。
+_SEARCH_HINTS: tuple[str, ...] = (
+    "搜索",
+    "查找",
+    "search",
+)
+
+# 聊天正文输入框提示词:命中任一(且未命中搜索词)即认为是「往聊天正文输入」。
+_MSG_HINTS: tuple[str, ...] = (
+    "输入",
+    "发消息",
+    "发送消息",
+    "说点什么",
+    "写点什么",
+    "message",
+    "type a message",
+)
+
+
+def is_message_input(node: Node) -> bool:
+    """判断节点是否为「聊天正文输入框」(而非搜索框)。
+
+    保守策略(避免误伤搜群名的搜索框):
+      - 非 editable 直接 False(用 editable 比 className 更可靠)
+      - desc+text 组合的小写标签命中搜索类词 -> False
+      - 命中输入/发消息类词 -> True
+      - 都不命中 -> False(宁可漏拦也不误拦搜索框)
+
+    注意:本函数只用 label 关键词做启发式判断,真机上不同 App/语言的
+    输入框 hint 文案差异大,可能存在漏判(返回 False 而放行)。守卫层面
+    漏判只会退化为「不拦截」,不会误拦搜索框,属于保守失败方向。
+    """
+    if not node.editable:
+        return False
+    label = ((node.text or "") + " " + (node.desc or "")).strip().lower()
+    if not label:
+        return False
+    if any(kw.lower() in label for kw in _SEARCH_HINTS):
+        return False
+    return any(kw.lower() in label for kw in _MSG_HINTS)
+
+
 def match_chat_title(target: str, current: str) -> bool:
     """宽松匹配:target 是 current 的子串,或 current 是 target 的子串,
     或去掉空白后相等(emoji / 标点容忍)。

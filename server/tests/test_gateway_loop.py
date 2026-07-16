@@ -203,6 +203,46 @@ def test_gateway_send_tap_intercepted_in_target_chat(monkeypatch, tmp_path):
     assert msg["target"] == "测试群"
 
 
+def test_input_message_in_wrong_chat_is_intercepted(monkeypatch, tmp_path, caplog):
+    """进错群时,LLM 决策的「往聊天正文输入正文」应被拦截,不下发 input,
+    改下发一个 op=back 回上一级,并记 [INPUT_GUARD] 日志。
+    """
+    import logging
+
+    monkeypatch.setenv("SKILL_CACHE_PATH", str(tmp_path / "cache.json"))
+    # 第 0 行 title(错群),第 1 行聊天正文输入框(input 1)
+    monkeypatch.setenv("PHONEAGENT_FAKE_LLM", json.dumps(["input 1 你好呀"]))
+
+    app = create_app()
+    client = TestClient(app)
+    nodes = [
+        {
+            "id": "t1",
+            "text": "奇瑞Robotaxi项目",
+            "viewIdResourceName": "com.ss.android.lark:id/toolbar_title",
+        },
+        {
+            "id": "e1",
+            "text": "",
+            "desc": "发消息",
+            "editable": True,
+            "bounds": [0, 800, 900, 900],
+        },
+    ]
+
+    with caplog.at_level(logging.WARNING, logger="phoneagent.gateway"):
+        with client.websocket_connect("/ws/device-1") as ws:
+            ws.send_text(_task_request("打开飞书,给群「Android AI 开发组」发一条消息"))
+            ws.receive_json()  # task.start
+            ws.send_text(_perception(nodes, pkg="com.ss.android.lark"))
+            msg = ws.receive_json()
+
+    # input 未被下发,取而代之的是一个 back
+    assert msg["type"] == "action"
+    assert msg["op"] == "back"
+    assert any("[INPUT_GUARD]" in rec.getMessage() for rec in caplog.records)
+
+
 def test_gateway_heartbeat_still_returns_action(monkeypatch, tmp_path):
     monkeypatch.setenv("SKILL_CACHE_PATH", str(tmp_path / "cache.json"))
     monkeypatch.setenv("PHONEAGENT_FAKE_LLM", json.dumps(["read_screen"]))
