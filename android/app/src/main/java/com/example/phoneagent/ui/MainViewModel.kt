@@ -14,12 +14,16 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class AgentUiState(
     val status: AgentStatus = AgentStatus(),
     val debug: DebugInfo = DebugInfo(),
     val debugUnlocked: Boolean = false,
+    val sampleCountdown: Int = 0,
+    val sampleHint: String = "",
 )
 
 @HiltViewModel
@@ -31,14 +35,22 @@ class MainViewModel @Inject constructor(
     private companion object {
         const val UNLOCK_THRESHOLD = 7
         const val TEST_GOAL = "打开飞书，给群「Android AI 开发组」发一条消息"
+        const val SAMPLE_DELAY_SECONDS = 10
     }
 
     private val _debugUnlocked = MutableStateFlow(false)
+    private val _sampleCountdown = MutableStateFlow(0)
+    private val _sampleHint = MutableStateFlow("")
     private var titleTapCount = 0
 
     val uiState: StateFlow<AgentUiState> =
-        combine(repo.status, repo.debug, _debugUnlocked) { status, debug, unlocked ->
-            AgentUiState(status = status, debug = debug, debugUnlocked = unlocked)
+        combine(
+            repo.status, repo.debug, _debugUnlocked, _sampleCountdown, _sampleHint,
+        ) { status, debug, unlocked, countdown, hint ->
+            AgentUiState(
+                status = status, debug = debug, debugUnlocked = unlocked,
+                sampleCountdown = countdown, sampleHint = hint,
+            )
         }.stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
@@ -70,5 +82,28 @@ class MainViewModel @Inject constructor(
                 summary = TEST_GOAL,
             )
         )
+    }
+
+    /** 点击「开始采样」:校验 label,发采样请求,启动 UI 倒计时提示。 */
+    fun onCaptureSample(label: String) {
+        val trimmed = label.trim()
+        if (trimmed.isEmpty()) {
+            _sampleHint.value = "请先填场景标签"
+            return
+        }
+        val ok = repo.requestSample(trimmed, SAMPLE_DELAY_SECONDS)
+        if (!ok) {
+            _sampleHint.value = "无障碍服务未连接,无法采样"
+            return
+        }
+        viewModelScope.launch {
+            _sampleHint.value = "切到目标场景,倒计时结束自动抓帧"
+            for (s in SAMPLE_DELAY_SECONDS downTo 1) {
+                _sampleCountdown.value = s
+                delay(1000L)
+            }
+            _sampleCountdown.value = 0
+            _sampleHint.value = "已触发抓帧「$trimmed」"
+        }
     }
 }
