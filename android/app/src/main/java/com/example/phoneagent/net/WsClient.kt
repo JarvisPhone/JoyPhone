@@ -8,6 +8,7 @@ import com.example.phoneagent.protocol.DownTaskConfirm
 import com.example.phoneagent.protocol.UplinkActionResult
 import com.example.phoneagent.protocol.UplinkConfirmResponse
 import com.example.phoneagent.protocol.UplinkPerception
+import com.example.phoneagent.protocol.UplinkSampleCapture
 import com.example.phoneagent.protocol.UplinkTaskRequest
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -124,6 +125,11 @@ class WsClient @Inject constructor(
 
     fun sendTaskRequest(goal: String) {
         ws?.send(json.encodeToString(UplinkTaskRequest(goal = goal)))
+    }
+
+    /** 发送探针采样帧。采样与决策解耦,不影响任务链路。 */
+    fun sendSampleCapture(msg: UplinkSampleCapture) {
+        ws?.send(json.encodeToString(msg))
     }
 
     /** 发送 Toast 确认响应。approved=true 表示 5 秒内未切走 / 用户已确认,false 表示取消。 */
