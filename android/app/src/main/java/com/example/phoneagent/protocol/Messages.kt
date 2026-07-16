@@ -49,6 +49,17 @@ data class UplinkTaskRequest(
 )
 
 @Serializable
+data class UplinkSampleCapture(
+    val type: String = "sample.capture",
+    val label: String,
+    val nodeTree: List<NodeDto>,
+    val pkg: String,
+    val activity: String,
+    val ts: Long,
+    val device: String = "",
+)
+
+@Serializable
 data class DownAction(
     val type: String = "action",
     val actionId: String,
