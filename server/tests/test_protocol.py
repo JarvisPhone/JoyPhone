@@ -128,3 +128,29 @@ def test_parse_uplink_invalid_nested_node_raises_validation_error():
     raw = '{"type":"perception","nodeTree":["bad"]}'
     with pytest.raises(ValidationError):
         parse_uplink(raw)
+
+
+def test_parse_sample_capture_uplink():
+    from app.protocol import SampleCapture
+    raw = (
+        '{"type":"sample.capture","label":"minus_one",'
+        '"nodeTree":[{"id":"n1","text":"小布建议"}],'
+        '"pkg":"com.android.launcher","activity":"Launcher","ts":123,"device":"OPPO"}'
+    )
+    msg = parse_uplink(raw)
+    assert isinstance(msg, SampleCapture)
+    assert msg.label == "minus_one"
+    assert msg.pkg == "com.android.launcher"
+    assert msg.nodeTree[0].text == "小布建议"
+    assert msg.device == "OPPO"
+
+
+def test_sample_capture_rejects_missing_label():
+    with pytest.raises(ValidationError):
+        parse_uplink('{"type":"sample.capture","pkg":"p","activity":"a","ts":0}')
+
+
+def test_sample_capture_device_defaults_empty():
+    raw = '{"type":"sample.capture","label":"home_first","nodeTree":[],"pkg":"p","activity":"a","ts":0}'
+    msg = parse_uplink(raw)
+    assert msg.device == ""

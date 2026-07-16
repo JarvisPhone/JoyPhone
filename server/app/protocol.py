@@ -63,7 +63,18 @@ class ConfirmResponse(BaseModel):
     ts: int = 0
 
 
-Uplink = Union[Perception, ActionResult, NewMessage, Heartbeat, TaskRequest, ConfirmResponse]
+class SampleCapture(BaseModel):
+    """上行:探针采样帧。App 延时抓帧后上报,云端落盘供人工分析场景特征。"""
+    type: Literal["sample.capture"] = "sample.capture"
+    label: str
+    nodeTree: list[Node] = Field(default_factory=list)
+    pkg: str = ""
+    activity: str = ""
+    ts: int = 0
+    device: str = ""
+
+
+Uplink = Union[Perception, ActionResult, NewMessage, Heartbeat, TaskRequest, ConfirmResponse, SampleCapture]
 
 _UPLINK_MAP = {
     "perception": Perception,
@@ -72,6 +83,7 @@ _UPLINK_MAP = {
     "heartbeat": Heartbeat,
     "task.request": TaskRequest,
     "task.confirm_response": ConfirmResponse,
+    "sample.capture": SampleCapture,
 }
 
 
