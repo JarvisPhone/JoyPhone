@@ -54,7 +54,7 @@
 
 ### 5.1 交互流程（延时抓帧）
 
-1. App 调试面板（标题连点 7 次解锁）新增「场景采样」卡片。
+1. App 主界面常驻新增「场景采样」卡片（无需解锁，方便逐场景反复采样）。
 2. 卡片含：场景标签输入框（如 `home_first` / `minus_one` / `notification` / `control_center`）+「抓当前帧」按钮。
 3. 点按钮后**倒计时 10 秒**（可配），期间用户手动滑到目标场景（含下拉通知栏/控制中心）。
 4. 倒计时结束，App 自动抓当前帧 nodeTree，组成 `sample.capture` 消息（带 label）上报云端。
@@ -67,7 +67,7 @@
 
 **Android 端**（`android/app/src/main/java/com/example/phoneagent`）：
 
-- `ui/AgentScreen.kt`：调试面板加「场景采样」卡（标签输入框 + 按钮 + 倒计时提示）。
+- `ui/AgentScreen.kt`：主界面常驻加「场景采样」卡（标签输入框 + 按钮 + 倒计时提示）。
 - `ui/MainViewModel.kt`：加 `onCaptureSample(label)`，启动 10 秒延时后触发抓帧。
 - `net/WsClient.kt`：加 `sendSample(label)`。
 - `accessibility/PhoneAgentService.kt`：暴露「抓当前帧 nodeTree」能力供采样复用（复用现有 perception 抓帧逻辑）。
