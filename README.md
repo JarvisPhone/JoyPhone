@@ -59,6 +59,7 @@ JoyPhone 是一个长期演进的开源项目，按里程碑推进：
 |------|------|------|
 | M1 端云协同最小闭环 | 文本目标 → 真机无障碍操控 → 决策 + 执行 + 回报 | ✅ 已跑通 |
 | M2 技能自沉淀 | 成功路径自动固化「技能」，命中即脚本回放 | ✅ 雏形 |
+| M2.5 屏幕场景状态机 | 云端逐帧驱动的通用归位 + 停滞/振荡双重卡死脱困（LLM 语义脱困 → 机械降级三级阶梯） | 🚧 进行中 |
 | M3 多 APP 接入 | 微信 / 企微 / 抖音等节点适配与技能库 | 🚧 进行中 |
 | M4 语音一句话驱动 | 云端 ASR → 意图解析 → 决策，像豆包手机一样开口即用 | 🔜 规划 |
 | M5 多设备并发调度 | 一台云端管多台手机，运营后台与任务队列 | 🔜 规划 |
@@ -138,7 +139,7 @@ LLM 决策的 `tap` 会在云端先用节点 `id` / `match_text` 解析为精确
 - `tap`：优先按云端下发的 `x/y` 坐标 `dispatchGesture` 点击，缺失时回退 `match_text` 子串匹配节点中心点击。
 - `input`：找到首个可编辑节点执行 `ACTION_SET_TEXT`。
 - `swipe` / `back` / `home`：标准手势与全局动作。
-- `home_first_page` / `next_page`：桌面翻屏算子，用「翻页前后屏幕指纹一致」判定是否已到最左第一屏 / 最后一屏（`atEnd`），让 LLM 像真人一样翻桌找应用图标。坐标几何全部抽到可单测的 `GestureGeometry`。
+- 桌面翻屏与归位交给**云端场景状态机**逐帧驱动（`server/app/scene.py`）：`detect_scene` 识别当前场景 → `next_action` 查转移表下发单步原子动作 → 云端守卫检测停滞与振荡并三级脱困，端侧只做哑执行。坐标几何仍抽到可单测的 `GestureGeometry`。
 
 ### 感知与节点裁剪（`accessibility/NodeFlattener.kt` / `Perception.kt`）
 
@@ -187,7 +188,7 @@ uv run pytest tests/test_decision.py  # 决策引擎单测
 PHONEAGENT_FAKE_LLM='[...]' uv run pytest tests/test_gateway_loop.py  # 注入假 LLM 跑网关主循环
 ```
 
-安卓单元测试位于 `android/app/src/test/`，覆盖 `GestureGeometry` / `NodeFlattener` / `Perception` / `ScreenFingerprint` / `WsDispatcher` / `MainViewModel` 等可纯逻辑验证的部分。
+安卓单元测试位于 `android/app/src/test/`，覆盖 `GestureGeometry` / `NodeFlattener` / `Perception` / `WsDispatcher` / `MainViewModel` 等可纯逻辑验证的部分。
 
 ## 关键可测性设计
 
