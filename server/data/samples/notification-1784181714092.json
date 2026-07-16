@@ -1,0 +1,415 @@
+{
+  "type": "sample.capture",
+  "label": "通知栏(下拉通知)",
+  "nodeTree": [
+    {
+      "id": "0-1-0",
+      "text": "富人区",
+      "desc": null,
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/expandableNotificationRow",
+      "bounds": [
+        48,
+        384,
+        1032,
+        594
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-0-3",
+      "text": "21 分钟前",
+      "desc": "21 分钟前",
+      "className": "android.widget.Button",
+      "viewIdResourceName": "android:id/expand_button",
+      "bounds": [
+        738,
+        384,
+        1032,
+        474
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-1",
+      "text": "3",
+      "desc": null,
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/expandableNotificationRow",
+      "bounds": [
+        48,
+        618,
+        1032,
+        873
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-1-2",
+      "text": "5 分钟前",
+      "desc": "5 分钟前",
+      "className": "android.widget.Button",
+      "viewIdResourceName": "android:id/expand_button",
+      "bounds": [
+        799,
+        648,
+        990,
+        705
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-2",
+      "text": "3",
+      "desc": null,
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/expandableNotificationRow",
+      "bounds": [
+        48,
+        897,
+        1032,
+        1152
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-2-2",
+      "text": "9 分钟前",
+      "desc": "9 分钟前",
+      "className": "android.widget.Button",
+      "viewIdResourceName": "android:id/expand_button",
+      "bounds": [
+        798,
+        927,
+        990,
+        984
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-3",
+      "text": "2",
+      "desc": null,
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/expandableNotificationRow",
+      "bounds": [
+        48,
+        1176,
+        1032,
+        1362
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-3-2",
+      "text": "11 分钟前",
+      "desc": "11 分钟前",
+      "className": "android.widget.Button",
+      "viewIdResourceName": "android:id/expand_button",
+      "bounds": [
+        792,
+        1206,
+        990,
+        1263
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-4",
+      "text": "3",
+      "desc": null,
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/expandableNotificationRow",
+      "bounds": [
+        48,
+        1386,
+        1032,
+        1641
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-4-2",
+      "text": "29 分钟前",
+      "desc": "29 分钟前",
+      "className": "android.widget.Button",
+      "viewIdResourceName": "android:id/expand_button",
+      "bounds": [
+        778,
+        1416,
+        990,
+        1473
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-5",
+      "text": "2",
+      "desc": null,
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/expandableNotificationRow",
+      "bounds": [
+        48,
+        1665,
+        1032,
+        1851
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-5-2",
+      "text": "34 分钟前",
+      "desc": "34 分钟前",
+      "className": "android.widget.Button",
+      "viewIdResourceName": "android:id/expand_button",
+      "bounds": [
+        777,
+        1695,
+        990,
+        1752
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-6",
+      "text": "《崩坏：星穹铁道》EP：「下一站」",
+      "desc": null,
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/expandableNotificationRow",
+      "bounds": [
+        48,
+        1875,
+        1032,
+        2119
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-6-3",
+      "text": "12:22",
+      "desc": "12:22",
+      "className": "android.widget.Button",
+      "viewIdResourceName": "android:id/expand_button",
+      "bounds": [
+        853,
+        1875,
+        1032,
+        1965
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-2-0-1",
+      "text": "闹钟",
+      "desc": "闹钟",
+      "className": "android.widget.ImageView",
+      "viewIdResourceName": null,
+      "bounds": [
+        536,
+        153,
+        593,
+        207
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-2-0-2",
+      "text": "网速 状态栏项目 174 B/s",
+      "desc": "网速 状态栏项目 174 B/s",
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/network_speed",
+      "bounds": [
+        641,
+        153,
+        707,
+        207
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-2-0-3",
+      "text": "振铃器静音。",
+      "desc": "振铃器静音。",
+      "className": "android.widget.ImageView",
+      "viewIdResourceName": null,
+      "bounds": [
+        593,
+        153,
+        641,
+        207
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-2-0-4",
+      "text": "WLAN 信号满格。",
+      "desc": "WLAN 信号满格。",
+      "className": "android.widget.ImageView",
+      "viewIdResourceName": "com.android.systemui:id/wifi_signal",
+      "bounds": [
+        707,
+        156,
+        773,
+        204
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-2-0-5",
+      "text": "中国联通，信号满格。",
+      "desc": "中国联通，信号满格。",
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/mobile_combo",
+      "bounds": [
+        773,
+        153,
+        836,
+        207
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-2-0-5-0",
+      "text": "5G",
+      "desc": "5G",
+      "className": "android.widget.ImageView",
+      "viewIdResourceName": "com.android.systemui:id/mobile_type",
+      "bounds": [
+        773,
+        156,
+        836,
+        204
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-2-0-6",
+      "text": "中国电信，信号满格。",
+      "desc": "中国电信，信号满格。",
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/mobile_combo",
+      "bounds": [
+        836,
+        153,
+        899,
+        207
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-2-0-6-0",
+      "text": "5G",
+      "desc": "5G",
+      "className": "android.widget.ImageView",
+      "viewIdResourceName": "com.android.systemui:id/mobile_type",
+      "bounds": [
+        836,
+        156,
+        899,
+        204
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-2-0-7",
+      "text": "电池 状态栏项目 充电中, 剩余电量百分…",
+      "desc": "电池 状态栏项目 充电中, 剩余电量百分…",
+      "className": "android.widget.LinearLayout",
+      "viewIdResourceName": "com.android.systemui:id/batteryRemainingIcon",
+      "bounds": [
+        899,
+        153,
+        1014,
+        207
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-2-1",
+      "text": "14:01",
+      "desc": "14:01",
+      "className": "android.widget.TextView",
+      "viewIdResourceName": "com.android.systemui:id/qs_footer_clock",
+      "bounds": [
+        72,
+        240,
+        576,
+        329
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-2-2",
+      "text": "7月16日 周四",
+      "desc": null,
+      "className": "android.widget.TextView",
+      "viewIdResourceName": "com.android.systemui:id/oplus_date",
+      "bounds": [
+        301,
+        262,
+        894,
+        319
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-2-3",
+      "text": "打开通知与控制中心",
+      "desc": "打开通知与控制中心",
+      "className": "android.widget.ImageView",
+      "viewIdResourceName": "com.android.systemui:id/settings_button",
+      "bounds": [
+        918,
+        240,
+        1008,
+        348
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-3",
+      "text": "清除所有通知。",
+      "desc": "清除所有通知。",
+      "className": "android.widget.ImageView",
+      "viewIdResourceName": "com.android.systemui:id/clear_all",
+      "bounds": [
+        468,
+        2086,
+        612,
+        2230
+      ],
+      "clickable": true,
+      "editable": false
+    }
+  ],
+  "pkg": "com.android.systemui",
+  "activity": "android.widget.FrameLayout",
+  "ts": 1784181714092,
+  "device": "OPPO PLJ110"
+}

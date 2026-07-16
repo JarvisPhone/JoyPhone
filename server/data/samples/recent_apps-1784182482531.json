@@ -1,0 +1,325 @@
+{
+  "type": "sample.capture",
+  "label": "最近任务",
+  "nodeTree": [
+    {
+      "id": "0-0",
+      "text": "无最近任务",
+      "desc": "无最近任务",
+      "className": "android.widget.ListView",
+      "viewIdResourceName": "com.android.launcher:id/overview_panel",
+      "bounds": [
+        0,
+        0,
+        1080,
+        2374
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-0-0",
+      "text": "小米运动健康",
+      "desc": "小米运动健康",
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": null,
+      "bounds": [
+        0,
+        388,
+        606,
+        1882
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-0-0-0",
+      "text": "oplus task header",
+      "desc": null,
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.launcher:id/oplus_task_header",
+      "bounds": [
+        0,
+        388,
+        606,
+        515
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-0-0-1",
+      "text": "更多",
+      "desc": "更多",
+      "className": "android.widget.ImageButton",
+      "viewIdResourceName": "com.android.launcher:id/oplus_task_header_menu_button_stack",
+      "bounds": [
+        199,
+        515,
+        391,
+        600
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-0-1",
+      "text": "微信",
+      "desc": "微信",
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": null,
+      "bounds": [
+        0,
+        347,
+        650,
+        1916
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-0-1-0",
+      "text": "oplus task header",
+      "desc": null,
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.launcher:id/oplus_task_header",
+      "bounds": [
+        0,
+        347,
+        650,
+        481
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-0-1-1",
+      "text": "更多",
+      "desc": "更多",
+      "className": "android.widget.ImageButton",
+      "viewIdResourceName": "com.android.launcher:id/oplus_task_header_menu_button_stack",
+      "bounds": [
+        223,
+        481,
+        424,
+        570
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-0-2",
+      "text": "微信",
+      "desc": "微信",
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": null,
+      "bounds": [
+        32,
+        320,
+        705,
+        1939
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-0-2-0",
+      "text": "oplus task header",
+      "desc": null,
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.launcher:id/oplus_task_header",
+      "bounds": [
+        32,
+        320,
+        705,
+        458
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-0-2-1",
+      "text": "更多",
+      "desc": "更多",
+      "className": "android.widget.ImageButton",
+      "viewIdResourceName": "com.android.launcher:id/oplus_task_header_menu_button_stack",
+      "bounds": [
+        265,
+        458,
+        472,
+        550
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-0-3",
+      "text": "飞书",
+      "desc": "飞书",
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": null,
+      "bounds": [
+        189,
+        283,
+        891,
+        1970
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-0-3-0",
+      "text": "oplus task header",
+      "desc": null,
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.launcher:id/oplus_task_header",
+      "bounds": [
+        189,
+        283,
+        891,
+        427
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-0-3-1",
+      "text": "更多",
+      "desc": "更多",
+      "className": "android.widget.ImageButton",
+      "viewIdResourceName": "com.android.launcher:id/oplus_task_header_menu_button_stack",
+      "bounds": [
+        432,
+        427,
+        648,
+        523
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-0-4",
+      "text": "JoyPhoneAgent",
+      "desc": "JoyPhoneAgent",
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": null,
+      "bounds": [
+        780,
+        265,
+        1080,
+        1985
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-0-4-0",
+      "text": "oplus task header",
+      "desc": null,
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.launcher:id/oplus_task_header",
+      "bounds": [
+        780,
+        265,
+        1080,
+        412
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-0-4-1",
+      "text": "更多",
+      "desc": "更多",
+      "className": "android.widget.ImageButton",
+      "viewIdResourceName": "com.android.launcher:id/oplus_task_header_menu_button_stack",
+      "bounds": [
+        1028,
+        412,
+        1080,
+        509
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1",
+      "text": "清除",
+      "desc": "清除",
+      "className": "android.widget.Button",
+      "viewIdResourceName": "com.android.launcher:id/btn_clear",
+      "bounds": [
+        312,
+        2110,
+        768,
+        2242
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-4",
+      "text": "拨号",
+      "desc": "拨号",
+      "className": "android.widget.TextView",
+      "viewIdResourceName": null,
+      "bounds": [
+        87,
+        1992,
+        314,
+        2207
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-5",
+      "text": "“信息”有 489 条通知",
+      "desc": "“信息”有 489 条通知",
+      "className": "android.widget.TextView",
+      "viewIdResourceName": null,
+      "bounds": [
+        314,
+        1992,
+        540,
+        2207
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-6",
+      "text": "浏览器",
+      "desc": "浏览器",
+      "className": "android.widget.TextView",
+      "viewIdResourceName": null,
+      "bounds": [
+        540,
+        1992,
+        766,
+        2207
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-7",
+      "text": "相机",
+      "desc": "相机",
+      "className": "android.widget.TextView",
+      "viewIdResourceName": null,
+      "bounds": [
+        766,
+        1992,
+        993,
+        2207
+      ],
+      "clickable": true,
+      "editable": false
+    }
+  ],
+  "pkg": "com.android.launcher",
+  "activity": "com.android.launcher.Launcher",
+  "ts": 1784182482531,
+  "device": "OPPO PLJ110"
+}

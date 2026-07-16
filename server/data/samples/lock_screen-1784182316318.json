@@ -1,0 +1,100 @@
+{
+  "type": "sample.capture",
+  "label": "锁屏",
+  "nodeTree": [
+    {
+      "id": "0-2",
+      "text": "14:11",
+      "desc": "14:11",
+      "className": "android.widget.LinearLayout",
+      "viewIdResourceName": "com.oplus.keyguard.clock.base:id/clock_time",
+      "bounds": [
+        280,
+        391,
+        800,
+        659
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-5",
+      "text": "实时天气",
+      "desc": null,
+      "className": "androidx.recyclerview.widget.RecyclerView",
+      "viewIdResourceName": "com.oplus.keyguard.style.widgets:id/recyclerView",
+      "bounds": [
+        103,
+        660,
+        977,
+        886
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-5-0",
+      "text": "实时天气",
+      "desc": "实时天气",
+      "className": "android.view.ViewGroup",
+      "viewIdResourceName": "com.oplus.keyguard.style.widgets:id/remote_view_container",
+      "bounds": [
+        108,
+        665,
+        540,
+        881
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-5-1",
+      "text": "黄历",
+      "desc": "黄历",
+      "className": "android.view.ViewGroup",
+      "viewIdResourceName": "com.oplus.keyguard.style.widgets:id/remote_view_container",
+      "bounds": [
+        540,
+        665,
+        972,
+        881
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-6",
+      "text": "设备已锁定",
+      "desc": null,
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/lock_icon_view",
+      "bounds": [
+        396,
+        132,
+        684,
+        276
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-6-0",
+      "text": "设备已锁定",
+      "desc": "设备已锁定",
+      "className": "android.widget.ImageView",
+      "viewIdResourceName": "com.android.systemui:id/lock_icon",
+      "bounds": [
+        468,
+        132,
+        612,
+        276
+      ],
+      "clickable": false,
+      "editable": false
+    }
+  ],
+  "pkg": "com.android.systemui",
+  "activity": "android.widget.FrameLayout",
+  "ts": 1784182316318,
+  "device": "OPPO PLJ110"
+}

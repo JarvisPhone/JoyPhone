@@ -1,0 +1,430 @@
+{
+  "type": "sample.capture",
+  "label": "桌面其他屏",
+  "nodeTree": [
+    {
+      "id": "0-0",
+      "text": "清除",
+      "desc": "清除",
+      "className": "android.widget.Button",
+      "viewIdResourceName": "com.android.launcher:id/btn_clear",
+      "bounds": [
+        312,
+        2110,
+        768,
+        2242
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-1",
+      "text": "时钟",
+      "desc": null,
+      "className": "android.widget.ScrollView",
+      "viewIdResourceName": "com.android.launcher:id/workspace",
+      "bounds": [
+        0,
+        0,
+        1080,
+        2374
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-1-10",
+      "text": "全局搜索",
+      "desc": "全局搜索",
+      "className": "com.android.launcher3.widget.CustomLauncherAppWidgetHostView",
+      "viewIdResourceName": null,
+      "bounds": [
+        48,
+        195,
+        1032,
+        465
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-1-10-0",
+      "text": "搜索本机和全网内容",
+      "desc": null,
+      "className": "android.widget.RelativeLayout",
+      "viewIdResourceName": "com.heytap.quicksearchbox:id/root_widget",
+      "bounds": [
+        87,
+        258,
+        993,
+        402
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-10-0-1",
+      "text": "iv left",
+      "desc": null,
+      "className": "android.widget.ImageView",
+      "viewIdResourceName": "com.heytap.quicksearchbox:id/iv_left",
+      "bounds": [
+        693,
+        276,
+        801,
+        384
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-10-0-3",
+      "text": "搜索",
+      "desc": null,
+      "className": "android.widget.TextView",
+      "viewIdResourceName": "com.heytap.quicksearchbox:id/tv_search_result",
+      "bounds": [
+        813,
+        285,
+        981,
+        375
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-11",
+      "text": "招商银行",
+      "desc": "“招商银行”有 30 条通知",
+      "className": "android.widget.TextView",
+      "viewIdResourceName": null,
+      "bounds": [
+        48,
+        465,
+        294,
+        735
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-12",
+      "text": "中国银行",
+      "desc": "中国银行",
+      "className": "android.widget.TextView",
+      "viewIdResourceName": null,
+      "bounds": [
+        294,
+        465,
+        540,
+        735
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-13",
+      "text": "中国工商银行",
+      "desc": "中国工商银行",
+      "className": "android.widget.TextView",
+      "viewIdResourceName": null,
+      "bounds": [
+        48,
+        735,
+        294,
+        1005
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-14",
+      "text": "同花顺",
+      "desc": "同花顺",
+      "className": "android.widget.TextView",
+      "viewIdResourceName": null,
+      "bounds": [
+        294,
+        735,
+        540,
+        1005
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-15",
+      "text": "文件夹：工具",
+      "desc": "文件夹：工具",
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": null,
+      "bounds": [
+        540,
+        465,
+        1032,
+        1005
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-15-0",
+      "text": "工具",
+      "desc": null,
+      "className": "android.widget.TextView",
+      "viewIdResourceName": "com.android.launcher:id/folder_icon_name",
+      "bounds": [
+        540,
+        931,
+        1032,
+        1005
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-15-1",
+      "text": "轮播图标签, 第 1 页，共 3 页, …",
+      "desc": "轮播图标签, 第 1 页，共 3 页, …",
+      "className": "android.view.View",
+      "viewIdResourceName": "com.android.launcher:id/folder_icon_indicator",
+      "bounds": [
+        736,
+        952,
+        835,
+        967
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-16",
+      "text": "文件夹：购物",
+      "desc": "文件夹：购物",
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": null,
+      "bounds": [
+        48,
+        1005,
+        540,
+        1545
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-16-0",
+      "text": "购物",
+      "desc": null,
+      "className": "android.widget.TextView",
+      "viewIdResourceName": "com.android.launcher:id/folder_icon_name",
+      "bounds": [
+        48,
+        1471,
+        540,
+        1545
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-16-1",
+      "text": "轮播图标签, 第 1 页，共 1 页, …",
+      "desc": "轮播图标签, 第 1 页，共 1 页, …",
+      "className": "android.view.View",
+      "viewIdResourceName": "com.android.launcher:id/folder_icon_indicator",
+      "bounds": [
+        277,
+        1492,
+        310,
+        1507
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-17",
+      "text": "文件夹：社交",
+      "desc": "文件夹：社交",
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": null,
+      "bounds": [
+        540,
+        1005,
+        1032,
+        1545
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-17-0",
+      "text": "社交",
+      "desc": null,
+      "className": "android.widget.TextView",
+      "viewIdResourceName": "com.android.launcher:id/folder_icon_name",
+      "bounds": [
+        540,
+        1471,
+        1032,
+        1545
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-17-1",
+      "text": "轮播图标签, 第 1 页，共 1 页, …",
+      "desc": "轮播图标签, 第 1 页，共 1 页, …",
+      "className": "android.view.View",
+      "viewIdResourceName": "com.android.launcher:id/folder_icon_indicator",
+      "bounds": [
+        769,
+        1492,
+        802,
+        1507
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-18",
+      "text": "员工用车",
+      "desc": "员工用车",
+      "className": "android.widget.TextView",
+      "viewIdResourceName": null,
+      "bounds": [
+        48,
+        1545,
+        294,
+        1815
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-19",
+      "text": "支付宝",
+      "desc": "支付宝",
+      "className": "android.widget.TextView",
+      "viewIdResourceName": null,
+      "bounds": [
+        294,
+        1545,
+        540,
+        1815
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-20",
+      "text": "高德地图",
+      "desc": "高德地图",
+      "className": "android.widget.TextView",
+      "viewIdResourceName": null,
+      "bounds": [
+        540,
+        1545,
+        786,
+        1815
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-21",
+      "text": "录音",
+      "desc": "录音",
+      "className": "android.widget.TextView",
+      "viewIdResourceName": null,
+      "bounds": [
+        786,
+        1545,
+        1032,
+        1815
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-3",
+      "text": "问小布按钮",
+      "desc": "问小布按钮",
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.launcher:id/page_indicator",
+      "bounds": [
+        421,
+        1894,
+        658,
+        1984
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-4",
+      "text": "拨号",
+      "desc": "拨号",
+      "className": "android.widget.TextView",
+      "viewIdResourceName": null,
+      "bounds": [
+        48,
+        2062,
+        294,
+        2296
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-5",
+      "text": "“信息”有 489 条通知",
+      "desc": "“信息”有 489 条通知",
+      "className": "android.widget.TextView",
+      "viewIdResourceName": null,
+      "bounds": [
+        294,
+        2062,
+        540,
+        2296
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-6",
+      "text": "浏览器",
+      "desc": "浏览器",
+      "className": "android.widget.TextView",
+      "viewIdResourceName": null,
+      "bounds": [
+        540,
+        2062,
+        786,
+        2296
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-7",
+      "text": "相机",
+      "desc": "相机",
+      "className": "android.widget.TextView",
+      "viewIdResourceName": null,
+      "bounds": [
+        786,
+        2062,
+        1032,
+        2296
+      ],
+      "clickable": true,
+      "editable": false
+    }
+  ],
+  "pkg": "com.android.launcher",
+  "activity": "com.android.launcher.Launcher",
+  "ts": 1784181581362,
+  "device": "OPPO PLJ110"
+}

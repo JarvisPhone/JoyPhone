@@ -1,0 +1,475 @@
+{
+  "type": "sample.capture",
+  "label": "目标App内(飞书)",
+  "nodeTree": [
+    {
+      "id": "0-0-0-0",
+      "text": "Ra",
+      "desc": null,
+      "className": "android.widget.LinearLayout",
+      "viewIdResourceName": "com.ss.android.lark:id/tab_title_container",
+      "bounds": [
+        0,
+        120,
+        1080,
+        300
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-0-0-0-0",
+      "text": "avatar click wrapper",
+      "desc": null,
+      "className": "android.view.View",
+      "viewIdResourceName": "com.ss.android.lark:id/avatar_click_wrapper",
+      "bounds": [
+        34,
+        145,
+        178,
+        289
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-0-0-0-1",
+      "text": null,
+      "desc": null,
+      "className": "android.widget.ImageView",
+      "viewIdResourceName": null,
+      "bounds": [
+        51,
+        162,
+        159,
+        270
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-0-0-0-2",
+      "text": "label click wrapper",
+      "desc": null,
+      "className": "android.view.View",
+      "viewIdResourceName": "com.ss.android.lark:id/label_click_wrapper",
+      "bounds": [
+        189,
+        145,
+        253,
+        263
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-0-0-0-3",
+      "text": "Ra",
+      "desc": null,
+      "className": "android.view.ViewGroup",
+      "viewIdResourceName": "com.ss.android.lark:id/label",
+      "bounds": [
+        189,
+        159,
+        253,
+        222
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-0-0-0-5-0",
+      "text": "function btn 1",
+      "desc": null,
+      "className": "android.widget.ImageView",
+      "viewIdResourceName": "com.ss.android.lark:id/function_btn_1",
+      "bounds": [
+        831,
+        174,
+        903,
+        246
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-0-0-0-5-1",
+      "text": "function btn 2",
+      "desc": null,
+      "className": "android.widget.ImageView",
+      "viewIdResourceName": "com.ss.android.lark:id/function_btn_2",
+      "bounds": [
+        963,
+        174,
+        1035,
+        246
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-0-0-1-0-0-0-0",
+      "text": "Ra",
+      "desc": null,
+      "className": "android.view.ViewGroup",
+      "viewIdResourceName": "com.ss.android.lark:id/shortcut_item_container",
+      "bounds": [
+        21,
+        318,
+        193,
+        558
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-0-0-1-0-0-0-1",
+      "text": "MoltPulse",
+      "desc": null,
+      "className": "android.view.ViewGroup",
+      "viewIdResourceName": "com.ss.android.lark:id/shortcut_item_container",
+      "bounds": [
+        193,
+        318,
+        366,
+        558
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-0-0-1-0-0-0-2",
+      "text": "MoltPulse_News",
+      "desc": null,
+      "className": "android.view.ViewGroup",
+      "viewIdResourceName": "com.ss.android.lark:id/shortcut_item_container",
+      "bounds": [
+        366,
+        318,
+        538,
+        558
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-0-0-1-0-0-0-3",
+      "text": "Android知识总结",
+      "desc": null,
+      "className": "android.view.ViewGroup",
+      "viewIdResourceName": "com.ss.android.lark:id/shortcut_item_container",
+      "bounds": [
+        538,
+        318,
+        711,
+        558
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-0-0-1-0-0-0-4",
+      "text": "Love-Death-Rebots",
+      "desc": null,
+      "className": "android.view.ViewGroup",
+      "viewIdResourceName": "com.ss.android.lark:id/shortcut_item_container",
+      "bounds": [
+        711,
+        318,
+        883,
+        558
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-0-0-1-0-0-0-5",
+      "text": "展开",
+      "desc": null,
+      "className": "android.view.ViewGroup",
+      "viewIdResourceName": "com.ss.android.lark:id/shortcut_item_container",
+      "bounds": [
+        883,
+        318,
+        1056,
+        558
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-0-0-1-0-0-1",
+      "text": null,
+      "desc": null,
+      "className": "android.view.View",
+      "viewIdResourceName": null,
+      "bounds": [
+        0,
+        576,
+        156,
+        720
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-0-0-1-0-0-2",
+      "text": "消息",
+      "desc": null,
+      "className": "android.widget.TextView",
+      "viewIdResourceName": "com.ss.android.lark:id/tab_first",
+      "bounds": [
+        174,
+        600,
+        378,
+        696
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-0-0-1-0-0-3",
+      "text": "未读 1",
+      "desc": null,
+      "className": "android.widget.TextView",
+      "viewIdResourceName": "com.ss.android.lark:id/tab_second",
+      "bounds": [
+        378,
+        600,
+        608,
+        696
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-0-0-1-0-0-4-0-0",
+      "text": "Android AI 开发组",
+      "desc": null,
+      "className": "androidx.recyclerview.widget.RecyclerView",
+      "viewIdResourceName": "com.ss.android.lark:id/rv_inbox",
+      "bounds": [
+        0,
+        720,
+        1080,
+        2131
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-0-0-1-0-0-4-0-0-0-0",
+      "text": "Android AI 开发组",
+      "desc": null,
+      "className": "android.view.ViewGroup",
+      "viewIdResourceName": "com.ss.android.lark:id/content_view",
+      "bounds": [
+        0,
+        720,
+        1080,
+        913
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-0-0-1-0-0-4-0-0-1-0",
+      "text": "Robotaxi_京东版Daily Bu…",
+      "desc": null,
+      "className": "android.view.ViewGroup",
+      "viewIdResourceName": "com.ss.android.lark:id/content_view",
+      "bounds": [
+        0,
+        913,
+        1080,
+        1108
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-0-0-1-0-0-4-0-0-2-0",
+      "text": "VoxCPM2 交流群｜OpenBMB …",
+      "desc": null,
+      "className": "android.view.ViewGroup",
+      "viewIdResourceName": "com.ss.android.lark:id/content_view",
+      "bounds": [
+        0,
+        1108,
+        1080,
+        1303
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-0-0-1-0-0-4-0-0-3-0",
+      "text": "飞书一键养虾🦞6群｜OpenClaw",
+      "desc": null,
+      "className": "android.view.ViewGroup",
+      "viewIdResourceName": "com.ss.android.lark:id/content_view",
+      "bounds": [
+        0,
+        1303,
+        1080,
+        1498
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-0-0-1-0-0-4-0-0-4-0",
+      "text": "Hermes Agent",
+      "desc": null,
+      "className": "android.view.ViewGroup",
+      "viewIdResourceName": "com.ss.android.lark:id/content_view",
+      "bounds": [
+        0,
+        1498,
+        1080,
+        1691
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-0-0-1-0-0-4-0-0-5-0",
+      "text": "Ra",
+      "desc": null,
+      "className": "android.view.ViewGroup",
+      "viewIdResourceName": "com.ss.android.lark:id/content_view",
+      "bounds": [
+        0,
+        1691,
+        1080,
+        1884
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-0-0-1-0-0-4-0-0-6-0",
+      "text": "【AY5-J】wms/pms/ams o…",
+      "desc": null,
+      "className": "android.view.ViewGroup",
+      "viewIdResourceName": "com.ss.android.lark:id/content_view",
+      "bounds": [
+        0,
+        1884,
+        1080,
+        2077
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-0-0-1-0-0-4-0-0-7-0",
+      "text": "飞行社",
+      "desc": null,
+      "className": "android.view.ViewGroup",
+      "viewIdResourceName": "com.ss.android.lark:id/content_view",
+      "bounds": [
+        0,
+        2077,
+        1080,
+        2131
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-0-0-2",
+      "text": "消息",
+      "desc": null,
+      "className": "android.view.ViewGroup",
+      "viewIdResourceName": null,
+      "bounds": [
+        0,
+        2131,
+        180,
+        2326
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-0-0-3",
+      "text": "日历",
+      "desc": null,
+      "className": "android.view.ViewGroup",
+      "viewIdResourceName": "com.ss.android.lark:id/tab_calendar",
+      "bounds": [
+        180,
+        2131,
+        360,
+        2326
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-0-0-4",
+      "text": "工作台",
+      "desc": null,
+      "className": "android.view.ViewGroup",
+      "viewIdResourceName": null,
+      "bounds": [
+        360,
+        2131,
+        540,
+        2326
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-0-0-5",
+      "text": "云文档",
+      "desc": null,
+      "className": "android.view.ViewGroup",
+      "viewIdResourceName": null,
+      "bounds": [
+        540,
+        2131,
+        720,
+        2326
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-0-0-6",
+      "text": "通讯录",
+      "desc": null,
+      "className": "android.view.ViewGroup",
+      "viewIdResourceName": null,
+      "bounds": [
+        720,
+        2131,
+        900,
+        2326
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-0-0-7",
+      "text": "更多",
+      "desc": null,
+      "className": "android.view.ViewGroup",
+      "viewIdResourceName": null,
+      "bounds": [
+        900,
+        2131,
+        1080,
+        2326
+      ],
+      "clickable": true,
+      "editable": false
+    }
+  ],
+  "pkg": "com.ss.android.lark",
+  "activity": "com.android.launcher.Launcher",
+  "ts": 1784182180348,
+  "device": "OPPO PLJ110"
+}

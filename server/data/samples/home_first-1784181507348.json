@@ -1,0 +1,505 @@
+{
+  "type": "sample.capture",
+  "label": "桌面首屏",
+  "nodeTree": [
+    {
+      "id": "0-0",
+      "text": "清除",
+      "desc": "清除",
+      "className": "android.widget.Button",
+      "viewIdResourceName": "com.android.launcher:id/btn_clear",
+      "bounds": [
+        312,
+        2110,
+        768,
+        2242
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-1",
+      "text": "时钟",
+      "desc": null,
+      "className": "android.widget.ScrollView",
+      "viewIdResourceName": "com.android.launcher:id/workspace",
+      "bounds": [
+        0,
+        0,
+        1080,
+        2374
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-1-0",
+      "text": "时钟",
+      "desc": "时钟",
+      "className": "com.android.launcher3.widget.CustomLauncherAppWidgetHostView",
+      "viewIdResourceName": null,
+      "bounds": [
+        48,
+        195,
+        1032,
+        465
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-1-0-0",
+      "text": "13",
+      "desc": "13",
+      "className": "android.widget.TextView",
+      "viewIdResourceName": "com.coloros.alarmclock:id/local_hour_txt",
+      "bounds": [
+        93,
+        211,
+        244,
+        416
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-0-1",
+      "text": ":",
+      "desc": null,
+      "className": "android.widget.TextView",
+      "viewIdResourceName": "com.coloros.alarmclock:id/local_colon_txt",
+      "bounds": [
+        244,
+        210,
+        284,
+        403
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-0-2",
+      "text": "58",
+      "desc": "58",
+      "className": "android.widget.TextView",
+      "viewIdResourceName": "com.coloros.alarmclock:id/local_minutes_txt",
+      "bounds": [
+        284,
+        211,
+        470,
+        416
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-0-3",
+      "text": "阴",
+      "desc": null,
+      "className": "android.widget.LinearLayout",
+      "viewIdResourceName": "com.coloros.alarmclock:id/local_weather_description",
+      "bounds": [
+        822,
+        263,
+        987,
+        338
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-0-3-0",
+      "text": "阴",
+      "desc": "阴",
+      "className": "android.widget.ImageView",
+      "viewIdResourceName": "com.coloros.alarmclock:id/iv_weather_type",
+      "bounds": [
+        846,
+        263,
+        921,
+        338
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-0-3-1",
+      "text": "32‎°‎",
+      "desc": null,
+      "className": "android.widget.TextView",
+      "viewIdResourceName": "com.coloros.alarmclock:id/local_weather_info_txt",
+      "bounds": [
+        927,
+        273,
+        987,
+        327
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-0-4",
+      "text": "7月16日  周四",
+      "desc": "7月16日  周四",
+      "className": "android.widget.TextView",
+      "viewIdResourceName": "com.coloros.alarmclock:id/local_date_info_txt",
+      "bounds": [
+        733,
+        338,
+        975,
+        392
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-1",
+      "text": "小布建议",
+      "desc": null,
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": null,
+      "bounds": [
+        48,
+        735,
+        1032,
+        1275
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-1-1",
+      "text": "知乎",
+      "desc": null,
+      "className": "androidx.recyclerview.widget.RecyclerView",
+      "viewIdResourceName": "com.oplus.seedling.cardgroup.pluginapp:id/carousel_view",
+      "bounds": [
+        69,
+        757,
+        1011,
+        1207
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-1-1-1-0-0",
+      "text": null,
+      "desc": null,
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": null,
+      "bounds": [
+        75,
+        763,
+        513,
+        1201
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-1-1-0-1",
+      "text": "知乎",
+      "desc": null,
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": null,
+      "bounds": [
+        567,
+        763,
+        1005,
+        1201
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-1-1-0-1-0-0-1-1-0",
+      "text": "知乎",
+      "desc": "知乎",
+      "className": "android.view.ViewGroup",
+      "viewIdResourceName": "com.nearme.instant.card:id/ref_33",
+      "bounds": [
+        603,
+        778,
+        792,
+        967
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-1-1-1-0-1-0-0-1-3-0",
+      "text": "哔哩哔哩 有35条通知",
+      "desc": "哔哩哔哩 有35条通知",
+      "className": "android.view.ViewGroup",
+      "viewIdResourceName": "com.nearme.instant.card:id/ref_45",
+      "bounds": [
+        802,
+        778,
+        991,
+        967
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-1-1-1-0-1-0-0-1-3-0-2-0",
+      "text": "35",
+      "desc": "35",
+      "className": "android.view.View",
+      "viewIdResourceName": "com.nearme.instant.card:id/ref_51",
+      "bounds": [
+        910,
+        778,
+        991,
+        838
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-1-1-1-0-1-0-0-3-2-0",
+      "text": "JoyPhoneAgent",
+      "desc": "JoyPhoneAgent",
+      "className": "android.view.ViewGroup",
+      "viewIdResourceName": "com.nearme.instant.card:id/ref_56",
+      "bounds": [
+        603,
+        977,
+        792,
+        1166
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-1-1-1-0-1-0-0-3-4-0",
+      "text": "小红书 有3条通知",
+      "desc": "小红书 有3条通知",
+      "className": "android.view.ViewGroup",
+      "viewIdResourceName": "com.nearme.instant.card:id/ref_68",
+      "bounds": [
+        802,
+        977,
+        991,
+        1166
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-1-1-1-0-1-0-0-3-4-0-2-0",
+      "text": "3",
+      "desc": "3",
+      "className": "android.view.View",
+      "viewIdResourceName": "com.nearme.instant.card:id/ref_74",
+      "bounds": [
+        931,
+        977,
+        991,
+        1037
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-1-2",
+      "text": "软件商店",
+      "desc": "“软件商店”有 3 条通知",
+      "className": "android.widget.TextView",
+      "viewIdResourceName": null,
+      "bounds": [
+        48,
+        1275,
+        294,
+        1545
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-3",
+      "text": "相册",
+      "desc": "相册",
+      "className": "android.widget.TextView",
+      "viewIdResourceName": null,
+      "bounds": [
+        294,
+        1275,
+        540,
+        1545
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-4",
+      "text": "计算器",
+      "desc": "计算器",
+      "className": "android.widget.TextView",
+      "viewIdResourceName": null,
+      "bounds": [
+        540,
+        1275,
+        786,
+        1545
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-5",
+      "text": "设置",
+      "desc": "设置",
+      "className": "android.widget.TextView",
+      "viewIdResourceName": null,
+      "bounds": [
+        786,
+        1275,
+        1032,
+        1545
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-6",
+      "text": "便签",
+      "desc": "便签",
+      "className": "android.widget.TextView",
+      "viewIdResourceName": null,
+      "bounds": [
+        48,
+        1545,
+        294,
+        1815
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-7",
+      "text": "微信",
+      "desc": "“微信”有 3 条通知",
+      "className": "android.widget.TextView",
+      "viewIdResourceName": null,
+      "bounds": [
+        294,
+        1545,
+        540,
+        1815
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-8",
+      "text": "京ME",
+      "desc": "京ME",
+      "className": "android.widget.TextView",
+      "viewIdResourceName": null,
+      "bounds": [
+        540,
+        1545,
+        786,
+        1815
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-9",
+      "text": "飞书",
+      "desc": "“飞书”有 4 条通知",
+      "className": "android.widget.TextView",
+      "viewIdResourceName": null,
+      "bounds": [
+        786,
+        1545,
+        1032,
+        1815
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-3",
+      "text": "问小布按钮",
+      "desc": "问小布按钮",
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.launcher:id/page_indicator",
+      "bounds": [
+        421,
+        1894,
+        658,
+        1984
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-4",
+      "text": "拨号",
+      "desc": "拨号",
+      "className": "android.widget.TextView",
+      "viewIdResourceName": null,
+      "bounds": [
+        48,
+        2062,
+        294,
+        2296
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-5",
+      "text": "“信息”有 489 条通知",
+      "desc": "“信息”有 489 条通知",
+      "className": "android.widget.TextView",
+      "viewIdResourceName": null,
+      "bounds": [
+        294,
+        2062,
+        540,
+        2296
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-6",
+      "text": "浏览器",
+      "desc": "浏览器",
+      "className": "android.widget.TextView",
+      "viewIdResourceName": null,
+      "bounds": [
+        540,
+        2062,
+        786,
+        2296
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-7",
+      "text": "相机",
+      "desc": "相机",
+      "className": "android.widget.TextView",
+      "viewIdResourceName": null,
+      "bounds": [
+        786,
+        2062,
+        1032,
+        2296
+      ],
+      "clickable": true,
+      "editable": false
+    }
+  ],
+  "pkg": "com.android.launcher",
+  "activity": "com.android.launcher.Launcher",
+  "ts": 1784181507348,
+  "device": "OPPO PLJ110"
+}

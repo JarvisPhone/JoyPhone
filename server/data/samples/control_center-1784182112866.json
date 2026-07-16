@@ -1,0 +1,1180 @@
+{
+  "type": "sample.capture",
+  "label": "控制中心",
+  "nodeTree": [
+    {
+      "id": "0-1-0",
+      "text": "权限",
+      "desc": "权限",
+      "className": "android.widget.LinearLayout",
+      "viewIdResourceName": "com.android.systemui:id/privacy_chip",
+      "bounds": [
+        885,
+        54,
+        975,
+        108
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-1",
+      "text": "14:08",
+      "desc": "14:08",
+      "className": "android.widget.TextView",
+      "viewIdResourceName": "com.android.systemui:id/oplus_qs_clock",
+      "bounds": [
+        105,
+        124,
+        226,
+        170
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-2-1",
+      "text": "闹钟",
+      "desc": "闹钟",
+      "className": "android.widget.ImageView",
+      "viewIdResourceName": null,
+      "bounds": [
+        497,
+        120,
+        554,
+        174
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-1-2-2",
+      "text": "网速 状态栏项目 25 B/s",
+      "desc": "网速 状态栏项目 25 B/s",
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/network_speed",
+      "bounds": [
+        602,
+        120,
+        668,
+        174
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-1-2-3",
+      "text": "振铃器静音。",
+      "desc": "振铃器静音。",
+      "className": "android.widget.ImageView",
+      "viewIdResourceName": null,
+      "bounds": [
+        554,
+        120,
+        602,
+        174
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-1-2-4",
+      "text": "WLAN 信号满格。",
+      "desc": "WLAN 信号满格。",
+      "className": "android.widget.ImageView",
+      "viewIdResourceName": "com.android.systemui:id/wifi_signal",
+      "bounds": [
+        668,
+        123,
+        734,
+        171
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-1-2-5",
+      "text": "中国联通，信号满格。",
+      "desc": "中国联通，信号满格。",
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/mobile_combo",
+      "bounds": [
+        734,
+        120,
+        797,
+        174
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-1-2-5-0",
+      "text": "5G",
+      "desc": "5G",
+      "className": "android.widget.ImageView",
+      "viewIdResourceName": "com.android.systemui:id/mobile_type",
+      "bounds": [
+        734,
+        123,
+        797,
+        171
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-1-2-6",
+      "text": "中国电信，信号满格。",
+      "desc": "中国电信，信号满格。",
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/mobile_combo",
+      "bounds": [
+        797,
+        120,
+        860,
+        174
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-1-2-6-0",
+      "text": "5G",
+      "desc": "5G",
+      "className": "android.widget.ImageView",
+      "viewIdResourceName": "com.android.systemui:id/mobile_type",
+      "bounds": [
+        797,
+        123,
+        860,
+        171
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-1-2-7",
+      "text": "电池 状态栏项目 充电中, 剩余电量百分…",
+      "desc": "电池 状态栏项目 充电中, 剩余电量百分…",
+      "className": "android.widget.LinearLayout",
+      "viewIdResourceName": "com.android.systemui:id/batteryRemainingIcon",
+      "bounds": [
+        860,
+        120,
+        975,
+        174
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-1-3-0",
+      "text": "7月16日 周四",
+      "desc": null,
+      "className": "android.widget.TextView",
+      "viewIdResourceName": "com.android.systemui:id/oplus_qs_date",
+      "bounds": [
+        105,
+        254,
+        351,
+        311
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-3-1",
+      "text": "编辑控制中心",
+      "desc": "编辑控制中心",
+      "className": "android.widget.ImageButton",
+      "viewIdResourceName": "com.android.systemui:id/qs_edit_button",
+      "bounds": [
+        615,
+        234,
+        711,
+        330
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-3-2",
+      "text": "打开设置。",
+      "desc": "打开设置。",
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/quicksettings_settings_button",
+      "bounds": [
+        747,
+        234,
+        843,
+        330
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-3-3",
+      "text": "更多",
+      "desc": "更多",
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/qs_more_button",
+      "bounds": [
+        879,
+        234,
+        975,
+        330
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-4-0-0",
+      "text": "开启",
+      "desc": "WLAN,WLAN 信号满格。,JD_m…",
+      "className": "android.widget.Switch",
+      "viewIdResourceName": "com.android.systemui:id/oplus_separate_qs_resizeable_tile_container",
+      "bounds": [
+        105,
+        390,
+        519,
+        576
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-4-0-0-0",
+      "text": "开启",
+      "desc": "WLAN,WLAN 信号满格。,JD_m…",
+      "className": "android.widget.Switch",
+      "viewIdResourceName": "com.android.systemui:id/left_view",
+      "bounds": [
+        105,
+        390,
+        261,
+        576
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-4-0-0-1",
+      "text": "打开WLAN设置。",
+      "desc": "打开WLAN设置。",
+      "className": "android.widget.Button",
+      "viewIdResourceName": "com.android.systemui:id/label_container",
+      "bounds": [
+        261,
+        390,
+        519,
+        576
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-4-1-0",
+      "text": "开启",
+      "desc": "已连接到Xiaomi Smart Ban…",
+      "className": "android.widget.Switch",
+      "viewIdResourceName": "com.android.systemui:id/oplus_separate_qs_resizeable_tile_container",
+      "bounds": [
+        561,
+        390,
+        975,
+        576
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-4-1-0-0",
+      "text": "开启",
+      "desc": "已连接到Xiaomi Smart Ban…",
+      "className": "android.widget.Switch",
+      "viewIdResourceName": "com.android.systemui:id/left_view",
+      "bounds": [
+        561,
+        390,
+        717,
+        576
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-4-1-0-1",
+      "text": "打开蓝牙设置。",
+      "desc": "打开蓝牙设置。",
+      "className": "android.widget.Button",
+      "viewIdResourceName": "com.android.systemui:id/label_container",
+      "bounds": [
+        717,
+        390,
+        975,
+        576
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-4-2-0",
+      "text": "扬声器",
+      "desc": null,
+      "className": "android.view.ViewGroup",
+      "viewIdResourceName": "com.android.systemui:id/oplus_qs_media_panel",
+      "bounds": [
+        105,
+        618,
+        519,
+        1032
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-4-2-0-0",
+      "text": "扬声器",
+      "desc": "扬声器",
+      "className": "android.widget.ImageButton",
+      "viewIdResourceName": "com.android.systemui:id/oplus_media_output_switch_btn",
+      "bounds": [
+        405,
+        660,
+        477,
+        732
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-4-2-0-2",
+      "text": "上一首",
+      "desc": "上一首",
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/oplus_media_panel_action_pre",
+      "bounds": [
+        147,
+        924,
+        219,
+        996
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-4-2-0-3",
+      "text": "播放",
+      "desc": "播放",
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/oplus_media_panel_action_play_or_pause",
+      "bounds": [
+        276,
+        924,
+        348,
+        996
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-4-2-0-4",
+      "text": "下一首",
+      "desc": "下一首",
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/oplus_media_panel_action_next",
+      "bounds": [
+        405,
+        924,
+        477,
+        996
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-4-3",
+      "text": "屏幕亮度",
+      "desc": "屏幕亮度",
+      "className": "android.widget.AbsSeekBar",
+      "viewIdResourceName": "com.android.systemui:id/vertical_seekbar",
+      "bounds": [
+        561,
+        618,
+        747,
+        1032
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-1-4-4",
+      "text": "自动亮度",
+      "desc": "自动亮度",
+      "className": "android.view.View",
+      "viewIdResourceName": null,
+      "bounds": [
+        600,
+        894,
+        708,
+        1002
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-1-4-5-0",
+      "text": "媒体",
+      "desc": "媒体",
+      "className": "android.widget.AbsSeekBar",
+      "viewIdResourceName": "com.android.systemui:id/vertical_seekbar",
+      "bounds": [
+        789,
+        618,
+        975,
+        1032
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-1-4-5-1",
+      "text": "媒体。点按即可取消静音。",
+      "desc": "媒体。点按即可取消静音。",
+      "className": "android.widget.ImageView",
+      "viewIdResourceName": null,
+      "bounds": [
+        828,
+        894,
+        936,
+        1002
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-1-4-6-0-0-0",
+      "text": "AirPods Pro",
+      "desc": "AirPods Pro",
+      "className": "android.view.ViewGroup",
+      "viewIdResourceName": null,
+      "bounds": [
+        105,
+        1074,
+        291,
+        1260
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-4-6-0-0-1",
+      "text": "设备空间",
+      "desc": null,
+      "className": "android.view.ViewGroup",
+      "viewIdResourceName": null,
+      "bounds": [
+        333,
+        1074,
+        519,
+        1260
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-4-6-0-0-1-0",
+      "text": "设备空间",
+      "desc": "设备空间",
+      "className": "android.widget.ImageView",
+      "viewIdResourceName": "com.android.systemui:id/square_entrance_icon",
+      "bounds": [
+        384,
+        1125,
+        468,
+        1209
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-1-4-7-0",
+      "text": "关闭",
+      "desc": "静音",
+      "className": "android.widget.Switch",
+      "viewIdResourceName": "com.android.systemui:id/oplus_separate_qs_resizeable_tile_container",
+      "bounds": [
+        561,
+        1074,
+        975,
+        1260
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-4-7-0-0",
+      "text": "静音",
+      "desc": "静音",
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/left_view",
+      "bounds": [
+        561,
+        1074,
+        975,
+        1260
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-1-4-7-0-0-0",
+      "text": "静音",
+      "desc": null,
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/oplus_qs_three_stage_layout",
+      "bounds": [
+        561,
+        1074,
+        975,
+        1260
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-4-7-0-0-0-0",
+      "text": "left frame layout",
+      "desc": null,
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/left_frame_layout",
+      "bounds": [
+        585,
+        1074,
+        695,
+        1260
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-4-7-0-0-0-1",
+      "text": "middle frame layout",
+      "desc": null,
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/middle_frame_layout",
+      "bounds": [
+        695,
+        1074,
+        817,
+        1260
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-4-7-0-0-0-2",
+      "text": "静音",
+      "desc": "静音",
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/right_frame_layout",
+      "bounds": [
+        817,
+        1074,
+        939,
+        1260
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-5-0-0",
+      "text": "123 MB",
+      "desc": null,
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/tile_label",
+      "bounds": [
+        84,
+        1506,
+        312,
+        1584
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-5-0-1",
+      "text": "开启",
+      "desc": "中国联通1, 123 MB",
+      "className": "android.widget.Switch",
+      "viewIdResourceName": "com.android.systemui:id/oplus_separate_qs_resizeable_tile_container",
+      "bounds": [
+        105,
+        1320,
+        291,
+        1506
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-5-0-1-0",
+      "text": "中国联通1, 123 MB",
+      "desc": "中国联通1, 123 MB",
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/left_view",
+      "bounds": [
+        105,
+        1320,
+        291,
+        1506
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-1-5-1-0",
+      "text": "手电筒",
+      "desc": null,
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/tile_label",
+      "bounds": [
+        312,
+        1506,
+        540,
+        1584
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-5-1-1",
+      "text": "关闭",
+      "desc": "手电筒",
+      "className": "android.widget.Switch",
+      "viewIdResourceName": "com.android.systemui:id/oplus_separate_qs_resizeable_tile_container",
+      "bounds": [
+        333,
+        1320,
+        519,
+        1506
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-5-1-1-0",
+      "text": "手电筒",
+      "desc": "手电筒",
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/left_view",
+      "bounds": [
+        333,
+        1320,
+        519,
+        1506
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-1-5-2-0",
+      "text": "定位服务",
+      "desc": null,
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/tile_label",
+      "bounds": [
+        540,
+        1506,
+        768,
+        1584
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-5-2-1",
+      "text": "开启",
+      "desc": "定位服务开启。",
+      "className": "android.widget.Switch",
+      "viewIdResourceName": "com.android.systemui:id/oplus_separate_qs_resizeable_tile_container",
+      "bounds": [
+        561,
+        1320,
+        747,
+        1506
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-5-2-1-0",
+      "text": "定位服务开启。",
+      "desc": "定位服务开启。",
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/left_view",
+      "bounds": [
+        561,
+        1320,
+        747,
+        1506
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-1-5-3-0",
+      "text": "飞行模式",
+      "desc": null,
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/tile_label",
+      "bounds": [
+        768,
+        1506,
+        996,
+        1584
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-5-3-1",
+      "text": "关闭",
+      "desc": "飞行模式",
+      "className": "android.widget.Switch",
+      "viewIdResourceName": "com.android.systemui:id/oplus_separate_qs_resizeable_tile_container",
+      "bounds": [
+        789,
+        1320,
+        975,
+        1506
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-5-3-1-0",
+      "text": "飞行模式",
+      "desc": "飞行模式",
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/left_view",
+      "bounds": [
+        789,
+        1320,
+        975,
+        1506
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-1-5-8-0",
+      "text": "自动旋转",
+      "desc": null,
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/tile_label",
+      "bounds": [
+        84,
+        1782,
+        312,
+        1860
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-5-8-1",
+      "text": "开启",
+      "desc": "自动旋转屏幕",
+      "className": "android.widget.Switch",
+      "viewIdResourceName": "com.android.systemui:id/oplus_separate_qs_resizeable_tile_container",
+      "bounds": [
+        105,
+        1596,
+        291,
+        1782
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-5-8-1-0",
+      "text": "自动旋转屏幕",
+      "desc": "自动旋转屏幕",
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/left_view",
+      "bounds": [
+        105,
+        1596,
+        291,
+        1782
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-1-5-9-0",
+      "text": "打开免打扰设置。",
+      "desc": "打开免打扰设置。",
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/tile_label",
+      "bounds": [
+        312,
+        1782,
+        540,
+        1860
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-5-9-1",
+      "text": "关闭",
+      "desc": "免打扰。",
+      "className": "android.widget.Switch",
+      "viewIdResourceName": "com.android.systemui:id/oplus_separate_qs_resizeable_tile_container",
+      "bounds": [
+        333,
+        1596,
+        519,
+        1782
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-5-9-1-0",
+      "text": "免打扰。",
+      "desc": "免打扰。",
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/left_view",
+      "bounds": [
+        333,
+        1596,
+        519,
+        1782
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-1-5-10-0",
+      "text": "OPPO 互传",
+      "desc": null,
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/tile_label",
+      "bounds": [
+        540,
+        1782,
+        768,
+        1860
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-5-10-1",
+      "text": "OPPO 互传",
+      "desc": "OPPO 互传",
+      "className": "android.widget.Button",
+      "viewIdResourceName": "com.android.systemui:id/oplus_separate_qs_resizeable_tile_container",
+      "bounds": [
+        561,
+        1596,
+        747,
+        1782
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-5-10-1-0",
+      "text": "OPPO 互传",
+      "desc": "OPPO 互传",
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/left_view",
+      "bounds": [
+        561,
+        1596,
+        747,
+        1782
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-1-5-11-0",
+      "text": "省电模式",
+      "desc": null,
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/tile_label",
+      "bounds": [
+        768,
+        1782,
+        996,
+        1860
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-5-11-1",
+      "text": "关闭",
+      "desc": "省电模式",
+      "className": "android.widget.Switch",
+      "viewIdResourceName": "com.android.systemui:id/oplus_separate_qs_resizeable_tile_container",
+      "bounds": [
+        789,
+        1596,
+        975,
+        1782
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-5-11-1-0",
+      "text": "省电模式",
+      "desc": "省电模式",
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/left_view",
+      "bounds": [
+        789,
+        1596,
+        975,
+        1782
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-1-5-15-0",
+      "text": "暗色模式",
+      "desc": null,
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/tile_label",
+      "bounds": [
+        84,
+        2058,
+        312,
+        2136
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-5-15-1",
+      "text": "关闭",
+      "desc": "暗色模式",
+      "className": "android.widget.Switch",
+      "viewIdResourceName": "com.android.systemui:id/oplus_separate_qs_resizeable_tile_container",
+      "bounds": [
+        105,
+        1872,
+        291,
+        2058
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-5-15-1-0",
+      "text": "暗色模式",
+      "desc": "暗色模式",
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/left_view",
+      "bounds": [
+        105,
+        1872,
+        291,
+        2058
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-1-5-16-0",
+      "text": "截屏",
+      "desc": null,
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/tile_label",
+      "bounds": [
+        312,
+        2058,
+        540,
+        2136
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-5-16-1",
+      "text": "截屏",
+      "desc": "截屏",
+      "className": "android.widget.Button",
+      "viewIdResourceName": "com.android.systemui:id/oplus_separate_qs_resizeable_tile_container",
+      "bounds": [
+        333,
+        1872,
+        519,
+        2058
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-5-16-1-0",
+      "text": "截屏",
+      "desc": "截屏",
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/left_view",
+      "bounds": [
+        333,
+        1872,
+        519,
+        2058
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-1-5-17-0",
+      "text": "屏幕录制",
+      "desc": null,
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/tile_label",
+      "bounds": [
+        540,
+        2058,
+        768,
+        2136
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-5-17-1",
+      "text": "屏幕录制",
+      "desc": "屏幕录制",
+      "className": "android.widget.Button",
+      "viewIdResourceName": "com.android.systemui:id/oplus_separate_qs_resizeable_tile_container",
+      "bounds": [
+        561,
+        1872,
+        747,
+        2058
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-5-17-1-0",
+      "text": "屏幕录制",
+      "desc": "屏幕录制",
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/left_view",
+      "bounds": [
+        561,
+        1872,
+        747,
+        2058
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-1-5-18-0",
+      "text": "个人热点",
+      "desc": null,
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/tile_label",
+      "bounds": [
+        768,
+        2058,
+        996,
+        2136
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-5-18-1",
+      "text": "关闭",
+      "desc": "个人热点",
+      "className": "android.widget.Switch",
+      "viewIdResourceName": "com.android.systemui:id/oplus_separate_qs_resizeable_tile_container",
+      "bounds": [
+        789,
+        1872,
+        975,
+        2058
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-5-18-1-0",
+      "text": "个人热点",
+      "desc": "个人热点",
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/left_view",
+      "bounds": [
+        789,
+        1872,
+        975,
+        2058
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-1-6",
+      "text": "第 1 页，共 2 页",
+      "desc": null,
+      "className": "android.widget.FrameLayout",
+      "viewIdResourceName": "com.android.systemui:id/qs_page_indicator_container",
+      "bounds": [
+        84,
+        2154,
+        996,
+        2172
+      ],
+      "clickable": true,
+      "editable": false
+    },
+    {
+      "id": "0-1-6-0-0",
+      "text": "第 1 页，共 2 页",
+      "desc": "第 1 页，共 2 页",
+      "className": "android.view.View",
+      "viewIdResourceName": null,
+      "bounds": [
+        510,
+        2154,
+        528,
+        2172
+      ],
+      "clickable": false,
+      "editable": false
+    },
+    {
+      "id": "0-1-6-0-1",
+      "text": "第 2 页，共 2 页",
+      "desc": "第 2 页，共 2 页",
+      "className": "android.view.View",
+      "viewIdResourceName": null,
+      "bounds": [
+        552,
+        2154,
+        570,
+        2172
+      ],
+      "clickable": false,
+      "editable": false
+    }
+  ],
+  "pkg": "com.android.systemui",
+  "activity": "com.android.launcher.Launcher",
+  "ts": 1784182112866,
+  "device": "OPPO PLJ110"
+}
