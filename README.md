@@ -2,259 +2,290 @@
 
 # JoyPhone
 
-### 说一句话，手机自己干。
+### Say it, the phone does it.
 
-一个端云协同的开源 AI 手机代理 · 云端当大脑，手机当手眼
+An open-source, cloud–device co-piloted AI phone agent · cloud as the brain, the phone as the hands & eyes
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/python-≥3.14-3776AB.svg)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/python-%E2%89%A53.14-3776AB.svg)](https://www.python.org/)
 [![Kotlin](https://img.shields.io/badge/kotlin-2.x-7F52FF.svg)](https://kotlinlang.org/)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#-贡献)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#-contributing)
+
+**English** | [中文](README.zh-CN.md)
 
 </div>
 
 ---
 
-JoyPhone 是一个**端云协同的开源 AI 手机代理**：云端大模型作「大脑」决策，安卓真机以无障碍权限（`AccessibilityService`）作「手眼」操控任意 APP。无需任何厂商 SDK，无需 root，无需厂商配合——像人一样看屏幕、点按钮、敲输入框、翻页滚动。你只需一句话，剩下的交给它。
+JoyPhone is an **open-source, cloud–device co-piloted AI phone agent**: a cloud-hosted large model acts as the "brain" for decision-making, while a real Android device — using the `AccessibilityService` permission — acts as the "hands and eyes" to drive any app. No vendor SDK, no root, no vendor cooperation required. It looks at the screen, taps buttons, fills inputs, and scrolls just like a human would. You say one sentence; it does the rest.
 
-灵感来自豆包手机这类「语音一句话操控整机」的设想，但走的是**完全开源、端云协同、模型可替换**的路线：不绑定任何一家厂商的大模型，不锁定任何一款手机品牌，把「让 AI 像人一样用手机」这件事变成一个**人人可参与、可复现、可迭代**的开放项目。
+It is inspired by products like Doubao Phone that promise "control the whole phone with one voice command", but takes a **fully open, cloud–device co-piloted, model-replaceable** route: it is not tied to any vendor's LLM, not locked to any phone brand, and turns "let AI use a phone like a human" into an **open project anyone can join, reproduce, and iterate on**.
 
-> 长期愿景：用户对着手机说一句话——「给妈妈发微信说我今晚回家吃晚饭」「打开抖音搜一下最近的猫咪视频」「把上次会议的纪要转发到工作群」——手机自己听懂、自己点开、自己输入、自己确认。不再一层层翻菜单，不再跨应用搬数据，不再把人困在小屏幕上做重复劳动。
+> Long-term vision: a user says one sentence to the phone — "send Mom a WeChat message that I'm coming home for dinner tonight", "open Douyin and search for recent cat videos", "forward the last meeting notes to the work group" — and the phone listens, opens the apps, types, and confirms by itself. No more drilling through menus layer by layer, no more cross-app data moving, no more trapping people on small screens doing repetitive labor.
 
-## 核心亮点
+## Highlights
 
-1. **零 SDK 依赖**：基于安卓无障碍权限操控任意真实 APP UI，绕开厂商封禁与限流，一套方案覆盖飞书 / 企微 / 微信 / 短信 / 抖音等全社交通道，抗风控、不挑品牌。
-2. **端云协同「手眼脑」分离架构**：手机只负责感知（节点树 + 截图）与执行（点击 / 输入 / 滑动），云端负责多模态大模型决策——决策可热更、模型可替换、算力无上限，迭代成本远低于端侧集成方案。
-3. **技能库自沉淀护城河**：每次成功操控的步骤序列被自动固化为可复用「技能」，命中即脚本执行、未命中回退大模型探索；越用越快、越用越准，社区共建技能库形成长期飞轮。
-4. **语音一句话驱动**（路线图）：从纯文本目标向「语音指令 → 云端 ASR → 决策 → 协商」演进，目标是像豆包手机一样一句话搞定复杂多步跨应用操作，但完全开源、模型自选。
+1. **Zero-SDK dependency**: drives any real-app UI via the Android AccessibilityService, sidestepping vendor bans and rate limits. One approach covers Feishu / WeCom / WeChat / SMS / Douyin and all social channels — anti-detection and brand-agnostic.
+2. **Cloud–device "hands-eyes-brain" separation**: the phone only perceives (node tree + screenshot) and acts (tap / input / swipe); the cloud runs the multimodal large model for decisions — decisions can be hot-swapped, models replaced, and compute is unbounded, so iteration cost is far lower than on-device-integrated solutions.
+3. **Skill library self-sedimentation moat**: every successful step sequence is automatically solidified into a reusable "skill"; on hit it replays as a script, on miss it falls back to the LLM. The more you use it, the faster and more accurate it gets; a community-built skill library forms a long-term flywheel.
+4. **Voice one-shot driven** (roadmap): evolve from a pure-text goal to "voice command → cloud ASR → decision → negotiation", aiming to complete complex multi-step cross-app operations with one sentence, like Doubao Phone — but fully open and with a model of your choice.
 
-## 架构总览
+## Architecture Overview
 
 ```
-┌──────────────────────── 云端 (FastAPI + Python) ─────────────────────────┐
-│  任务管理 │ WS网关+会话状态机 │ 决策引擎 │ 协商机器人 │ LLM抽象层 │ 技能库 │
-└────────────▲──────────────────────────────┬──────────────────────────────┘
-             │ WebSocket（感知↑ / 动作↓）   │
-             │  双向实时长连接              │
-┌────────────┴──────────────────────────────▼──────────────────────────────┐
-│                    安卓端 (Kotlin / AccessibilityService)                 │
-│      感知模块（节点树+截图）   │   执行模块（点击/输入/滑动）            │
-│      事件监听（新消息上报）     │   连接管理（断线重连）                  │
-└───────────────────────────────────────────────────────────────────────────┘
-                         ↑ 操控真实 APP（飞书/企微/微信/抖音…）
+┌──────────────────────── Cloud (FastAPI + Python) ─────────────────────────┐
+│  Task mgmt │ WS gateway + session FSM │ Decision engine │ Negotiation bot │
+│  LLM abstraction │ Skill library │ Scene FSM │ Metrics │ Comm log          │
+└────────────▲──────────────────────────────┬───────────────────────────────┘
+             │ WebSocket (perception ↑ / action ↓)
+             │  bidirectional real-time long-lived connection
+┌────────────┴──────────────────────────────▼───────────────────────────────┐
+│                    Android (Kotlin / AccessibilityService)                 │
+│   Perception (node tree + screenshot) │ Execution (tap / input / swipe)     │
+│   Event listening (new message upload) │ Connection mgmt (auto-reconnect)   │
+└─────────────────────────────────────────────────────────────────────────────┘
+                          ↑ drives real apps (Feishu / WeCom / WeChat / Douyin …)
 ```
 
-两端通过 WebSocket 双向实时通信：
+The two ends communicate over a bidirectional real-time WebSocket channel:
 
-- **上行**（App → 云端）：`perception`（节点树 + 截图）、`action.result`、`event.newMessage`、`heartbeat`、`task.request`
-- **下行**（云端 → App）：`task.start`、`action`、`task.done`、`task.abort`
+- **Uplink** (App → Cloud): `perception` (node tree + screenshot), `action.result`, `event.newMessage`, `heartbeat`, `task.request`
+- **Downlink** (Cloud → App): `task.start`, `action`, `task.done`, `task.abort`
 
-会话状态机：`NAVIGATING → IN_CHAT → SENT → WAITING_REPLY → NEGOTIATING → DONE / ABORT`，由 `server/app/session.py` 约束合法转移并设步数预算防失控。
+Session FSM: `NAVIGATING → IN_CHAT → SENT → WAITING_REPLY → NEGOTIATING → DONE / ABORT`, enforced by `server/app/session.py` with legal-transitions + a step budget to prevent runaway.
 
-## 路线图
+## Roadmap
 
-JoyPhone 是一个长期演进的开源项目，按里程碑推进：
+JoyPhone is a long-running open-source project that advances by milestone:
 
-| 阶段 | 目标 | 状态 |
+| Phase | Goal | Status |
 |------|------|------|
-| M1 端云协同最小闭环 | 文本目标 → 真机无障碍操控 → 决策 + 执行 + 回报 | ✅ 已跑通 |
-| M2 技能自沉淀 | 成功路径自动固化「技能」，命中即脚本回放 | ✅ 雏形 |
-| M2.5 屏幕场景状态机 | 云端逐帧驱动的通用归位 + 停滞/振荡双重卡死脱困（LLM 语义脱困 → 机械降级三级阶梯） | 🚧 进行中 |
-| M3 多 APP 接入 | 微信 / 企微 / 抖音等节点适配与技能库 | 🚧 进行中 |
-| M4 语音一句话驱动 | 云端 ASR → 意图解析 → 决策，像豆包手机一样开口即用 | 🔜 规划 |
-| M5 多设备并发调度 | 一台云端管多台手机，运营后台与任务队列 | 🔜 规划 |
-| M6 WS 网关高性能化 | Rust 重写网关，承压更多设备并发 | 🔬 研究 |
-| M7 语音外呼 / 呼叫中心 | 接入呼叫中心，AI 主动呼出与对方多轮语音协商 | 🔬 研究 |
+| M1 Cloud–device minimal loop | Text goal → real-device accessibility control → decision + act + report | ✅ Working |
+| M2 Skill self-sedimentation | Successful paths auto-solidify to "skills", replay-on-hit | ✅ MVP |
+| M2.5 Screen-scene FSM | Cloud frame-by-frame driven generic return-home + dual stall/oscillation escape (LLM semantic escape → mechanical fallback three-tier ladder) | 🚧 In progress |
+| M3 Multi-app onboarding | WeChat / WeCom / Douyin node adaptation and skill library | 🚧 In progress |
+| M4 Voice one-shot driven | Cloud ASR → intent parsing → decision, ready out-of-the-mouth like Doubao Phone | 🔜 Planned |
+| M5 Multi-device scheduling | One cloud manages many phones, ops backend and task queue | 🔜 Planned |
+| M6 WS gateway high-perf | Rewrite gateway in Rust to shoulder more device concurrency | 🔬 Research |
+| M7 Voice outbound / call center | Plug into a call center, AI actively dials out and multi-round voice negotiation | 🔬 Research |
 
-## 仓库结构
+## Repository Structure
 
 ```
 JoyPhone/
-├── server/                 # 云端：FastAPI + Python ≥3.14
+├── server/                 # Cloud: FastAPI + Python ≥3.14
 │   ├── app/
-│   │   ├── gateway.py        # WebSocket 网关 + 单任务会话主循环
-│   │   ├── decision.py       # 决策引擎（缓存→技能→LLM 三级回退）
-│   │   ├── protocol.py       # 上下行消息协议（Pydantic 模型）
-│   │   ├── session.py        # 会话状态机 + 步数预算
-│   │   ├── llm.py            # LLM 抽象层（FakeLLM / RealLLM）
-│   │   ├── skills.py         # 静态技能库
-│   │   ├── skill_cache.py    # 运行期自学习技能缓存
-│   │   └── negotiation.py    # 协商机器人
-│   ├── tests/                # pytest 单元/集成测试 + 回放夹具
-│   ├── scripts/e2e_feishu.sh # 真机端到端联调脚本
+│   │   ├── gateway.py           # WebSocket gateway + single-task session main loop
+│   │   ├── decision.py          # Decision engine (cache → skill → LLM three-tier fallback)
+│   │   ├── protocol.py          # Uplink/downlink message protocol (Pydantic models)
+│   │   ├── session.py           # Session FSM + step budget
+│   │   ├── llm.py               # LLM abstraction (FakeLLM / RealLLM)
+│   │   ├── skills.py            # Static skill library
+│   │   ├── skill_cache.py       # Runtime self-learning skill cache
+│   │   ├── scene.py             # Screen-scene FSM (cloud-side return-home + stuck/oscillation escape)
+│   │   ├── app_goal_resolver.py # Parse NL goal → target Android package (app-boundary hard constraint)
+│   │   ├── chat_title_helpers.py# Chat-title detection / message-input locate / send-button matching
+│   │   ├── negotiation.py       # Negotiation bot
+│   │   ├── comm_log.py          # Rotating up/down-link + raw-LLM logger
+│   │   └── metrics.py           # Per-task metrics collector (steps, LLM calls, skill/cache hits, duration)
+│   ├── tests/                   # pytest unit/integration tests + replay fixtures
+│   ├── scripts/e2e_feishu.sh   # Real-device end-to-end debug script
 │   ├── pyproject.toml
-│   └── .env.example          # LLM 配置模板（OpenAI 兼容接口）
+│   └── .env.example             # LLM config template (OpenAI-compatible)
 │
-├── android/                # 安卓端：Kotlin + Compose + Hilt
+├── android/                # Android: Kotlin + Compose + Hilt
 │   └── app/src/main/java/com/example/phoneagent/
-│       ├── accessibility/   # PhoneAgentService / Executor / Perception / NodeFlattener …
-│       ├── net/             # WsClient / WsDispatcher（长连 + 断线重连）
-│       ├── protocol/        # 与云端对齐的序列化模型
-│       ├── domain/          # TaskState / TraceEvent / ActionLog
-│       ├── data/            # AgentStateRepository（调试面板状态）
-│       ├── ui/              # AgentScreen / DebugPanel / MainViewModel（Jetpack Compose）
+│       ├── accessibility/      # PhoneAgentService / Executor / Perception / NodeFlattener / GestureGeometry …
+│       ├── net/                 # WsClient / WsDispatcher (long connect + auto-reconnect)
+│       ├── protocol/            # Messages.kt — serialization models aligned with cloud
+│       ├── domain/              # AgentModels / SampleRequest / TaskState / TraceEvent / ActionLog
+│       ├── data/                # AgentStateRepository (debug-panel state)
+│       ├── ui/                  # AgentScreen / DebugPanel / MainViewModel (Jetpack Compose)
+│       ├── di/                  # AppModule — Hilt DI graph
+│       ├── AccessibilityStatus.kt
+│       ├── AgentApplication.kt  # Hilt-enabled Application
 │       └── MainActivity.kt
 │
 └── docs/
-    └── superpowers/         # 设计与实施计划（specs / plans，按日期归档）
+    ├── superpowers/            # Design and implementation plans (specs / plans, archived by date)
+    ├── competition/            # Competitive analysis notes
+    └── CODE_REVIEW_REPORT.md
 ```
 
-## 云端设计要点
+## Cloud Design Highlights
 
-### 决策引擎三级回退（`server/app/decision.py`）
+### Decision engine three-tier fallback (`server/app/decision.py`)
 
-每收到一帧感知，按以下优先级产出下一步动作：
+For every perception frame, the next action is produced by priority:
 
-1. **技能缓存命中**：按 `(goal, pkg)` 查 `SkillCache`，命中则按已沉淀步骤序列回放；若某步无法在当前节点树重定位则回退下一级。
-2. **静态技能库**：按 `skill_name` 查 `SkillLibrary`，按 `match_text` 在当前节点树定位节点回放。
-3. **大模型推理**：把任务目标 + 结构化屏幕状态（`[序号] 类型 "文本"`，可交互节点优先，最多 `MAX_LLM_NODES=80`）+ 动作历史交给 LLM，要求其只输出一个 JSON 动作对象。
+1. **Skill cache hit**: look up `SkillCache` by `(goal, pkg)`; on hit, replay the sediment-ed step sequence. If a step can't be re-located on the current node tree, fall back to the next tier.
+2. **Static skill library**: look up `SkillLibrary` by `skill_name`; locate the node by `match_text` on the current node tree and replay.
+3. **LLM reasoning**: feed the goal + structured screen state (`[idx] type "text"`, interactive nodes first, up to `MAX_LLM_NODES=80`) + action history to the LLM, asking it to output exactly one JSON action object.
 
-LLM 决策的 `tap` 会在云端先用节点 `id` / `match_text` 解析为精确坐标中心再下发，避免端侧全屏子串匹配误命中（如负一屏磁贴）。System prompt 内置「负一屏识别」「桌面翻屏找应用」等常识约束。
+A `tap` decided by the LLM is resolved on the cloud side to the exact coordinate center using the node `id` / `match_text` before being sent down — avoiding on-device full-screen substring match false hits (e.g. minus-one-screen tiles). The system prompt bakes in common-sense constraints like "minus-one-screen detection" and "swipe on home to find the app".
 
-### LLM 抽象层（`server/app/llm.py`）
+### Screen-scene FSM (`server/app/scene.py`)
 
-- `FakeLLM`：按预设响应序列回放，供离线 / CI 测试。
-- `RealLLM`：基于 OpenAI 兼容 SDK，默认对接 MiniMax-M2.x（`extra_body={"thinking":{"type":"disabled"}}` 关闭推理）；自动剥离 `` 推理段、提取首个平衡 JSON，保证下游 `json.loads` 可用。**任何 OpenAI 兼容的模型（豆包 / DeepSeek / Qwen / 自部署 vLLM 等）改一行配置即可接入。**
-- 无 `LLM_API_KEY` 时自动退化为 `FakeLLM`，开箱即跑，不依赖任何外网服务。
+Frame by frame on the cloud side, the current perception is classified into a finite scene: `HOME` (any desktop page) / `MINUS_ONE` (the -1 screen) / `RECENT_APPS` / `LOCK_SCREEN` / `NOTIFICATION` / `CONTROL_CENTER` / `IN_APP` / `UNKNOWN`. Resource-id matching is suffix-based (`endswith` / `contains`) so it is cross-device without hardcoding any vendor package prefix. The FSM replaces `decision.py`'s pkg-only guard and roots out the endless loop circling between launcher states. It also provides a convergence guard that combines stall (`STALL_THRESHOLD=3` consecutive same-scene same-op) and oscillation (non-target scene repeating `CYCLE_THRESHOLD=2` times inside a `WINDOW=6` window), escalating to an LLM semantic-escape (`LLM_ESCALATION_TRIES=1`) then a mechanical-fallback three-tier ladder (`FALLBACK_TRIES=2`).
 
-### 技能自沉淀（`server/app/skill_cache.py`）
+### Goal → application boundary (`server/app/app_goal_resolver.py`)
 
-任务以 `done` 正常结束时，把本轮 `applied_steps` 以 `(goal, pkg)` 为键写回缓存；下次同目标同应用直接脚本回放，不耗 LLM 配额。某步无法重定位则整条失效等待重新学习——MVP 策略简洁可靠，也是社区共建技能库的底层原语。
+Parses a natural-language goal into a target Android `package` with pure keyword matching — fast, zero-cost, unit-testable. The resolved `pkg` becomes an app-boundary hard constraint: once the perceived `pkg != target pkg`, the cloud first returns to home, then `home` + finds the icon to re-open the target app — it will never tap a notification / tile to jump to another app. Aliases are built in for Feishu / WeChat / QQ / DingTalk / Taobao / JD / Meituan / Xiaohongshu / Douyin / Zhihu / Amap / Baidu Map / Tencent Map / Dialer / Contacts, etc.
 
-## 安卓端设计要点
+### LLM abstraction (`server/app/llm.py`)
 
-### `PhoneAgentService`（`accessibility/PhoneAgentService.kt`）
+- `FakeLLM`: replays a preset response sequence — for offline / CI tests.
+- `RealLLM`: OpenAI-compatible SDK based; defaults to MiniMax-M2.x (with `extra_body={"thinking":{"type":"disabled"}}` to disable reasoning); auto-strips `` reasoning segments and extracts the first balanced JSON so downstream `json.loads` is always usable. **Any OpenAI-compatible model (Doubao / DeepSeek / Qwen / self-hosted vLLM, etc.) plugs in with one config line.**
+- Without `LLM_API_KEY` it gracefully degrades to `FakeLLM` — runs out of the box, no external network service required.
 
-继承 `AccessibilityService`，是无障碍服务核心：
+### Skill self-sedimentation (`server/app/skill_cache.py`)
 
-- `onServiceConnected` 时启动 WebSocket、注册回调，按 `ANDROID_ID` 作设备号上报。
-- 收到 `task.start` 后首帧感知上报；后续窗口变化经 `DEBOUNCE_MS=400` 去抖再上报，避免抖动。
-- `onAccessibilityEvent` 仅在 `taskActive` 时响应；`action` 带只读调试模式（目标以 `[DEBUG-ONESHOT]` 前缀触发）：只上报一帧、不执行返回动作，便于人工导航到目标页面后单帧验证云侧决策。
-- 默认连接地址写在 `PhoneAgentService.WS_URL` 常量，按你的环境修改。
+When a task ends normally (`done`), the current `applied_steps` are written back to cache keyed by `(goal, pkg)`. The next time the same goal + app appears it replays directly as a script with zero LLM-quota use. If a step can't be re-located the whole entry is invalidated and waits for re-learning — an MVP policy that is simple and reliable, and the primitive underlying the community skill-library flywheel.
 
-### `Executor`（`accessibility/Executor.kt`）
+### Observability (`server/app/comm_log.py` / `metrics.py`)
 
-把云端动作指令翻译为无障碍 API 调用：
+- `comm_log`: a rotating file logger for the bidirectional comm log (`comm.log`) and raw LLM traffic (`llm.log`), capped at 10 MB × 5 files. The log dir is overridable via the `PHONEAGENT_LOG_DIR` env var.
+- `metrics`: a per-task metrics collector (`TaskMetrics`) tracking `steps`, `llm_calls`, `skill_hits`, `cache_hits`, `status`, `error`, and duration, so any task run can be replayed/compared offline.
 
-- `tap`：优先按云端下发的 `x/y` 坐标 `dispatchGesture` 点击，缺失时回退 `match_text` 子串匹配节点中心点击。
-- `input`：找到首个可编辑节点执行 `ACTION_SET_TEXT`。
-- `swipe` / `back` / `home`：标准手势与全局动作。
-- 桌面翻屏与归位交给**云端场景状态机**逐帧驱动（`server/app/scene.py`）：`detect_scene` 识别当前场景 → `next_action` 查转移表下发单步原子动作 → 云端守卫检测停滞与振荡并三级脱困，端侧只做哑执行。坐标几何仍抽到可单测的 `GestureGeometry`。
+### Chat-title helpers (`server/app/chat_title_helpers.py`)
 
-### 感知与节点裁剪（`accessibility/NodeFlattener.kt` / `Perception.kt`）
+Pure heuristics for chat-page anchoring — whether the current page is the target chat title, whether a node is a message-input box, and whether a node is a send button — keeps the cloud side anchored to a specific conversation inside IM apps with very few tokens.
 
-读取 `rootInActiveWindow` 节点树，只保留可见且含文本 / 可交互的节点，序列化为与云端协议对齐的 `Node` 列表上传，显著降低链路负载与 LLM token 成本。
+## Android Design Highlights
 
-### 技术栈
+### `PhoneAgentService` (`accessibility/PhoneAgentService.kt`)
 
-Jetpack Compose（单 Activity + Compose UI）+ Hilt（`@AndroidEntryPoint` 注入 `WsClient` / `AgentStateRepository`）+ OkHttp WebSocket + kotlinx.serialization。`minSdk=26 / targetSdk=36 / JVM 17`。
+Extends `AccessibilityService`; the accessibility-service core:
 
-## 快速开始
+- On `onServiceConnected` it starts the WebSocket, registers callbacks, and reports an `ANDROID_ID`-based device id.
+- After receiving `task.start` it reports the first perception frame; subsequent window changes are debounced by `DEBOUNCE_MS=400` before reporting to avoid jitter.
+- `onAccessibilityEvent` only reacts when `taskActive`; `action` supports a read-only debug mode (triggered by a `[DEBUG-ONESHOT]` goal prefix): report one frame, do not execute the returned action — convenient for manually navigating to a target page and then single-frame-verifying the cloud decision.
+- The default connect address lives in the `PhoneAgentService.WS_URL` constant — modify for your environment.
 
-### 云端
+### `Executor` (`accessibility/Executor.kt`)
+
+Translates cloud action commands into Accessibility API calls:
+
+- `tap`: prefer `dispatchGesture` click using the cloud-sent `x/y` coordinates; when missing, fall back to a center click on the node matched by `match_text` substring.
+- `input`: find the first editable node and perform `ACTION_SET_TEXT`.
+- `swipe` / `back` / `home`: standard gestures and global actions.
+- Desktop paging/scrolling and return-home are driven by the **cloud scene FSM** frame by frame (`server/app/scene.py`): `detect_scene` identifies the current scene → `next_action` looks up the transition table and sends a single atomic action → the cloud guard detects stall and oscillation and applies three-tier escape. The phone side acts as a dumb executor. Coordinate geometry is still extracted into a unit-testable `GestureGeometry`.
+
+### Perception & node pruning (`accessibility/NodeFlattener.kt` / `Perception.kt`)
+
+Reads the `rootInActiveWindow` node tree, keeps only visible nodes that carry text or are interactive, and serializes them into `Node` lists aligned with the cloud protocol, drastically cutting link load and LLM token cost.
+
+### Tech stack
+
+Jetpack Compose (single Activity + Compose UI) + Hilt (`@AndroidEntryPoint` injects `WsClient` / `AgentStateRepository`) + OkHttp WebSocket + kotlinx.serialization. `minSdk=26 / targetSdk=36 / JVM 17`.
+
+## Quick Start
+
+### Cloud
 
 ```bash
 cd server
-cp .env.example .env            # 填入 LLM_API_KEY（任何 OpenAI 兼容接口）
-# 建议 Python ≥3.14，使用 uv：uv sync
+cp .env.example .env            # fill in LLM_API_KEY (any OpenAI-compatible endpoint)
+# Python ≥3.14 recommended, using uv: uv sync
 uv run uvicorn app.gateway:create_app --factory --host 0.0.0.0 --port 8000
 ```
 
-无 `LLM_API_KEY` 时自动用 `FakeLLM`，可离线跑通协议链路。
+Without `LLM_API_KEY` it auto-uses `FakeLLM`, so the protocol chain can be exercised offline.
 
-### 安卓端
+### Android
 
-1. USB 连接真机（`minSdk≥26`），`adb devices` 确认可见。
-2. 在 `android/local.properties` 配置 SDK 路径（已 gitignore）。
-3. Android Studio 打开 `android/` 工程，Run `app`。
-4. 系统设置 → 无障碍 → 启用「PhoneAgent」服务。
-5. 修改 `PhoneAgentService.WS_URL` 指向你的云端地址。
+1. Connect a real device via USB (`minSdk≥26`), confirm it shows up in `adb devices`.
+2. Configure the SDK path in `android/local.properties` (gitignored).
+3. Open the `android/` project in Android Studio and Run `app`.
+4. System settings → Accessibility → enable the "PhoneAgent" service.
+5. Modify `PhoneAgentService.WS_URL` to point at your cloud address.
 
-### 真机端到端联调
+### Real-device end-to-end debug
 
 ```bash
 server/scripts/e2e_feishu.sh
-# 重绑无障碍服务触发 WS 连接 → 回桌面 → 打开飞书 → 观察 uvicorn 日志的 perception / decided op 输出
+# re-bind the accessibility service to trigger WS connect → return to home → open Feishu →
+# watch the perception / decided op output in the uvicorn log
 ```
 
-App 内顶部「任务目标」输入框下发自然语言目标（如「在飞书给张三发消息：明天上午开会」），`task.request` 上行后云端开始决策循环。
+The "Task goal" input box at the top of the App ships a natural-language goal (e.g. "send Zhang San a message on Feishu: meeting tomorrow morning"); it goes up via `task.request` and the cloud kicks off the decision loop.
 
-## 测试
+## Testing
 
 ```bash
 cd server
-uv run pytest                          # 全量
-uv run pytest tests/test_decision.py  # 决策引擎单测
-PHONEAGENT_FAKE_LLM='[...]' uv run pytest tests/test_gateway_loop.py  # 注入假 LLM 跑网关主循环
+uv run pytest                          # full suite
+uv run pytest tests/test_decision.py  # decision engine unit tests
+PHONEAGENT_FAKE_LLM='[...]' uv run pytest tests/test_gateway_loop.py  # inject FakeLLM and run the gateway main loop
 ```
 
-安卓单元测试位于 `android/app/src/test/`，覆盖 `GestureGeometry` / `NodeFlattener` / `Perception` / `WsDispatcher` / `MainViewModel` 等可纯逻辑验证的部分。
+Android unit tests live in `android/app/src/test/`, covering the pure-logic parts of `GestureGeometry`, `NodeFlattener`, `Messages` (protocol models), `WsDispatcher`, `AgentStateRepository`, `MainViewModel`, and `AccessibilityStatus`.
 
-## 关键可测性设计
+## Key Testability Design
 
-真机采集的感知序列存为「回放夹具」（如 `server/tests/fixtures/feishu_happy_path.json`），云端可离线回放完整决策闭环——**不依赖真机即可在 CI 中反复验证 AI 决策逻辑**。这是项目的质量底座与 TDD 落点，也是「端侧不可控、云侧可复现」的关键工程自律。
+A perception sequence captured on a real device is stored as a "replay fixture" (e.g. `server/tests/fixtures/feishu_happy_path.json`); the cloud can replay a complete decision loop offline from it — **no real device required, the AI decision logic can be re-verified in CI over and over**. This is the project's quality base and TDD landing point — the "device side is uncontrollable, cloud side is reproducible" engineering discipline.
 
-## 🤝 贡献
+## 🤝 Contributing
 
-JoyPhone 是一个**完全开源**的项目，欢迎任何形式的贡献——一行代码、一个技能、一个新 APP 的节点适配、一个 bug 报告、一段文档优化，都会让这个项目离「说一句话，手机自己干」更近一步。
+JoyPhone is a **fully open-source** project. Any contribution — a line of code, a skill, a new app's node adaptation, a bug report, a doc polish — moves the project one step closer to "say it, the phone does it".
 
-### 我能贡献什么
+### What you can contribute
 
-- **云端**：决策引擎、协商机器人、新 APP 的技能库、LLM 适配、WS 网关性能优化、测试与回放夹具。
-- **安卓端**：节点裁剪算法、新 APP 的无障碍适配、手势执行、断线重连、UI 调试面板。
-- **技能库**：把你跑通的某条「目标 → 成功步骤序列」沉淀下来，成为人人可复用的技能。这是社区共建飞轮的核心。
-- **文档**：README 优化、架构图、使用教程、新 APP 接入指南。
-- **测试**：补充单测 / 集成测试、增加边界场景回放夹具。
+- **Cloud side**: decision engine, negotiation bot, skill library for new apps, LLM adapters, WS gateway performance, tests and replay fixtures.
+- **Android side**: node-pruning algorithms, accessibility adaptation for new apps, gesture execution, auto-reconnect, UI debug panel.
+- **Skill library**: sediment a successful "goal → success step sequence" of yours into a reusable skill for everyone — the core of the community flywheel.
+- **Docs**: README polish, architecture diagrams, usage tutorials, new-app onboarding guides.
+- **Tests**: add unit/integration tests and edge-case replay fixtures.
 
-### 如何提 PR
+### How to submit a PR
 
-1. **Fork** 本仓库到你的 GitHub 账号。
-2. 从 `main` 拉一条特性分支：
+1. **Fork** this repo to your GitHub account.
+2. Branch off `main`:
 
    ```bash
    git checkout -b feat/your-feature
    ```
 
-3. 做改动，保持每个 commit 聚焦一件事，遵循 [Conventional Commits](https://www.conventionalcommits.org/) 风格，例如：
+3. Make changes; keep each commit focused on one thing and follow the [Conventional Commits](https://www.conventionalcommits.org/) style, e.g.:
 
    ```text
-   feat(decision): 支持微信聊天页节点裁剪
-   fix(android): 修复断线重连偶发 NPE
-   test(server): 增加飞书 happy path 回放夹具
-   docs: 补充新 APP 接入指南
+   feat(decision): support WeChat chat-page node pruning
+   fix(android): fix auto-reconnect intermittent NPE
+   test(server): add Feishu happy-path replay fixture
+   docs: add a new-app onboarding guide
    ```
 
-4. 提交前确保本地通过校验：
+4. Before submitting, ensure local checks pass:
 
    ```bash
-   # 云端
+   # Cloud
    cd server && uv run pytest
-   # 安卓端
+   # Android
    cd android && ./gradlew test
    ```
 
-5. Push 到你的 fork，向 `main` 提交 **Pull Request**：
+5. Push to your fork and open a **Pull Request** against `main`:
 
-   - **标题**用 Conventional Commits 格式（如 `feat(android): 支持微信发消息技能`）。
-   - **描述**说明：解决了什么问题 / 为什么这么做 / 怎么测试的。如果改动决策逻辑，附一段回放夹具或日志更佳。
-   - 如果 PR 对应某个 issue，请关联（`Closes #123`）。
+   - Use Conventional Commits for the **title** (e.g. `feat(android): support WeChat send-message skill`).
+   - The **description** should explain: what problem / why / how tested. If the change touches decision logic, attaching a replay fixture or log is even better.
+   - If the PR corresponds to an issue, link it (`Closes #123`).
 
-6. 等待 review。小改动通常当天合入；涉及决策主循环或协议变更的会多轮讨论。
+6. Wait for review. Small changes usually land the same day; changes touching the decision main loop or the protocol will go through several rounds of discussion.
 
-### PR 约定
+### PR conventions
 
-- **一个 PR 一件事**：混合多个无关改动的 PR 拆成多个。
-- **保持可测**：新逻辑尽量配单测；真机相关改动附日志或回放夹具。
-- **不改协议格式**：需要扩展上下行消息协议时，先开 issue 讨论向后兼容方案。
-- **不引入强依赖**：云端遵循 `pyproject.toml`，安卓端遵循 `libs.versions.toml`，不擅自加大依赖体积。
-- **安全**：不 commit 任何密钥、`.env`、`local.properties`，不引入可能外泄设备信息的代码。
+- **One PR, one thing**: split a PR mixing unrelated changes into several.
+- **Stay testable**: pair new logic with unit tests; for real-device changes attach logs or a replay fixture.
+- **Don't break the protocol format**: when extending the up/down message protocol, open an issue to discuss a backward-compatible plan first.
+- **No sneaky heavy dependencies**: the cloud follows `pyproject.toml`, Android follows `libs.versions.toml`; do not bloat dependencies on your own.
+- **Security**: never commit secrets, `.env`, or `local.properties`; never introduce code that could leak device information.
 
-有任何想法也欢迎先开 [Issue](../../issues) 讨论，避免重复工作或方向跑偏。早期阶段我们对方向保持开放，「先沟通，再动手」远比闷头改一通更高效。
+Feel free to open an [Issue](../../issues) for discussion first — far more efficient than charging ahead silently. In the early stage we keep the direction open; "talk first, then act" beats "do a lot, then talk".
 
-## 设计与计划文档
+## Design & Plan Documents
 
-历史的设计与实施计划按日期归档在 `docs/superpowers/`（`specs/` 设计稿 / `plans/` 实施计划），便于追溯演进脉络。
+Historical design and implementation plans are archived by date in `docs/superpowers/` (`specs/` design drafts / `plans/` implementation plans), so the evolution is traceable. Competitive analysis notes live in `docs/competition/`, and `docs/CODE_REVIEW_REPORT.md` records the latest code-review pass.
 
 ## License
 
-本项目基于 **MIT License** 开源，欢迎自由使用、修改、分发。社区贡献默认遵循 MIT 授权。
+This project is open-sourced under the **MIT License**. Community contributions are MIT-licensed by default; you are free to use, modify, and redistribute it.
