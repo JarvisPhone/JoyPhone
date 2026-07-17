@@ -485,6 +485,12 @@ def create_app() -> FastAPI:
                 guard=session.guard,
             )
 
+            # [P0 FIX] 防御式处理 decide() 返回 None 的情况
+            # 技能校验失败时可能返回 None，此时回退到 read_screen
+            if actions is None:
+                logger.warning("decide() returned None, falling back to read_screen")
+                actions = [Action(actionId=str(uuid.uuid4()), op="read_screen", params={})]
+
             # 每做一次决策计为一步，而非仅在 action.result.ok 时计数。
             # 这样 wait/home/read_screen 等无副作用动作也消耗 budget，
             # 防止 LLM 持续返回 wait 导致任务永不终止。
