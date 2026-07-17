@@ -58,6 +58,7 @@ class WsClient @Inject constructor(
         onTaskEnd: (reason: String) -> Unit,
         onTaskConfirm: (DownTaskConfirm) -> Unit = {},
     ) {
+        require(deviceId.isNotBlank()) { "deviceId cannot be blank" }
         this.baseUrl = baseUrl
         this.deviceId = deviceId
         this.dispatcher = WsDispatcher(onTaskStart, onAction, onTaskEnd, onTaskConfirm)

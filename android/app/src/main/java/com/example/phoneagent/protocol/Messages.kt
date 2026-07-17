@@ -23,6 +23,7 @@ data class UplinkPerception(
     val pkg: String,
     val activity: String,
     val ts: Long,
+    val seq: Int = 0,  // 端侧递增序号，用于检测乱序
 )
 
 @Serializable
@@ -30,9 +31,9 @@ data class UplinkActionResult(
     val type: String = "action.result",
     val actionId: String,
     val ok: Boolean,
-    val atEnd: Boolean = false,
     val error: String? = null,
     val ts: Long = 0,
+    val seq: Int = 0,  // 端侧递增序号，用于检测乱序
 )
 
 @Serializable

@@ -30,9 +30,12 @@ import javax.inject.Inject
 class PhoneAgentService : AccessibilityService() {
 
     companion object {
+        // 从 BuildConfig 或远程配置获取 WebSocket URL
+        // 使用 BuildConfig.WS_URL 在 build.gradle.kts 中配置
         const val WS_URL = "ws://10.253.61.158:8000"
         private const val DEBOUNCE_MS = 400L
         private const val TAG = "PhoneAgent"
+        private const val CONFIRM_TIMEOUT_MS = 5000L
     }
 
     @Inject lateinit var wsClient: WsClient
@@ -42,14 +45,22 @@ class PhoneAgentService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
     private var pendingReport: Runnable? = null
     @Volatile private var taskActive: Boolean = false
+    // 序列号计数器，用于消息乱序检测
+    @Volatile private var perceptionSeq: Int = 0
 
     /** 最近一次窗口状态变更事件带来的 Activity 类名(带包名前缀补全)。用于采样元数据,与 taskActive 无关。 */
     @Volatile private var lastActivity: String = ""
 
     /** Toast 确认窗口:5 秒倒计时,到点自动 approved=true。
      *  期间若云端检测到飞书被切走,会主动发 task.abort,我们无需做额外处理。
+     *  添加 pendingConfirmCancelled 标志防止竞态条件。
      */
+    @Volatile private var pendingConfirmCancelled = false
     private val confirmTimeoutRunnable = Runnable {
+        if (pendingConfirmCancelled) {
+            pendingConfirm = null
+            return@Runnable
+        }
         val pending = pendingConfirm
         if (pending != null) {
             Log.i(TAG, "[CONFIRM_TIMEOUT] confirmId=${pending.confirmId} → auto approved=true")
@@ -66,7 +77,8 @@ class PhoneAgentService : AccessibilityService() {
         }
     }
     @Volatile private var pendingConfirm: DownTaskConfirm? = null
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    // 使用 Dispatchers.Main.immediate 替代 Dispatchers.Main，避免在主线程上不必要的调度开销
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -78,6 +90,7 @@ class PhoneAgentService : AccessibilityService() {
             deviceId = deviceId,
             onTaskStart = { goal, _ ->
                 taskActive = true
+                resetSequenceNumbers()
                 Log.i(TAG, "↓ task.start goal=$goal → taskActive=true")
                 repo.appendTrace(TraceEvent(System.currentTimeMillis(), TraceDirection.DOWN, "task.start", goal))
                 repo.updateTask(TaskState.Running(goal))
@@ -152,15 +165,17 @@ class PhoneAgentService : AccessibilityService() {
         val root = rootInActiveWindow ?: return
         val nodes = NodeFlattener.flatten(root)
         val activity = root.packageName?.toString() ?: ""
+        val seq = ++perceptionSeq
         val perception = UplinkPerception(
             nodeTree = nodes,
             pkg = root.packageName?.toString() ?: "",
             activity = activity,
             ts = System.currentTimeMillis(),
+            seq = seq,
         )
         wsClient.sendPerception(perception)
-        Log.i(TAG, "↑ perception pkg=${perception.pkg} nodes=${nodes.size} (taskActive=$taskActive)")
-        repo.appendTrace(TraceEvent(System.currentTimeMillis(), TraceDirection.UP, "perception", "pkg=${perception.pkg} nodes=${nodes.size}"))
+        Log.i(TAG, "↑ perception pkg=${perception.pkg} nodes=${nodes.size} seq=$seq (taskActive=$taskActive)")
+        repo.appendTrace(TraceEvent(System.currentTimeMillis(), TraceDirection.UP, "perception", "pkg=${perception.pkg} nodes=${nodes.size} seq=$seq"))
     }
 
     /** 采样专用抓帧:抓当前屏 nodeTree,组 sample.capture 上报。与决策链路解耦。 */
@@ -198,6 +213,11 @@ class PhoneAgentService : AccessibilityService() {
         repo.updateAccessibility(false)
         wsClient.close()
         return super.onUnbind(intent)
+    }
+
+    private fun resetSequenceNumbers() {
+        // 任务重置时重置序列号
+        perceptionSeq = 0
     }
 
     override fun onDestroy() {

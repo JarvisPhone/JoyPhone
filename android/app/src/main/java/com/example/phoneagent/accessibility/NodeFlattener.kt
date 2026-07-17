@@ -64,6 +64,7 @@ object NodeFlattener {
      * - 可交互(clickable/editable/scrollable/checkable)或有 contentDescription 才收录。
      * - 子树向上合并：可交互节点自身 text 为空时，取子树中最近的非空 text/desc 补上。
      * - 合并后不再单独收录被吸收的纯文本叶子。
+     * - 修复资源泄漏：子节点需要手动回收 AccessibilityNodeInfo。
      * framework 集成，真机验证。
      */
     private fun walk(node: AccessibilityNodeInfo, path: List<Int>, out: MutableList<NodeDto>) {
@@ -105,7 +106,11 @@ object NodeFlattener {
 
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
-            walk(child, path + i, out)
+            try {
+                walk(child, path + i, out)
+            } finally {
+                child.recycle()  // 修复资源泄漏：AccessibilityNodeInfo 需要手动回收
+            }
         }
     }
 
@@ -113,12 +118,16 @@ object NodeFlattener {
     private fun firstDescendantLabel(node: AccessibilityNodeInfo):String? {
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
-            val t = child.text?.toString()
-            if (!t.isNullOrBlank()) return t
-            val d = child.contentDescription?.toString()
-            if (!d.isNullOrBlank()) return d
-            val deeper = firstDescendantLabel(child)
-            if (deeper != null) return deeper
+            try {
+                val t = child.text?.toString()
+                if (!t.isNullOrBlank()) return t
+                val d = child.contentDescription?.toString()
+                if (!d.isNullOrBlank()) return d
+                val deeper = firstDescendantLabel(child)
+                if (deeper != null) return deeper
+            } finally {
+                child.recycle()  // 修复资源泄漏：AccessibilityNodeInfo 需要手动回收
+            }
         }
         return null
     }

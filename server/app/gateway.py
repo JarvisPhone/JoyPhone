@@ -47,7 +47,23 @@ if not logger.handlers:
 
 _FIXTURE = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "feishu_happy_path.json"
 
-_DEFAULT_GOAL = "等待用户下发任务目标"
+
+# ==== Gateway 配置常量 ====
+class GatewayConfig:
+    """Gateway 相关配置常量，统一管理魔法数字。"""
+    DEFAULT_GOAL = "等待用户下发任务目标"
+    CONFIRM_ID_PREFIX = "cfm"
+    CONFIRM_ID_LENGTH = 8
+    MAX_CONFIRM_COUNT = 1
+    MAX_STEPS_DEFAULT = 40
+    CONFIRM_TIMEOUT_MS = 5000
+    PRE_SEND_REVERT_WINDOW_SEC = 10.0
+    POST_SEND_PATROL_THRESHOLD = 2
+    DEBOUNCE_MS = 400
+    WRONG_CHAT_INPUT_THRESHOLD = 2
+
+
+_DEFAULT_GOAL = GatewayConfig.DEFAULT_GOAL
 
 
 _SAMPLES_DIR = Path(__file__).resolve().parents[1] / "data" / "samples"
@@ -322,9 +338,9 @@ def create_app() -> FastAPI:
                     session.transition(State.NEGOTIATING)
 
                 except Exception as e:
-                    logger.error(f"Negotiation error: {e}")
+                    logger.error("Negotiation error: %s", e)
                     session.transition(State.ABORT)
-                    _ab = TaskAbort(taskId=session.task_id, reason=f"negotiation_error: {e}").to_json()
+                    _ab = TaskAbort(taskId=session.task_id, reason="negotiation_error: %s" % e).to_json()
                     log_down("task.abort", _ab)
                     await websocket.send_text(_ab)
                     metrics.finish_task(session.task_id, "error", str(e))

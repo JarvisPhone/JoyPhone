@@ -5,8 +5,7 @@ import uuid
 from app.llm import LLM
 from app.protocol import Action, Node, Perception
 from app.scene import (
-    Scene, detect_scene, next_action, fallback_action,
-    STALL_THRESHOLD, CYCLE_THRESHOLD, WINDOW, LLM_ESCALATION_TRIES, FALLBACK_TRIES,
+    Scene, detect_scene, next_action, fallback_action, SceneConfig,
 )
 from app.skill_cache import SkillCache
 from app.skills import SkillLibrary
@@ -322,12 +321,12 @@ class DecisionEngine:
         # scene_history 滑窗
         hist = gd.setdefault("scene_history", [])
         hist.append(current.value)
-        if len(hist) > WINDOW:
+        if len(hist) > SceneConfig.WINDOW:
             del hist[0]
-        stalled = gd["stall_count"] >= STALL_THRESHOLD
+        stalled = gd["stall_count"] >= SceneConfig.STALL_THRESHOLD
         oscillating = (
             current != Scene.HOME
-            and hist.count(current.value) >= CYCLE_THRESHOLD + 1
+            and hist.count(current.value) >= SceneConfig.CYCLE_THRESHOLD + 1
         )
         # ==== 三级脱困阶梯 ====
         if stalled or oscillating:

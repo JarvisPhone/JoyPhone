@@ -2,12 +2,17 @@
 from __future__ import annotations
 
 import json
+import threading
 import time
 from pathlib import Path
 
 
 def _make_key(goal: str, context: str) -> str:
     return f"{goal}|{context}"
+
+
+# 全局文件锁，用于保护并发写入
+_lock = threading.Lock()
 
 
 class SkillCache:
@@ -88,6 +93,7 @@ class SkillCache:
 
     def _flush(self) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._path.write_text(
-            json.dumps(self._data, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        with _lock:
+            self._path.write_text(
+                json.dumps(self._data, ensure_ascii=False, indent=2), encoding="utf-8"
+            )

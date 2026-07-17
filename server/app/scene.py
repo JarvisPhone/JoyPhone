@@ -28,12 +28,16 @@ from app.protocol import Action, Perception
 _LAUNCHER = "launcher"
 _SYSTEMUI = "systemui"
 
-# ==== 收敛守卫常量（可调）====
-STALL_THRESHOLD = 3       # 连续同 scene 同 op 判停滞
-CYCLE_THRESHOLD = 2       # 非目标 scene 在窗口内重复次数判振荡
-WINDOW = 6                # scene_history 窗口长度
-LLM_ESCALATION_TRIES = 1  # 给 LLM 几次脱困机会
-FALLBACK_TRIES = 2        # 机械降级动作尝试次数
+
+# ==== 场景状态机配置常量 ====
+class SceneConfig:
+    """场景状态机相关配置常量，统一管理魔法数字。"""
+    STALL_THRESHOLD = 3       # 连续同 scene 同 op 判停滞
+    CYCLE_THRESHOLD = 2       # 非目标 scene 在窗口内重复次数判振荡
+    WINDOW = 6                # scene_history 窗口长度
+    LLM_ESCALATION_TRIES = 1  # 给 LLM 几次脱困机会
+    FALLBACK_TRIES = 2        # 机械降级动作尝试次数
+
 
 class Scene(str, Enum):
     HOME = "home"                    # 桌面(首屏及其他屏,不区分第几屏)

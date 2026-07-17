@@ -23,15 +23,16 @@ class Perception(BaseModel):
     pkg: str = ""
     activity: str = ""
     ts: int = 0
+    seq: int = 0  # 端侧递增序号，用于检测乱序
 
 
 class ActionResult(BaseModel):
     type: Literal["action.result"] = "action.result"
     actionId: str
     ok: bool
-    atEnd: bool = False
     error: Optional[str] = None
     ts: int = 0
+    seq: int = 0  # 端侧递增序号，用于检测乱序
 
 
 class NewMessage(BaseModel):
