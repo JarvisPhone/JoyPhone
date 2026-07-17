@@ -34,6 +34,7 @@ data class UplinkActionResult(
     val error: String? = null,
     val ts: Long = 0,
     val seq: Int = 0,  // 端侧递增序号，用于检测乱序
+    val atEnd: Boolean = false,  // 协议保留字段，云端已不使用（YAGNI）
 )
 
 @Serializable

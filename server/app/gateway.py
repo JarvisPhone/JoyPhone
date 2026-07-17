@@ -485,6 +485,11 @@ def create_app() -> FastAPI:
                 guard=session.guard,
             )
 
+            # 每做一次决策计为一步，而非仅在 action.result.ok 时计数。
+            # 这样 wait/home/read_screen 等无副作用动作也消耗 budget，
+            # 防止 LLM 持续返回 wait 导致任务永不终止。
+            session.record_step()
+
             if skill_name:
                 metrics.record_skill_hit(session.task_id)
             else:

@@ -33,6 +33,7 @@ class ActionResult(BaseModel):
     error: Optional[str] = None
     ts: int = 0
     seq: int = 0  # 端侧递增序号，用于检测乱序
+    atEnd: bool = False  # 协议保留字段，云端已不使用（YAGNI）
 
 
 class NewMessage(BaseModel):

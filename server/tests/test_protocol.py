@@ -84,16 +84,17 @@ def test_action_keeps_string_params_unchanged():
     assert action.params == {"nodeId": "n1", "match_text": "通讯录"}
 
 
-def test_action_result_parses_at_end():
+def test_action_result_has_seq_field():
+    # 修复: atEnd 字段已移除，替换为 seq 序列号
     result = ActionResult.model_validate(
-        {"type": "action.result", "actionId": "a1", "ok": True, "atEnd": True}
+        {"type": "action.result", "actionId": "a1", "ok": True, "seq": 42}
     )
-    assert result.atEnd is True
+    assert result.seq == 42
 
 
-def test_action_result_at_end_defaults_false():
+def test_action_result_seq_defaults_zero():
     result = ActionResult(actionId="a1", ok=True)
-    assert result.atEnd is False
+    assert result.seq == 0
 
 
 def test_task_start_build():

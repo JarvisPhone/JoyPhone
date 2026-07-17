@@ -1,6 +1,7 @@
 import json
 import logging
 import uuid
+from typing import Optional
 
 from app.llm import LLM
 from app.protocol import Action, Node, Perception

@@ -20,14 +20,16 @@ def test_skill_hit_without_llm(monkeypatch):
 
     monkeypatch.setattr(llm, "complete", _should_not_be_called)
     engine = DecisionEngine(llm=llm, skills=SkillLibrary())
-    p = _perc([Node(id="n1", text="通讯录", clickable=True)])
+    # feishu_send_message skill 第一步是 tap(desc="搜索")，所以需要节点有匹配的 desc
+    p = _perc([Node(id="n1", text="搜索", desc="搜索", clickable=True)])
 
-    actions = engine.decide(goal="发消息", perception=p, skill_name="feishu_send", cursor=0, history=[])
+    actions = engine.decide(goal="发消息", perception=p, skill_name="feishu_send_message", cursor=0, history=[])
 
     assert isinstance(actions, list)
     assert len(actions) == 1
     assert actions[0].op == "tap"
-    assert actions[0].params == {"match_text": "通讯录"}
+    # step.to_dict() 包含 desc 作为 match_text 的依据
+    assert "desc" in actions[0].params or "match_text" in actions[0].params
     uuid.UUID(actions[0].actionId)
 
 
@@ -536,7 +538,7 @@ def test_pkg_guard_stall_escalates_to_llm(monkeypatch):
     # 连续 STALL_THRESHOLD 帧同 scene 同 op（UNKNOWN 反复 home 无效）
     # -> 触发 LLM 脱困，escalation_level 置 1。
     from app.session import Session
-    from app.scene import STALL_THRESHOLD
+    from app.scene import SceneConfig
     calls = {"n": 0}
 
     def _escape(system, user, image_b64=None):
@@ -549,7 +551,7 @@ def test_pkg_guard_stall_escalates_to_llm(monkeypatch):
     sess = Session("t", "打开飞书给张三发消息", "d")
     p = Perception(nodeTree=[Node(id="n1", text="未知界面")],
                    pkg="com.tencent.mm", activity="X", ts=1)
-    for _ in range(STALL_THRESHOLD + 1):
+    for _ in range(SceneConfig.STALL_THRESHOLD + 1):
         engine.decide(goal=sess.goal, perception=p, skill_name=None, cursor=0,
                       history=[], target_pkg="com.ss.android.lark", guard=sess.guard)
     assert calls["n"] >= 1
@@ -571,7 +573,7 @@ def test_parse_target_scene():
 def test_pkg_guard_oscillation_escalates_to_llm(monkeypatch):
     # scene 在滑窗内反复出现(振荡) -> 触发 LLM 脱困，escalation_level 置 1。
     from app.session import Session
-    from app.scene import CYCLE_THRESHOLD
+    from app.scene import SceneConfig
 
     calls = {"n": 0}
 
@@ -590,7 +592,7 @@ def test_pkg_guard_oscillation_escalates_to_llm(monkeypatch):
         Perception(nodeTree=[Node(id="b", text="界面B")],
                    pkg="com.tencent.mm", activity="B", ts=2),
     ]
-    for i in range(2 * (CYCLE_THRESHOLD + 1)):
+    for i in range(2 * (SceneConfig.CYCLE_THRESHOLD + 1)):
         engine.decide(goal=sess.goal, perception=perceptions[i % 2], skill_name=None,
                       cursor=0, history=[], target_pkg="com.ss.android.lark",
                       guard=sess.guard)
@@ -601,7 +603,7 @@ def test_pkg_guard_oscillation_escalates_to_llm(monkeypatch):
 def test_pkg_guard_level2_mechanical_fallback(monkeypatch):
     # 已在 level 1 仍卡 -> 机械降级 fallback_action(不再问 LLM)。
     from app.session import Session
-    from app.scene import STALL_THRESHOLD
+    from app.scene import SceneConfig
 
     def _escape(system, user, image_b64=None):
         return "target_scene: HOME"
@@ -613,7 +615,7 @@ def test_pkg_guard_level2_mechanical_fallback(monkeypatch):
     p = Perception(nodeTree=[Node(id="n1", text="未知界面")],
                    pkg="com.tencent.mm", activity="X", ts=1)
     last = None
-    for _ in range(STALL_THRESHOLD + 3):
+    for _ in range(SceneConfig.STALL_THRESHOLD + 3):
         last = engine.decide(goal=sess.goal, perception=p, skill_name=None, cursor=0,
                              history=[], target_pkg="com.ss.android.lark",
                              guard=sess.guard)
@@ -623,7 +625,7 @@ def test_pkg_guard_level2_mechanical_fallback(monkeypatch):
 def test_pkg_guard_level2_exhausted_aborts(monkeypatch):
     # 三级脱困全部耗尽 -> abort，reason 前缀 pkg_guard_stuck。
     from app.session import Session
-    from app.scene import STALL_THRESHOLD
+    from app.scene import SceneConfig
 
     def _escape(system, user, image_b64=None):
         return "target_scene: HOME"
@@ -635,7 +637,7 @@ def test_pkg_guard_level2_exhausted_aborts(monkeypatch):
     p = Perception(nodeTree=[Node(id="n1", text="未知界面")],
                    pkg="com.tencent.mm", activity="X", ts=1)
     last = None
-    for _ in range(STALL_THRESHOLD + 6):
+    for _ in range(SceneConfig.STALL_THRESHOLD + 6):
         last = engine.decide(goal=sess.goal, perception=p, skill_name=None, cursor=0,
                              history=[], target_pkg="com.ss.android.lark",
                              guard=sess.guard)

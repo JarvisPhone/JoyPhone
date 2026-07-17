@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+from abc import ABC, abstractmethod
 from typing import Optional
 
 import httpx
@@ -12,9 +13,10 @@ class LLMError(Exception):
     pass
 
 
-class LLM:
+class LLM(ABC):
+    @abstractmethod
     def complete(self, system: str, user: str, image_b64: str | None = None) -> str:
-        raise NotImplementedError
+        ...
 
 
 class FakeLLM(LLM):
@@ -39,6 +41,25 @@ def _clean_text(text: str | None) -> str:
     if not text:
         return ""
     return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+
+
+class FakeLLM(LLM):
+    def __init__(self, responses: list[str | None] | str | None = None):
+        if responses is None:
+            responses = ["read"]
+        elif isinstance(responses, (str, type(None))):
+            responses = [responses]
+        self._responses = list(responses)
+        self._index = 0
+
+    def complete(self, system: str, user: str, image_b64: str | None = None) -> str:
+        if not self._responses:
+            return ""
+        if self._index >= len(self._responses):
+            return self._responses[-1]
+        resp = self._responses[self._index]
+        self._index += 1
+        return resp if resp is not None else ""
 
 
 class RealLLM(LLM):
