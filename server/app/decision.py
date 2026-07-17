@@ -24,7 +24,12 @@ _SYSTEM_PROMPT = """你是一个 Android 手机操作代理的决策核心。给
 - home           回到桌面
 - wait 500       等待若干毫秒
 - read           重新读取屏幕(信息不足以决策时用)
-- done           任务已完成
+- done           [硬性语义·必读] 任务目标已达成。
+                  四条件必须全部成立才输出 done:① pkg==target_pkg(在目标 app 内);
+                  ② 当前屏顶部标题 == 目标群/联系人名(用 screen 第一行的标题节点文本核对);
+                  ③ 最近一次 action 是「tap 发送按钮」,且 action.result.ok==true;
+                  ④ 输入框已清空(代表消息真正发出,不是还在编辑中)。
+                  一旦满足,只输出一行 done;禁止继续 tap 群设置、input 群名、swipe 探索;若继续,云端会强制 abort 并标记失败。
 - abort 原因      无法完成任务，放弃，并说明原因
 
 批处理规则：你可以一次给出多行盲操作(如 home、swipe、back、wait)，最多以「一条 tap 或 input」收尾。系统只会执行到第一条 tap/input 为止，然后重新抓取屏幕再问你，所以 tap/input 之后不要再写别的指令。
@@ -225,6 +230,24 @@ class DecisionEngine:
         if skill_name:
             step = self._skills.next_step(skill_name, perception.nodeTree, cursor)
             if step is not None:
+                # [BUG FIX] 处理 verify_title 步:仅做标题校验,通过则下发一个无副作用
+                # read_screen 占位让端侧重抓帧 + 上游 cursor 自然推进。
+                # 注意:cursor 推进由 gateway 在 skill 步不耗尽时自动递增。
+                if step.get("op") == "verify_title":
+                    expected = step.get("expected_title") or ""
+                    current_title = _detect_current_title(perception.nodeTree)
+                    if current_title and _title_match(expected, current_title):
+                        logging.getLogger("phoneagent.decision").info(
+                            "[VERIFY_TITLE_PASS] skill=%s expected=%r current=%r",
+                            skill_name, expected, current_title,
+                        )
+                        # 校验通过:推送 read_screen(让 cursor 推进且不引发副作用)
+                        return [Action(actionId=str(uuid.uuid4()), op="read_screen", params={})]
+                    logging.getLogger("phoneagent.decision").warning(
+                        "[VERIFY_TITLE_FAIL] skill=%s expected=%r current=%r 回退 LLM 决策",
+                        skill_name, expected, current_title,
+                    )
+                    return None  # 校验失败:让 LLM 重新决策(它会 tap back / 换一个候选)
                 params = {k: str(v) for k, v in step.items() if k != "op"}
                 return [Action(actionId=str(uuid.uuid4()), op=step["op"], params=params)]
 
@@ -343,3 +366,26 @@ class DecisionEngine:
         capped = (interactive + others)[: self.MAX_LLM_NODES]
         keep = set(id(n) for n in capped)
         return [n for n in nodes if id(n) in keep]
+
+
+
+def _detect_current_title(node_tree) -> Optional[str]:
+    """[BUG FIX] 从 perception.nodeTree 识别当前屏顶部标题。
+
+    延迟 import chat_title_helpers 避免 skills -> decision -> chat_title_helpers
+    循环依赖。不抛异常;无法识别返回 None。
+    """
+    try:
+        from app.chat_title_helpers import detect_chat_title
+    except ImportError:
+        return None
+    return detect_chat_title(node_tree)
+
+
+def _title_match(expected: str, current: str) -> bool:
+    """[BUG FIX] 标题匹配:用 chat_title_helpers.match_chat_title(子串双向 + 去空)。"""
+    try:
+        from app.chat_title_helpers import match_chat_title
+    except ImportError:
+        return False
+    return match_chat_title(expected, current)

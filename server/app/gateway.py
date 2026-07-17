@@ -106,6 +106,10 @@ def create_app() -> FastAPI:
         negotiation_history: list[dict] = []
         skill_name: str | None = None
 
+        # 【BUG FIX·Bug 1】"错群 input" 计数器。LLM 在错误会话标题下持续 input 正文,
+        # 触发 [INPUT_GUARD] 多次仍不死心 → 给阈值强制 abort。
+        wrong_chat_input_count: int = 0
+
         # Toast 确认相关状态
         target_chat_name: str | None = extract_target(session.goal)
         target_app_pkg: str | None = resolve_target_pkg(session.goal)
@@ -114,6 +118,30 @@ def create_app() -> FastAPI:
         pending_confirm_id: str | None = None
         pending_message_text: str = ""
         confirm_count = 0  # 全程只确认一次,避免循环
+
+        # 【BUG FIX·Bug 2 硬性守卫】:CONFIRM 拦截成功、tap 真正下发到端侧后,
+        # 端侧回 action.result.ok=true。此时应记录"消息已发出",并等待下一帧 perception
+        # 验证输入框已清空——满足后强制下发 done(无视 LLM 是否输出),防止 LLM 在
+        # 已发送的情况下继续 tap 群设置页/input 群名做无效探索。
+        sent_at_step: int | None = None  # cursor 到达此值表示消息已发出
+        sent_acked: bool = False         # 端侧已 ack 发送成功
+        post_send_patrol_count: int = 0  # 发送后 LLM 仍继续操作的探测帧计数
+
+        # [BUG FIX] 发送前 10s 观察窗:在 task.confirm 拦截期间(等待用户 approve),
+        # 若用户触发「back / home」(表现为 uplink.pkg 从目标 app 切换到 launcher/systemui),
+        # 视作用户撤回意图,主动 abort 待发的发送动作,不再下发 tap。
+        # 设计要点:
+        # - confirm_sent_ts 记录 task.confirm 下发的时刻(单调时钟,秒,来自 time.time())。
+        # - last_pkg_before_confirm 记录拦截瞬时的 pkg,作为后续 pkg 切换的对照基线。
+        # - 当 perception 上行时,若 state == AWAITING_CONFIRM 且距 confirm_sent_ts
+        #   ≤ 10s 内 + pkg 切换到 launcher/systemui,立即下发 task.abort(reason=
+        #   "pre_send_user_reverted"),并把 pending_send_action 清空、阻止
+        #   后续 approve 路径下发真实 tap。
+        confirm_sent_ts: float | None = None
+        last_pkg_before_confirm: str = ""
+        # 用户在观察窗内是否已经「反悔」。一旦置 True,即便后续 approve 上行
+        # 我们也拒绝下发 tap,只发 abort 兜底。
+        pre_send_reverted: bool = False
 
         while True:
             try:
@@ -166,6 +194,10 @@ def create_app() -> FastAPI:
                 pending_confirm_id = None
                 pending_message_text = ""
                 confirm_count = 0
+                # [BUG FIX] 同步清零 10s 反向操作观察窗状态,避免上次任务残留污染。
+                confirm_sent_ts = None
+                last_pkg_before_confirm = ""
+                pre_send_reverted = False
                 logger.info("task.request goal=%s target_chat=%s pkg=%s", uplink.goal, target_chat_name, target_app_pkg)
                 _ts_msg = TaskStart(taskId=session.task_id, goal=session.goal, target=device_id).to_json()
                 log_down("task.start", _ts_msg)
@@ -192,6 +224,26 @@ def create_app() -> FastAPI:
                 pending_confirm_id = None
                 if uplink.approved:
                     # 用户确认(Toast 5 秒到点 / App 主动)
+                    # [BUG FIX] 若在 10s 观察窗内已检测到反向操作,即便 approve
+                    # 已上行也拒绝下发 tap,改发 task.abort 兜底。
+                    if pre_send_reverted:
+                        logger.warning(
+                            "[APPROVE_BUT_REVERTED] approved arrived but pre_send_reverted=True, refuse tap",
+                        )
+                        pending_confirm_id = None
+                        pending_send_action = None
+                        pending_send_button_node = None
+                        session.transition(State.ABORT)
+                        _ab = TaskAbort(
+                            taskId=session.task_id,
+                            reason="approve_but_pre_send_reverted",
+                        ).to_json()
+                        log_down("task.abort", _ab)
+                        await websocket.send_text(_ab)
+                        metrics.finish_task(
+                            session.task_id, "aborted", "approve_but_pre_send_reverted"
+                        )
+                        break
                     session.transition(State.SENT)
                     if pending_send_action is not None:
                         # 文案在拦截前已通过 input 放行进框,这里只需下发被拦截的
@@ -205,6 +257,11 @@ def create_app() -> FastAPI:
                         log_down("action", _sa)
                         await websocket.send_text(_sa)
                         applied_steps.append({"op": "tap", "params": send_act.params})
+                        # 【BUG FIX·Bug 2】 真实发到端侧,标记"消息已下发"。
+                        # 主循环下次的 perception 帧会据此守卫:若 LLM 输出非 done,
+                        # 强制终止任务,防止 LLM 把"已发送"误判为"未完成"反复探索。
+                        sent_acked = True
+                        sent_at_step = cursor  # 当前 cursor 标识这一步
                         pending_send_action = None
                         pending_send_button_node = None
                     else:
@@ -291,14 +348,99 @@ def create_app() -> FastAPI:
                 break
 
             last_pkg = uplink.pkg or last_pkg
+
+            # 【BUG FIX·Bug 2 硬性兜底】消息已发出后,LLM 可能误判"还在处理",
+            # 继续 tap 群设置页/input 群名做无效探索 → 进入「永不终止」死循环。
+            # 这里用两道防线:
+            # 1) 若上一帧 sent_acked=True + 当前仍在目标 app + 标题匹配目标群
+            #    → 强制下发 done(task.completed),无视 LLM 输出。
+            # 2) 若 LLM 在发送成功后又做出 ≥ 2 次非 done 操作
+            #    → 直接 task.abort(防止继续耗 budget)。
+            if sent_acked and target_app_pkg and uplink.pkg == target_app_pkg and target_chat_name:
+                current_title = detect_chat_title(uplink.nodeTree)
+                if current_title and match_chat_title(target_chat_name, current_title):
+                    # 信号已强:消息已发、当前仍在目标会话内、标题匹配 → 强制 done。
+                    logger.info(
+                        "[POST_SEND_FORCE_DONE] sent_acked=True pkg=%s title=%s match",
+                        uplink.pkg, current_title,
+                    )
+                    session.transition(State.DONE)
+                    session.active = False
+                    if applied_steps:
+                        engine._cache.learn(session.goal, last_pkg, applied_steps)
+                    _done = TaskDone(
+                        taskId=session.task_id, result="ok",
+                        summary="post-send auto-done (LLM did not output done)",
+                    ).to_json()
+                    log_down("task.done", _done)
+                    await websocket.send_text(_done)
+                    metrics.finish_task(session.task_id, "completed")
+                    break
+
+            # 防线 2:消息已发但 LLM 还在继续做事 → 累计巡逻计数,≥ 2 次强 abort。
+            # 注意 must come BEFORE skills cache 命中检查,否则会被静默吃掉。
+            if sent_acked:
+                post_send_patrol_count += 1
+                if post_send_patrol_count >= 2:
+                    logger.warning(
+                        "[POST_SEND_PATROL_ABORT] sent_acked=True but LLM continued %d frames",
+                        post_send_patrol_count,
+                    )
+                    session.transition(State.ABORT)
+                    _ab = TaskAbort(
+                        taskId=session.task_id,
+                        reason="post_send_patrol:llm_continued_after_send",
+                    ).to_json()
+                    log_down("task.abort", _ab)
+                    await websocket.send_text(_ab)
+                    metrics.finish_task(
+                        session.task_id, "aborted", "post_send_patrol"
+                    )
+                    break
             logger.info(
                 "perception pkg=%s nodes=%d cursor=%d state=%s",
                 uplink.pkg, len(uplink.nodeTree), cursor, session.state.value,
             )
 
-            # 【AWAITING_CONFIRM 期间】飞书/微信被切走 -> 自动取消
-            if session.state == State.AWAITING_CONFIRM:
-                if target_app_pkg and uplink.pkg and uplink.pkg != target_app_pkg:
+            # [BUG FIX] 【AWAITING_CONFIRM 期间·10s 反向操作观察窗】
+            # 用户按 back/home 导致 uplink.pkg 从目标 app 切到 launcher/systemui 时,
+            # 在 confirm_sent_ts 之后 10s 窗口内 → 视作主动撤回,
+            # 清掉 pending_send_action 并把 pre_send_reverted 置 True,
+            # 后续 approve 路径将拒绝真正下发 tap。窗口外仍走原"app_left_during_confirm"。
+            if session.state == State.AWAITING_CONFIRM and confirm_sent_ts is not None and target_app_pkg:
+                import time as _t
+                within_window = (_t.monotonic() - confirm_sent_ts) <= 10.0
+                pkg_left_app = (uplink.pkg or "") and uplink.pkg != target_app_pkg
+                pkg_is_launder_view = any(
+                    k in (uplink.pkg or "").lower()
+                    for k in ("launcher", "systemui", "inputmethod")
+                )
+                if within_window and pkg_left_app and pkg_is_launder_view:
+                    elapsed = _t.monotonic() - confirm_sent_ts
+                    logger.warning(
+                        "[PRE_SEND_USER_REVERTED] window=%.2fs pkg=%s -> target_pkg=%s, abort",
+                        elapsed, uplink.pkg, target_app_pkg,
+                    )
+                    pre_send_reverted = True
+                    pending_confirm_id = None
+                    pending_send_action = None
+                    pending_send_button_node = None
+                    session.transition(State.ABORT)
+                    _ab = TaskAbort(
+                        taskId=session.task_id,
+                        reason=(
+                            f"pre_send_user_reverted:"
+                            f"pkg_left_within_10s:elapsed={elapsed:.2f}s"
+                        ),
+                    ).to_json()
+                    log_down("task.abort", _ab)
+                    await websocket.send_text(_ab)
+                    metrics.finish_task(
+                        session.task_id, "aborted", "pre_send_user_reverted"
+                    )
+                    break
+                # 窗口外但已切走,沿用旧逻辑(11+ 秒仍切走则按原路径处理)
+                if not within_window and pkg_left_app:
                     logger.info(
                         "[CONFIRM_CANCELLED] pkg=%s != target=%s during AWAITING_CONFIRM -> auto reject",
                         uplink.pkg, target_app_pkg,
@@ -392,6 +534,13 @@ def create_app() -> FastAPI:
                         await websocket.send_text(_confirm.to_json())
                         session.transition(State.AWAITING_CONFIRM)
                         confirm_count += 1
+                        # [BUG FIX] 启动 10s 反向操作观察窗:从此刻起 10 秒内
+                        # 若发现 uplink.pkg 切换到 launcher/systemui(用户按 back 或 home)
+                        # 则主动 abort,阻止后续真正下发 tap。
+                        import time as _t
+                        confirm_sent_ts = _t.monotonic()
+                        last_pkg_before_confirm = uplink.pkg
+                        pre_send_reverted = False
                         logger.info(
                             "[CONFIRM_SENT] target=%s current=%s msg=%r (send tap intercepted)",
                             target_chat_name, current_title, pending_message_text,
@@ -421,6 +570,28 @@ def create_app() -> FastAPI:
                                 target_chat_name, current_title,
                                 action.params.get("text", ""),
                             )
+                            wrong_chat_input_count += 1
+                            # 阈值 2:同一目标下,LLM 两次都在错群输正文 → 强 abort,
+                            # 防止 LLM 进入「tap 不匹配项 → back → 下一项 → input」
+                            # 的循环死锁(Bug 1 主因)。
+                            if wrong_chat_input_count >= 2:
+                                logger.error(
+                                    "[INPUT_GUARD_ABORT] wrong_chat_input_count=%d, force abort",
+                                    wrong_chat_input_count,
+                                )
+                                session.transition(State.ABORT)
+                                _ab = TaskAbort(
+                                    taskId=session.task_id,
+                                    reason=f"wrong_chat_repeated:{wrong_chat_input_count}",
+                                ).to_json()
+                                log_down("task.abort", _ab)
+                                await websocket.send_text(_ab)
+                                metrics.finish_task(
+                                    session.task_id, "aborted",
+                                    f"wrong_chat_repeated:{wrong_chat_input_count}",
+                                )
+                                terminate = True
+                                break
                             _back = Action(
                                 actionId=str(uuid.uuid4()), op="back", params={}
                             ).to_json()

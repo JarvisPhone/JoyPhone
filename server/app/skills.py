@@ -16,6 +16,9 @@ class SkillStep:
     class_name: Optional[str] = None
     index: Optional[int] = None
     input_text: Optional[str] = None
+    # [BUG FIX] verify_title 步骤需要:期望的顶部标题子串(用于和当前
+    # perception 顶部标题做匹配校验)。仅当 op == "verify_title" 时有意义。
+    match_text: Optional[str] = None
 
     def to_dict(self) -> dict:
         d = {"op": self.op}
@@ -31,6 +34,8 @@ class SkillStep:
             d["index"] = self.index
         if self.input_text is not None:
             d["input_text"] = self.input_text
+        if self.match_text is not None:
+            d["match_text"] = self.match_text
         return d
 
     @classmethod
@@ -43,6 +48,7 @@ class SkillStep:
             class_name=d.get("class_name"),
             index=d.get("index"),
             input_text=d.get("input_text"),
+            match_text=d.get("match_text"),
         )
 
 
@@ -59,12 +65,15 @@ _FEISHU_SKILLS = {
     "feishu_send_message": Skill(
         name="feishu_send_message",
         app="com.ss.android.lark",
-        description="在飞书发送消息",
+        description="在飞书发送消息(已含标题核对步骤)",
         keywords=["飞书", "发送", "消息", "发给", "发给"],
         steps=[
             SkillStep(op="tap", desc="搜索"),
             SkillStep(op="tap", text="搜索"),
             SkillStep(op="input", input_text="{contact}"),
+            # 【BUG FIX】原技能缺这一步。LLM 看到"搜索结果中文字匹配"就直接 tap,
+            # 会反复点进同一个非目标群/页。强制要求先比对顶部标题再 tap。
+            SkillStep(op="verify_title", match_text="{contact}"),
             SkillStep(op="tap", text="发送"),
         ],
     ),
@@ -149,6 +158,18 @@ class SkillLibrary:
             return None
 
         step = skill.steps[cursor]
+
+        # [BUG FIX] verify_title 步骤不下发 UI 动作,只让上游做标题校验。
+        # 返回一个标记 dict(op="verify_title", expected_title=...),由 DecisionEngine.decide
+        # 在调用 match_chat_title 后推进 cursor 或回退。
+        if step.op == "verify_title":
+            if not step.match_text:
+                logging.getLogger("phoneagent.skills").warning(
+                    "[VERIFY_TITLE_NO_TARGET] skill=%s cursor=%s verify_title 步骤缺少 match_text",
+                    skill_name, cursor,
+                )
+                return None
+            return {"op": "verify_title", "expected_title": step.match_text}
 
         if step.index is not None and step.index < len(nodes):
             result = step.to_dict()
