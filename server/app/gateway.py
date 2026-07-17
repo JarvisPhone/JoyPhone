@@ -203,6 +203,17 @@ def create_app() -> FastAPI:
                 session.goal = uplink.goal
                 session.state = State.NAVIGATING
                 session.active = True
+                # [P1-1 FIX] 重置所有 per-task 状态，避免同连接第二个任务继承污染
+                cursor = 0
+                history = []
+                applied_steps = []
+                last_pkg = ""
+                negotiation_history = []
+                skill_name = None
+                wrong_chat_input_count = 0
+                sent_at_step = None
+                sent_acked = False
+                post_send_patrol_count = 0
                 target_chat_name = extract_target(session.goal)
                 target_app_pkg = resolve_target_pkg(session.goal)
                 pending_send_action = None
