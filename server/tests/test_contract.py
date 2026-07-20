@@ -119,6 +119,49 @@ def test_uplink_sample_capture():
     assert msg.device == "pixel-7-pro-01"
 
 
+# ---- 上行:roundtrip 键集断言 ----
+
+
+def _assert_golden_keys_covered(golden, dumped, path="$"):
+    """递归断言:golden 中出现的每个键,在解析后 model_dump() 的输出中都存在。
+
+    意图:pydantic 默认忽略 extra key,若上行模型删除某个 optional 字段,
+    golden 中该键会被静默丢弃、既有测试照常变绿。此断言让这类契约漂移立刻变红。
+
+    实现说明:dump 键名取 model_dump() 默认输出(即字段名);本协议未使用
+    pydantic alias,字段名就是线协议键名,可直接与 golden 键比较。若未来引入
+    alias,此处应改用 model_dump(by_alias=True)。
+    """
+    missing = set(golden) - set(dumped)
+    assert not missing, f"{path}: golden keys silently dropped by model: {sorted(missing)}"
+    for key, gv in golden.items():
+        dv = dumped[key]
+        if isinstance(gv, dict) and isinstance(dv, dict):
+            _assert_golden_keys_covered(gv, dv, f"{path}.{key}")
+        elif isinstance(gv, list) and isinstance(dv, list):
+            for i, (gi, di) in enumerate(zip(gv, dv)):
+                if isinstance(gi, dict) and isinstance(di, dict):
+                    _assert_golden_keys_covered(gi, di, f"{path}.{key}[{i}]")
+
+
+@pytest.mark.parametrize(
+    "golden_name",
+    [
+        "perception.json",
+        "action_result.json",
+        "new_message.json",
+        "heartbeat.json",
+        "task_request.json",
+        "confirm_response.json",
+        "sample_capture.json",
+    ],
+)
+def test_uplink_roundtrip_covers_golden_keys(golden_name):
+    raw = _load(golden_name)
+    msg = parse_uplink(json.dumps(raw))
+    _assert_golden_keys_covered(raw, msg.model_dump())
+
+
 # ---- 下行:model_validate 后 model_dump 与 golden 逐字段一致 ----
 
 

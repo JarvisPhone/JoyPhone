@@ -19,7 +19,9 @@ import org.junit.Test
  */
 class ContractTest {
 
-    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+    // 契约测试专用实例:ignoreUnknownKeys = false,golden 中出现模型没有的字段时直接抛异常,
+    // 防止 golden 与模型漂移被静默吞掉。生产 Json(WsDispatcher/AppModule)保持 ignoreUnknownKeys = true 不动。
+    private val json = Json { ignoreUnknownKeys = false; encodeDefaults = true }
 
     private val goldenDir: File by lazy {
         val envRoot = System.getenv("PROJECT_ROOT")
