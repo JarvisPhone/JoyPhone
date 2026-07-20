@@ -63,3 +63,13 @@ def test_match_node_no_match_returns_false():
     nodes = [Node(id="n1", text="通讯录", desc="联系人", viewIdResourceName="com.x:id/list")]
     step = SkillStep(op="tap", text="发送", desc="搜索", view_id="search", class_name="Button")
     assert match_node(step, nodes, 0) is False
+
+def test_match_node_by_class_name_positive():
+    nodes = [Node(id="0", className="android.widget.Button")]
+    step = SkillStep(op="tap", class_name="Button")
+    assert match_node(step, nodes, 0) is True
+
+def test_match_node_input_editable_rule():
+    step = SkillStep(op="input", input_text="x")
+    assert match_node(step, [Node(id="0", editable=True)], 0) is True
+    assert match_node(step, [Node(id="0", editable=False)], 0) is False
