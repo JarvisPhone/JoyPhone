@@ -15,7 +15,6 @@ import com.example.phoneagent.domain.TaskState
 import com.example.phoneagent.domain.TraceDirection
 import com.example.phoneagent.domain.TraceEvent
 import com.example.phoneagent.net.WsClient
-import com.example.phoneagent.protocol.DownTaskConfirm
 import com.example.phoneagent.protocol.UplinkPerception
 import com.example.phoneagent.protocol.UplinkSampleCapture
 import dagger.hilt.android.AndroidEntryPoint
@@ -35,7 +34,6 @@ class PhoneAgentService : AccessibilityService() {
         const val WS_URL = "ws://10.253.61.158:8000"
         private const val DEBOUNCE_MS = 400L
         private const val TAG = "PhoneAgent"
-        private const val CONFIRM_TIMEOUT_MS = 5000L
     }
 
     @Inject lateinit var wsClient: WsClient
@@ -51,32 +49,21 @@ class PhoneAgentService : AccessibilityService() {
     /** 最近一次窗口状态变更事件带来的 Activity 类名(带包名前缀补全)。用于采样元数据,与 taskActive 无关。 */
     @Volatile private var lastActivity: String = ""
 
-    /** Toast 确认窗口:5 秒倒计时,到点自动 approved=true。
-     *  期间若云端检测到飞书被切走,会主动发 task.abort,我们无需做额外处理。
-     *  添加 pendingConfirmCancelled 标志防止竞态条件。
-     */
-    @Volatile private var pendingConfirmCancelled = false
-    private val confirmTimeoutRunnable = Runnable {
-        if (pendingConfirmCancelled) {
-            pendingConfirm = null
-            return@Runnable
-        }
-        val pending = pendingConfirm
-        if (pending != null) {
-            Log.i(TAG, "[CONFIRM_TIMEOUT] confirmId=${pending.confirmId} → auto approved=true")
-            wsClient.sendConfirmResponse(
-                taskId = pending.taskId,
-                confirmId = pending.confirmId,
-                approved = true,
-                reason = "toast_timeout_auto_confirm",
-            )
-            repo.appendTrace(
-                TraceEvent(System.currentTimeMillis(), TraceDirection.UP, "task.confirm_response", "approved=true(toast_timeout)")
-            )
-            pendingConfirm = null
-        }
+    /** Toast 确认窗口:状态与超时由 ConfirmManager 管理。Toast 展示留在 Service。 */
+    private val confirmManager by lazy {
+        ConfirmManager(
+            sendResponse = { taskId, confirmId, approved, reason ->
+                wsClient.sendConfirmResponse(taskId, confirmId, approved, reason)
+            },
+            postDelayed = { r, delayMs -> handler.postDelayed(r, delayMs) },
+            removeCallbacks = { r -> handler.removeCallbacks(r) },
+            onTrace = { detail ->
+                repo.appendTrace(
+                    TraceEvent(System.currentTimeMillis(), TraceDirection.UP, "task.confirm_response", detail)
+                )
+            },
+        )
     }
-    @Volatile private var pendingConfirm: DownTaskConfirm? = null
     // 使用 Dispatchers.Main.immediate 替代 Dispatchers.Main，避免在主线程上不必要的调度开销
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -109,6 +96,7 @@ class PhoneAgentService : AccessibilityService() {
             },
             onTaskEnd = { reason ->
                 taskActive = false
+                confirmManager.onTaskEnd()
                 Log.i(TAG, "↓ task.end reason=$reason → taskActive=false")
                 repo.appendTrace(TraceEvent(System.currentTimeMillis(), TraceDirection.DOWN, "task.end", reason))
                 repo.updateTask(TaskState.Idle)
@@ -123,7 +111,7 @@ class PhoneAgentService : AccessibilityService() {
                         "target=${confirm.target} msg=${confirm.message}",
                     )
                 )
-                pendingConfirm = confirm
+                confirmManager.onConfirm(confirm)
                 // 弹 Toast 提示用户:5 秒后自动发送
                 val preview = if (confirm.message.isNotBlank()) {
                     "「${confirm.target}」发「${confirm.message}」"
@@ -132,9 +120,6 @@ class PhoneAgentService : AccessibilityService() {
                 }
                 val toastText = "${preview}\n切走屏幕取消,5 秒后自动发送"
                 Toast.makeText(applicationContext, toastText, Toast.LENGTH_LONG).show()
-                // 启动超时定时器
-                handler.removeCallbacks(confirmTimeoutRunnable)
-                handler.postDelayed(confirmTimeoutRunnable, confirm.timeoutMs.toLong())
             },
         )
 
@@ -223,7 +208,7 @@ class PhoneAgentService : AccessibilityService() {
 
     override fun onDestroy() {
         pendingReport?.let { handler.removeCallbacks(it) }
-        handler.removeCallbacks(confirmTimeoutRunnable)
+        confirmManager.onDestroy()
         repo.updateAccessibility(false)
         wsClient.close()
         serviceScope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
