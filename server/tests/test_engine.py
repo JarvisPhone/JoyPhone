@@ -1,5 +1,6 @@
-from app.decision.engine import DecideInput, DecisionEngine
+from app.decision.engine import DecideInput, DecisionEngine, _encode_nodes, parse_actions
 from app.decision.llm import FakeLLM
+from app.decision.pkg_guard import SceneConfig
 from app.decision.skills import BoundSkill, SkillCursor, SkillStep, SkillTemplate
 from app.protocol import Node, Perception
 
@@ -50,3 +51,223 @@ def test_failed_skill_is_skipped_next_frame():
     d = eng.decide(DecideInput(goal="g", frame=_frame("张三"), target_pkg="com.x",
                                cursor=cur, bound_skill=skill, guard={}, title_keywords=("title",)))
     assert d.source == "llm"
+
+
+def _llm_decide(eng, nodes, pkg="com.x", target_pkg="", guard=None):
+    frame = Perception(pkg=pkg, nodeTree=nodes, activity="Main", ts=1)
+    return eng.decide(DecideInput(goal="g", frame=frame, target_pkg=target_pkg,
+                                  cursor=SkillCursor(), bound_skill=None,
+                                  guard=guard if guard is not None else {},
+                                  title_keywords=()))
+
+
+# ---- parse_actions: 纯文本指令解析 ----
+
+def test_parse_actions_tap():
+    assert parse_actions("tap 3") == [{"op": "tap", "id": "3"}]
+
+
+def test_parse_actions_input_keeps_inner_spaces():
+    assert parse_actions("input 5 你好 世界 abc") == [
+        {"op": "input", "id": "5", "text": "你好 世界 abc"}
+    ]
+
+
+def test_parse_actions_swipe():
+    assert parse_actions("swipe up") == [{"op": "swipe", "direction": "up"}]
+
+
+def test_parse_actions_wait():
+    assert parse_actions("wait 500") == [{"op": "wait", "ms": "500"}]
+
+
+def test_parse_actions_noarg_ops():
+    assert parse_actions("back") == [{"op": "back"}]
+    assert parse_actions("home") == [{"op": "home"}]
+    assert parse_actions("done") == [{"op": "done"}]
+
+
+def test_parse_actions_read_alias():
+    assert parse_actions("read") == [{"op": "read_screen"}]
+
+
+def test_parse_actions_abort_reason_takes_rest():
+    assert parse_actions("abort 未找到应用 飞书") == [
+        {"op": "abort", "reason": "未找到应用 飞书"}
+    ]
+
+
+def test_parse_actions_skips_blank_and_unknown_lines():
+    text = "\n\ntap 1\n   \nfoobar xyz\nhome\n"
+    assert parse_actions(text) == [{"op": "tap", "id": "1"}, {"op": "home"}]
+
+
+def test_parse_actions_multi_line_preserves_order():
+    text = "swipe left\nread\ntap 2\ninput 4 hi there\nswipe left\ndone"
+    assert parse_actions(text) == [
+        {"op": "swipe", "direction": "left"},
+        {"op": "read_screen"},
+        {"op": "tap", "id": "2"},
+        {"op": "input", "id": "4", "text": "hi there"},
+        {"op": "swipe", "direction": "left"},
+        {"op": "done"},
+    ]
+
+
+# ---- _encode_nodes: 类型标注 ----
+
+def test_encode_nodes_type_annotation():
+    nodes = [
+        Node(id="a", text="首页", clickable=True),
+        Node(id="b", text="搜索", editable=True),
+        Node(id="c", desc="微博", clickable=True),
+        Node(id="d", text="正文"),
+    ]
+    assert _encode_nodes(nodes) == (
+        '[0] button "首页"\n[1] input "搜索"\n[2] button "微博"\n[3] text "正文"'
+    )
+
+
+def test_encode_nodes_empty_and_blank_label():
+    assert _encode_nodes([]) == ""
+    assert _encode_nodes([Node(id="x", clickable=True)]) == '[0] button ""'
+
+
+# ---- _cap_nodes: 可交互节点优先保留 ----
+
+def test_cap_nodes_under_threshold_returns_all():
+    eng = DecisionEngine(llm=FakeLLM(["back"]), cache=None)
+    nodes = [Node(id=f"n{i}", text=f"t{i}") for i in range(10)]
+    assert eng._cap_nodes(nodes) == nodes
+
+
+def test_cap_nodes_over_threshold_prefers_interactive():
+    eng = DecisionEngine(llm=FakeLLM(["back"]), cache=None)
+    nodes = [Node(id=f"t{i}", text=f"text{i}") for i in range(300)]
+    target = Node(id="target", text="飞书", clickable=True)
+    nodes.append(target)
+    capped = eng._cap_nodes(nodes)
+    assert len(capped) == eng.MAX_LLM_NODES
+    assert target in capped
+
+
+# ---- tap/input 坐标注入 ----
+
+def test_tap_by_id_injects_bounds_center():
+    eng = DecisionEngine(llm=FakeLLM(["tap 1"]), cache=None)
+    nodes = [
+        Node(id="a", text="微信", clickable=True, bounds=(0, 0, 100, 100)),
+        Node(id="b", text="飞书", clickable=True, bounds=(200, 300, 400, 500)),
+    ]
+    d = _llm_decide(eng, nodes)
+    action = d.actions[-1]
+    assert action.op == "tap"
+    assert action.params["x"] == "300"
+    assert action.params["y"] == "400"
+
+
+def test_input_by_id_injects_bounds_center():
+    eng = DecisionEngine(llm=FakeLLM(["input 0 你好"]), cache=None)
+    nodes = [Node(id="a", text="搜索框", editable=True, bounds=(0, 0, 100, 100))]
+    d = _llm_decide(eng, nodes)
+    action = d.actions[0]
+    assert action.op == "input"
+    assert action.params["text"] == "你好"
+    assert action.params["x"] == "50"
+    assert action.params["y"] == "50"
+
+
+def test_tap_out_of_range_id_no_coords():
+    eng = DecisionEngine(llm=FakeLLM(["tap 99"]), cache=None)
+    nodes = [Node(id="a", text="飞书", clickable=True, bounds=(200, 300, 400, 500))]
+    action = _llm_decide(eng, nodes).actions[-1]
+    assert action.op == "tap"
+    assert "x" not in action.params and "y" not in action.params
+    assert action.params.get("id") == "99"
+
+
+def test_tap_non_int_id_no_coords():
+    eng = DecisionEngine(llm=FakeLLM(["tap abc"]), cache=None)
+    nodes = [Node(id="a", text="飞书", clickable=True, bounds=(0, 0, 10, 10))]
+    action = _llm_decide(eng, nodes).actions[-1]
+    assert "x" not in action.params and "y" not in action.params
+
+
+def test_tap_empty_id_no_coords():
+    eng = DecisionEngine(llm=FakeLLM(["tap"]), cache=None)
+    nodes = [Node(id="a", text="飞书", clickable=True, bounds=(0, 0, 10, 10))]
+    action = _llm_decide(eng, nodes).actions[-1]
+    assert "x" not in action.params and "y" not in action.params
+
+
+def test_tap_node_without_bounds_no_coords():
+    eng = DecisionEngine(llm=FakeLLM(["tap 0"]), cache=None)
+    nodes = [Node(id="a", text="飞书", clickable=True, bounds=None)]
+    action = _llm_decide(eng, nodes).actions[-1]
+    assert "x" not in action.params and "y" not in action.params
+    assert action.params.get("id") == "0"
+
+
+# ---- pkg_guard 三级脱困阶梯 ----
+
+def _stuck_frame() -> Perception:
+    return Perception(pkg="com.tencent.mm", activity="X", ts=1,
+                      nodeTree=[Node(id="n1", text="未知界面")])
+
+
+def _guard_engine(escape_response: str):
+    main = FakeLLM(["back"])
+    escape = FakeLLM([escape_response])
+    return DecisionEngine(llm=main, cache=None, escape_llm=escape), main, escape
+
+
+def _guard_decide(eng, guard):
+    return eng.decide(DecideInput(goal="打开飞书", frame=_stuck_frame(),
+                                  target_pkg="com.ss.android.lark",
+                                  cursor=SkillCursor(), bound_skill=None,
+                                  guard=guard, title_keywords=()))
+
+
+def test_pkg_guard_stall_escalates_to_llm_level1(monkeypatch):
+    eng, main, escape = _guard_engine("target_scene: HOME")
+    monkeypatch.setattr(main, "complete",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("主 LLM 不应被调用")))
+    calls = {"n": 0}
+    orig = escape.complete
+
+    def _counting(*a, **k):
+        calls["n"] += 1
+        return orig(*a, **k)
+
+    monkeypatch.setattr(escape, "complete", _counting)
+    guard: dict = {}
+    # 同 scene 反复出现,第 STALL_THRESHOLD 帧即触发停滞/振荡 -> LLM 脱困
+    for _ in range(SceneConfig.STALL_THRESHOLD):
+        d = _guard_decide(eng, guard)
+    assert calls["n"] >= 1
+    assert guard["escalation_level"] == 1
+    assert d.source == "pkg_guard"
+
+
+def test_pkg_guard_level2_mechanical_fallback(monkeypatch):
+    eng, main, escape = _guard_engine("target_scene: HOME")
+    monkeypatch.setattr(main, "complete",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("主 LLM 不应被调用")))
+    guard: dict = {}
+    for _ in range(SceneConfig.STALL_THRESHOLD + 1):
+        d = _guard_decide(eng, guard)
+    assert guard["escalation_level"] == 2
+    assert d.source == "pkg_guard"
+    # IN_APP 的 fallback 动作是 home
+    assert d.actions[0].op == "home"
+
+
+def test_pkg_guard_level2_exhausted_aborts(monkeypatch):
+    eng, main, escape = _guard_engine("target_scene: HOME")
+    monkeypatch.setattr(main, "complete",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("主 LLM 不应被调用")))
+    guard: dict = {}
+    for _ in range(SceneConfig.STALL_THRESHOLD + 2):
+        d = _guard_decide(eng, guard)
+    assert d.actions[0].op == "abort"
+    assert d.actions[0].params["reason"].startswith("pkg_guard_stuck")
