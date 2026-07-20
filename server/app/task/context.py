@@ -58,6 +58,11 @@ class TaskContext:
     bound_skill: BoundSkill | None = None
     confirm: ConfirmState = field(default_factory=ConfirmState)
     post_send: PostSendState = field(default_factory=PostSendState)
+    # INPUT_GUARD 计数:错群输正文的次数,配合 Config.WRONG_CHAT_INPUT_THRESHOLD。
+    wrong_chat_input_count: int = 0
+    # 瞬态槽:调用方在 decide 之后、跑 post_policies 之前写入本帧决策动作,
+    # 后置策略(confirm 拦截 / INPUT_GUARD)从这里读取,不在任务间留存。
+    decided_actions: list[Action] = field(default_factory=list)
     guard: dict = field(
         default_factory=lambda: {
             "scene_history": [],
