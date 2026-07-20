@@ -1,15 +1,40 @@
+"""决策引擎。
+
+decide 永不返回 None:任何路径都无决策时回落 `Decision([read_screen], "llm")`。
+决策顺序: cache.lookup -> bound_skill(cursor.state != "failed")next_step
+-> pkg_guard -> LLM。
+
+cursor 语义: cache/skill 命中下发的动作经端侧 ack ok 后由 handler 调
+`cursor.advance()`(Task 11);verify_title FAIL 时 engine 内部 `cursor.fail()`
+并同帧回落 LLM。
+"""
+from __future__ import annotations
+
 import json
 import logging
 import uuid
-from typing import Optional
+from dataclasses import dataclass
 
+from app.decision.cache import SkillCache
 from app.decision.llm import LLM
+from app.decision.pkg_guard import pkg_guard_action
+from app.decision.skills import BoundSkill, SkillCursor
+from app.decision.types import Decision
+from app.decision.ui_inspect import detect_title, match_title
 from app.protocol import Action, Node, Perception
-from app.scene import (
-    Scene, detect_scene, next_action, fallback_action, SceneConfig,
-)
-from app.skill_cache import SkillCache
-from app.skills import SkillLibrary
+
+_logger = logging.getLogger("phoneagent.decision")
+
+
+@dataclass
+class DecideInput:
+    goal: str
+    frame: Perception
+    target_pkg: str
+    cursor: SkillCursor
+    bound_skill: BoundSkill | None
+    guard: dict
+    title_keywords: tuple[str, ...]
 
 
 _SYSTEM_PROMPT = """你是一个 Android 手机操作代理的决策核心。给定当前屏幕的可交互元素列表(screen)、当前应用(pkg)、任务目标解析出的目标应用(target_pkg)、任务目标和历史操作，你要决定接下来执行的一批 UI 动作。
@@ -158,112 +183,88 @@ def parse_actions(text: str) -> list[dict]:
     return specs
 
 
-_ESCAPE_PROMPT = (
-    "你是屏幕导航脱困助手。当前自动化在场景间反复横跳或停滞，无法到达目标场景。"
-    "根据 current_scene / target_scene / scene_history，判断应先前往哪个中间场景来脱困。"
-    "只输出一行：target_scene: <SCENE>，其中 <SCENE> 为大写枚举名"
-    "（HOME/MINUS_ONE/NOTIFICATION/CONTROL_CENTER/IN_APP/LOCK_SCREEN/RECENT_APPS/UNKNOWN）。"
-)
-
-
-def _parse_target_scene(raw: str) -> Scene | None:
-    """从 LLM 文本里解析出 target_scene: <SCENE>。识别不了返回 None。"""
-    if not raw:
-        return None
-    for line in raw.splitlines():
-        line = line.strip()
-        _, sep, rest = line.partition("target_scene:")
-        if not sep:
-            continue
-        name = rest.strip().upper()
-        try:
-            return Scene[name]
-        except KeyError:
-            return None
-    return None
+def _read_screen_action() -> Action:
+    return Action(actionId=str(uuid.uuid4()), op="read_screen", params={})
 
 
 class DecisionEngine:
     MAX_LLM_NODES = 80
 
-    def __init__(self, llm: LLM, skills: SkillLibrary, cache: SkillCache | None = None):
+    def __init__(self, llm: LLM, cache: SkillCache | None = None,
+                 escape_llm: LLM | None = None):
         self._llm = llm
-        self._skills = skills
         self._cache = cache
+        self._escape_llm = escape_llm if escape_llm is not None else llm
 
-    def _cache_step(self, goal: str, perception: Perception, cursor: int) -> dict | None:
+    def decide(self, d: DecideInput) -> Decision:
+        cached = self._cache_step(d)
+        if cached is not None:
+            return Decision(actions=[cached], source="cache")
+
+        if d.bound_skill is not None and d.cursor.state != "failed":
+            skilled = self._skill_step(d)
+            if skilled is not None:
+                return skilled
+
+        guarded = pkg_guard_action(d.frame, d.target_pkg, d.guard, self._escape_llm)
+        if guarded is not None:
+            return Decision(actions=guarded, source="pkg_guard")
+
+        return self._llm_decide(d)
+
+    def _cache_step(self, d: DecideInput) -> Action | None:
         if self._cache is None:
             return None
-        entry = self._cache.get(goal, perception.pkg)
-        if entry is None or cursor >= len(entry["steps"]):
+        entry = self._cache.get(d.goal, d.frame.pkg)
+        if entry is None or d.cursor.index >= len(entry["steps"]):
             return None
-        step = entry["steps"][cursor]
+        step = entry["steps"][d.cursor.index]
         match_text = step.get("params", {}).get("match_text", "")
-        if match_text and not any(match_text in (n.text or "") for n in perception.nodeTree):
+        if match_text and not any(match_text in (n.text or "") for n in d.frame.nodeTree):
             return None  # 无法重定位 -> 回退
-        return step
+        return Action(
+            actionId=str(uuid.uuid4()),
+            op=step["op"],
+            params=step.get("params", {}),
+        )
 
-    def _select_skill(self, goal: str, pkg: str) -> str | None:
-        if self._skills is None:
+    def _skill_step(self, d: DecideInput) -> Decision | None:
+        step = d.bound_skill.next_step(d.frame.nodeTree, d.cursor.index)
+        if step is None:
             return None
-        return self._skills.select(goal, pkg)
 
-    def decide(
-        self,
-        goal: str,
-        perception: Perception,
-        skill_name: str | None,
-        cursor: int,
-        history: list[dict],
-        target_pkg: str = "",
-        guard: dict | None = None,
-    ) -> list[Action]:
-        step = self._cache_step(goal, perception, cursor)
-        if step is not None:
-            return [
-                Action(actionId=str(uuid.uuid4()), op=step["op"], params=step.get("params", {}))
-            ]
+        # verify_title 步:仅做标题校验。PASS 下发无副作用 read_screen 占位让
+        # 端侧重抓帧(cursor 由 handler 在 ack ok 后推进);FAIL 标记 cursor
+        # 失败并继续下行(本帧回落 LLM,下一帧跳过整条技能)。
+        if step.get("op") == "verify_title":
+            expected = step.get("expected_title") or ""
+            current_title = detect_title(d.frame.nodeTree, d.title_keywords)
+            if current_title and match_title(expected, current_title):
+                _logger.info(
+                    "[VERIFY_TITLE_PASS] skill=%s expected=%r current=%r",
+                    d.bound_skill.name, expected, current_title,
+                )
+                return Decision(actions=[_read_screen_action()], source="skill")
+            _logger.warning(
+                "[VERIFY_TITLE_FAIL] skill=%s expected=%r current=%r 回退 LLM 决策",
+                d.bound_skill.name, expected, current_title,
+            )
+            d.cursor.fail()
+            return None
 
-        if skill_name is None:
-            skill_name = self._select_skill(goal, perception.pkg)
+        params = {k: str(v) for k, v in step.items() if k != "op"}
+        return Decision(
+            actions=[Action(actionId=str(uuid.uuid4()), op=step["op"], params=params)],
+            source="skill",
+        )
 
-        if skill_name:
-            step = self._skills.next_step(skill_name, perception.nodeTree, cursor)
-            if step is not None:
-                # [BUG FIX] 处理 verify_title 步:仅做标题校验,通过则下发一个无副作用
-                # read_screen 占位让端侧重抓帧 + 上游 cursor 自然推进。
-                # 注意:cursor 推进由 gateway 在 skill 步不耗尽时自动递增。
-                if step.get("op") == "verify_title":
-                    expected = step.get("expected_title") or ""
-                    current_title = _detect_current_title(perception.nodeTree)
-                    if current_title and _title_match(expected, current_title):
-                        logging.getLogger("phoneagent.decision").info(
-                            "[VERIFY_TITLE_PASS] skill=%s expected=%r current=%r",
-                            skill_name, expected, current_title,
-                        )
-                        # 校验通过:推送 read_screen(让 cursor 推进且不引发副作用)
-                        return [Action(actionId=str(uuid.uuid4()), op="read_screen", params={})]
-                    logging.getLogger("phoneagent.decision").warning(
-                        "[VERIFY_TITLE_FAIL] skill=%s expected=%r current=%r 回退 LLM 决策",
-                        skill_name, expected, current_title,
-                    )
-                    return None  # 校验失败:让 LLM 重新决策(它会 tap back / 换一个候选)
-                params = {k: str(v) for k, v in step.items() if k != "op"}
-                return [Action(actionId=str(uuid.uuid4()), op=step["op"], params=params)]
-
-        # pkg guard：若目标 app 已解析且与当前 pkg 不一致,接入 scene 状态机逐帧
-        # 收敛回 HOME(跳过 LLM,避免看到通知/磁贴就 tap 跑飞),并配收敛守卫脱困。
-        guarded = self._pkg_guard_action(perception, target_pkg, guard)
-        if guarded is not None:
-            return guarded
-
-        nodes = self._cap_nodes(perception.nodeTree)
+    def _llm_decide(self, d: DecideInput) -> Decision:
+        nodes = self._cap_nodes(d.frame.nodeTree)
         payload = {
-            "goal": goal,
-            "pkg": perception.pkg,
-            "target_pkg": target_pkg,
+            "goal": d.goal,
+            "pkg": d.frame.pkg,
+            "target_pkg": d.target_pkg,
             "screen": _encode_nodes(nodes),
-            "history": history,
         }
         raw = self._llm.complete(
             system=_SYSTEM_PROMPT,
@@ -272,12 +273,14 @@ class DecisionEngine:
         _diag = logging.getLogger("phoneagent.gateway")
         _diag.info(
             "[FRAME] pkg=%s target_pkg=%s total_nodes=%d capped=%d cursor=%d goal=%s skill=%s",
-            perception.pkg, target_pkg, len(perception.nodeTree), len(nodes), cursor, goal, skill_name,
+            d.frame.pkg, d.target_pkg, len(d.frame.nodeTree), len(nodes),
+            d.cursor.index, d.goal,
+            d.bound_skill.name if d.bound_skill is not None else None,
         )
 
         specs = parse_actions(raw)
         if not specs:
-            return [Action(actionId=str(uuid.uuid4()), op="read_screen", params={})]
+            return Decision(actions=[_read_screen_action()], source="llm")
 
         actions: list[Action] = []
         for spec in specs:
@@ -293,70 +296,7 @@ class DecisionEngine:
                 actions.append(Action(actionId=str(uuid.uuid4()), op=op, params=params))
                 break  # 批处理截断：遇首个 tap/input 收尾，本批结束重抓帧
             actions.append(Action(actionId=str(uuid.uuid4()), op=op, params=params))
-        return actions
-
-    def _pkg_guard_action(
-        self, perception: Perception, target_pkg: str, guard: dict | None
-    ) -> list[Action] | None:
-        if not (target_pkg and perception.pkg and perception.pkg != target_pkg):
-            return None
-        current = detect_scene(perception)
-        action = next_action(current, Scene.HOME)
-        if action is None:  # 已在 HOME，放行给正常任务决策
-            return None
-        _diag = logging.getLogger("phoneagent.gateway")
-        _diag.info(
-            "[PKG_GUARD] scene=%s target_pkg=%s -> op=%s",
-            current.value, target_pkg, action.op,
-        )
-        op = action.op
-        # ==== 收敛守卫 ====
-        # 停滞：相邻两帧 (scene, op) 相同则累加
-        gd = guard if guard is not None else {}
-        key = f"{current.value}|{op}"
-        if gd.get("last_op") == key:
-            gd["stall_count"] = gd.get("stall_count", 0) + 1
-        else:
-            gd["stall_count"] = 0
-        gd["last_op"] = key
-        # scene_history 滑窗
-        hist = gd.setdefault("scene_history", [])
-        hist.append(current.value)
-        if len(hist) > SceneConfig.WINDOW:
-            del hist[0]
-        stalled = gd["stall_count"] >= SceneConfig.STALL_THRESHOLD
-        oscillating = (
-            current != Scene.HOME
-            and hist.count(current.value) >= SceneConfig.CYCLE_THRESHOLD + 1
-        )
-        # ==== 三级脱困阶梯 ====
-        if stalled or oscillating:
-            lvl = gd.get("escalation_level", 0)
-            if lvl == 0:
-                gd["escalation_level"] = 1
-                return self._llm_escape(perception, current, Scene.HOME, gd)
-            if lvl == 1:
-                gd["escalation_level"] = 2
-                fb = fallback_action(current, Scene.HOME)
-                if fb is not None:
-                    return [fb]
-            # lvl >= 2：机械降级仍卡 -> abort
-            return [Action(actionId=str(uuid.uuid4()), op="abort",
-                           params={"reason": f"pkg_guard_stuck:{current.value}"})]
-        return [action]
-
-    def _llm_escape(self, perception, current, target, guard) -> list[Action]:
-        raw = self._llm.complete(
-            system=_ESCAPE_PROMPT,
-            user=json.dumps({
-                "current_scene": current.value,
-                "target_scene": target.value,
-                "scene_history": guard.get("scene_history", []),
-            }, ensure_ascii=False),
-        )
-        new_target = _parse_target_scene(raw) or target
-        act = next_action(current, new_target) or next_action(current, Scene.HOME)
-        return [act] if act else [Action(actionId=str(uuid.uuid4()), op="home", params={})]
+        return Decision(actions=actions, source="llm")
 
     def _cap_nodes(self, nodes: list[Node]) -> list[Node]:
         if len(nodes) <= self.MAX_LLM_NODES:
@@ -366,26 +306,3 @@ class DecisionEngine:
         capped = (interactive + others)[: self.MAX_LLM_NODES]
         keep = set(id(n) for n in capped)
         return [n for n in nodes if id(n) in keep]
-
-
-
-def _detect_current_title(node_tree) -> Optional[str]:
-    """[BUG FIX] 从 perception.nodeTree 识别当前屏顶部标题。
-
-    延迟 import chat_title_helpers 避免 skills -> decision -> chat_title_helpers
-    循环依赖。不抛异常;无法识别返回 None。
-    """
-    try:
-        from app.chat_title_helpers import detect_chat_title
-    except ImportError:
-        return None
-    return detect_chat_title(node_tree)
-
-
-def _title_match(expected: str, current: str) -> bool:
-    """[BUG FIX] 标题匹配:用 chat_title_helpers.match_chat_title(子串双向 + 去空)。"""
-    try:
-        from app.chat_title_helpers import match_chat_title
-    except ImportError:
-        return False
-    return match_chat_title(expected, current)
