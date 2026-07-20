@@ -17,6 +17,17 @@ object GestureGeometry {
         return cx to cy
     }
 
+    /** bounds = [left, top, right, bottom],判断点 (x, y) 是否落在 bounds 内(含边缘)。 */
+    fun pointInBounds(bounds: List<Int>, x: Float, y: Float): Boolean {
+        return x >= bounds[0] && x <= bounds[2] && y >= bounds[1] && y <= bounds[3]
+    }
+
+    /** 在一组候选 bounds 中找第一个包含点 (x, y) 的下标；无命中返回 null。
+     *  用于 input 按坐标从多个 editable 中选中正确那个。 */
+    fun indexOfBoundsContaining(candidates: List<List<Int>>, x: Float, y: Float): Int? {
+        return candidates.indexOfFirst { pointInBounds(it, x, y) }.takeIf { it >= 0 }
+    }
+
     /** tap 坐标下发：云侧把选中节点解析为 x/y 中心坐标塞进 params，端侧优先按此坐标点击。
      *  x 或 y 缺失/非法返回 null，调用方回退 match_text 子串匹配。 */
     fun tapPointFromParams(params: Map<String, String>): Pair<Float, Float>? {
