@@ -1,5 +1,6 @@
 """scenario 基础层测试:ScenarioPack 选择、AppProfile 数据、resolve_pkg。"""
 from app.scenario.base import AppProfile, ScenarioPack, select_scenario
+from app.scenario.profiles import ALL_PROFILES
 from app.scenario.profiles.feishu import FEISHU_PROFILE
 from app.scenario.profiles.wechat import WECHAT_PROFILE
 from app.scenario.ui import resolve_pkg
@@ -37,6 +38,36 @@ def test_resolve_pkg_from_profile_aliases():
 def test_resolve_pkg_unknown_returns_none():
     assert resolve_pkg("打开计算器", [FEISHU_PROFILE, WECHAT_PROFILE]) is None
     assert resolve_pkg("", [FEISHU_PROFILE]) is None
+
+
+def test_all_profiles_cover_legacy_aliases():
+    """旧 app_goal_resolver 18 个别名条目全部归位(回归:别名覆盖不得缩窄)。"""
+    assert resolve_pkg("打开设置", ALL_PROFILES) == "com.android.settings"
+    assert resolve_pkg("给QQ好友发消息", ALL_PROFILES) == "com.tencent.mobileqq"
+    assert resolve_pkg("打开钉钉打卡", ALL_PROFILES) == "com.alibaba.android.rimet"
+    assert resolve_pkg("淘宝上搜一下", ALL_PROFILES) == "com.taobao.taobao"
+    assert resolve_pkg("打开京东", ALL_PROFILES) == "com.jingdong.app.mall"
+    assert resolve_pkg("美团点个外卖", ALL_PROFILES) == "com.sankuai.meituan"
+    assert resolve_pkg("刷小红书", ALL_PROFILES) == "com.xingin.xhs"
+    assert resolve_pkg("打开抖音", ALL_PROFILES) == "com.ss.android.ugc.aweme"
+    assert resolve_pkg("知乎上搜一下", ALL_PROFILES) == "com.zhihu.android"
+    assert resolve_pkg("用高德导航", ALL_PROFILES) == "com.autonavi.minimap"
+    assert resolve_pkg("打开百度地图", ALL_PROFILES) == "com.baidu.BaiduMap"
+    assert resolve_pkg("打开腾讯地图", ALL_PROFILES) == "com.tencent.map"
+    assert resolve_pkg("打电话", ALL_PROFILES) == "com.android.dialer"
+    assert resolve_pkg("打开通讯录", ALL_PROFILES) == "com.android.contacts"
+    assert resolve_pkg("打开相机", ALL_PROFILES) == "com.android.camera"
+    assert resolve_pkg("发条短信", ALL_PROFILES) == "com.google.android.apps.messaging"
+    assert resolve_pkg("打开计算器", ALL_PROFILES) is None
+
+
+def test_all_profiles_order_matches_legacy():
+    """ALL_PROFILES 顺序与旧别名表一致(飞书/微信在前,保证首个匹配语义)。"""
+    assert [p.pkg for p in ALL_PROFILES[:2]] == [
+        "com.ss.android.lark",
+        "com.tencent.mm",
+    ]
+    assert len(ALL_PROFILES) == 18
 
 
 def test_app_profile_fields():

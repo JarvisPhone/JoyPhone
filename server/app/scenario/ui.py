@@ -24,18 +24,40 @@ __all__ = [
 ]
 
 
+# 旧 chat_title_helpers._SEND_BUTTON_RID_KEYWORDS。
+# profile.send_button_keywords 是「rid 关键词 + text 关键词」合并的单一列表,
+# 匹配语义必须与旧实现等价:rid 只匹配 rid 关键词,label 只匹配 text 关键词,
+# 因此在函数内按关键词来源分流(在该集合内 -> rid 匹配,否则 -> label 匹配)。
+_SEND_BUTTON_RID_KEYWORDS: frozenset[str] = frozenset({
+    "send_button",
+    "btn_send",
+    "iv_send",
+    "send_btn",
+    "ib_send",
+    "tv_send",
+    "sendmessage",
+})
+
+
 def is_send_button(node: Node, profile: AppProfile) -> bool:
     """判断节点是否「发送」按钮。
 
-    resource id / text / desc 任一命中 profile.send_button_keywords
-    即视为「即将点发送」,需要拦截做群名校验。
+    与旧 chat_title_helpers.is_send_button 等价:
+      - rid 命中 rid 关键词 -> True
+      - label(text+desc)命中 text 关键词 -> True
+      - 二者不交叉(text 关键词如 "send" 不匹配 rid,避免
+        "message_sender_avatar" 之类 rid 误判)
     """
     rid = (node.viewIdResourceName or "").lower()
     label = ((node.text or "") + " " + (node.desc or "")).strip().lower()
-    return any(
-        kw.lower() in rid or kw.lower() in label
-        for kw in profile.send_button_keywords
-    )
+    for kw in profile.send_button_keywords:
+        k = kw.lower()
+        if k in _SEND_BUTTON_RID_KEYWORDS:
+            if k in rid:
+                return True
+        elif k in label:
+            return True
+    return False
 
 
 def is_message_input(node: Node, profile: AppProfile) -> bool:

@@ -42,6 +42,22 @@ def test_send_button_by_rid():
     assert is_send_button(node, FEISHU_PROFILE) is True
 
 
+def test_send_button_rid_with_send_substring_is_not_send_button():
+    """rid 含 send 子串(如 message_sender_avatar)但非发送按钮 rid 模式 -> False。
+
+    回归:rid/text 关键词必须分流,rid 只匹配 rid 关键词,
+    text 关键词("send"/"sending")不得拿去匹配 rid。
+    """
+    node = Node(id="b4", viewIdResourceName="com.x:id/message_sender_avatar")
+    assert is_send_button(node, FEISHU_PROFILE) is False
+
+
+def test_send_button_text_keyword_does_not_match_rid():
+    """text 关键词只匹配 label:rid 含 "sending" 但 label 无发送词 -> False。"""
+    node = Node(id="b5", viewIdResourceName="com.x:id/sending_progress", text="进度")
+    assert is_send_button(node, FEISHU_PROFILE) is False
+
+
 def test_send_button_by_text():
     node = Node(id="b2", text="发送")
     assert is_send_button(node, FEISHU_PROFILE) is True
