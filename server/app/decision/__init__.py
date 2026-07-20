@@ -5,6 +5,8 @@ from app.decision.engine import (
     _parse_target_scene,
     parse_actions,
 )
+from app.decision.types import Decision, DecisionSource
+from app.decision.ui_inspect import detect_title, match_title
 
 __all__ = [
     "DecisionEngine",
@@ -12,4 +14,8 @@ __all__ = [
     "_SYSTEM_PROMPT",
     "_encode_nodes",
     "_parse_target_scene",
+    "Decision",
+    "DecisionSource",
+    "detect_title",
+    "match_title",
 ]
