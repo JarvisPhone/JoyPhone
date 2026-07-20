@@ -7,8 +7,8 @@ import android.graphics.Path
 import android.os.Bundle
 import android.view.accessibility.AccessibilityNodeInfo
 
-/** 单步动作执行结果。atEnd 为协议保留字段(端侧不再产生，YAGNI)。 */
-data class ExecResult(val ok: Boolean, val atEnd: Boolean = false)
+/** 单步动作执行结果。 */
+data class ExecResult(val ok: Boolean)
 
 /**
  * 真实动作执行器。framework 集成部分仅在真机联调验证；

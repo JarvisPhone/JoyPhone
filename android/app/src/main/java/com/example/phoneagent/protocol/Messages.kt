@@ -33,13 +33,20 @@ data class UplinkActionResult(
     val ok: Boolean,
     val error: String? = null,
     val ts: Long = 0,
-    val seq: Int = 0,  // 端侧递增序号，用于检测乱序
-    val atEnd: Boolean = false,  // 协议保留字段，云端已不使用（YAGNI）
+    val seq: Int = 0,  // 端侧递增序号，与 perception 共用同一计数器
 )
 
 @Serializable
 data class UplinkHeartbeat(
     val type: String = "heartbeat",
+    val deviceId: String,
+    val ts: Long = 0,
+)
+
+/** 下行:心跳应答。云端对 heartbeat 只回 heartbeat.ack,不再回 action。端侧收到后可忽略。 */
+@Serializable
+data class DownHeartbeatAck(
+    val type: String = "heartbeat.ack",
     val deviceId: String,
     val ts: Long = 0,
 )
@@ -66,7 +73,7 @@ data class DownAction(
     val type: String = "action",
     val actionId: String,
     // op 为云端收窄后的原子动作集合:
-    // tap/input/swipe/back/home/wait/read_screen/done/abort/request_confirm
+    // tap/input/swipe/back/home/wait/read_screen/done/abort
     // (复合导航 op home_first_page/next_page 已废弃,由云端 scene 状态机拆成 home/swipe)
     val op: String,
     val params: Map<String, String> = emptyMap(),

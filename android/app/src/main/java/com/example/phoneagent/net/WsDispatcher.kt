@@ -1,6 +1,7 @@
 package com.example.phoneagent.net
 
 import com.example.phoneagent.protocol.DownAction
+import com.example.phoneagent.protocol.DownHeartbeatAck
 import com.example.phoneagent.protocol.DownTaskConfirm
 import com.example.phoneagent.protocol.DownTaskDone
 import com.example.phoneagent.protocol.DownTaskStart
@@ -39,6 +40,10 @@ class WsDispatcher(
             "task.confirm" -> {
                 val m = json.decodeFromString<DownTaskConfirm>(text)
                 onTaskConfirm(m)
+            }
+            "heartbeat.ack" -> {
+                // 心跳应答:仅解析保持 JSON 容错,端侧无需处理
+                runCatching { json.decodeFromString<DownHeartbeatAck>(text) }
             }
             else -> Unit
         }

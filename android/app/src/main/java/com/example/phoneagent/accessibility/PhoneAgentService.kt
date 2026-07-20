@@ -45,8 +45,8 @@ class PhoneAgentService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
     private var pendingReport: Runnable? = null
     @Volatile private var taskActive: Boolean = false
-    // 序列号计数器，用于消息乱序检测
-    @Volatile private var perceptionSeq: Int = 0
+    // 消息序号计数器:perception 与 action.result 共用,用于消息乱序检测
+    @Volatile private var msgSeq: Int = 0
 
     /** 最近一次窗口状态变更事件带来的 Activity 类名(带包名前缀补全)。用于采样元数据,与 taskActive 无关。 */
     @Volatile private var lastActivity: String = ""
@@ -100,9 +100,10 @@ class PhoneAgentService : AccessibilityService() {
                 Log.i(TAG, "↓ action ${action.op} ${action.params} (taskActive=$taskActive)")
                 repo.appendTrace(TraceEvent(System.currentTimeMillis(), TraceDirection.DOWN, "action", "${action.op} ${action.params}"))
                 val result = executor.execute(action.op, action.params)
-                Log.i(TAG, "↑ action.result ${action.op} ok=${result.ok} atEnd=${result.atEnd}")
-                repo.appendTrace(TraceEvent(System.currentTimeMillis(), TraceDirection.UP, "action.result", "${action.op} ok=${result.ok} atEnd=${result.atEnd}"))
-                wsClient.sendActionResult(action.actionId, result.ok, result.atEnd)
+                val seq = ++msgSeq
+                Log.i(TAG, "↑ action.result ${action.op} ok=${result.ok} seq=$seq")
+                repo.appendTrace(TraceEvent(System.currentTimeMillis(), TraceDirection.UP, "action.result", "${action.op} ok=${result.ok} seq=$seq"))
+                wsClient.sendActionResult(action.actionId, result.ok, seq)
                 repo.appendActionLog(ActionLog(System.currentTimeMillis(), action.op, result.ok))
                 if (action.op == "read_screen") reportScreen()
             },
@@ -165,7 +166,7 @@ class PhoneAgentService : AccessibilityService() {
         val root = rootInActiveWindow ?: return
         val nodes = NodeFlattener.flatten(root)
         val activity = root.packageName?.toString() ?: ""
-        val seq = ++perceptionSeq
+        val seq = ++msgSeq
         val perception = UplinkPerception(
             nodeTree = nodes,
             pkg = root.packageName?.toString() ?: "",
@@ -216,8 +217,8 @@ class PhoneAgentService : AccessibilityService() {
     }
 
     private fun resetSequenceNumbers() {
-        // 任务重置时重置序列号
-        perceptionSeq = 0
+        // 任务重置时重置消息序号
+        msgSeq = 0
     }
 
     override fun onDestroy() {
