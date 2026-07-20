@@ -9,6 +9,7 @@ import android.provider.Settings
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.widget.Toast
+import com.example.phoneagent.BuildConfig
 import com.example.phoneagent.data.AgentStateRepository
 import com.example.phoneagent.domain.ActionLog
 import com.example.phoneagent.domain.TaskState
@@ -29,9 +30,7 @@ import javax.inject.Inject
 class PhoneAgentService : AccessibilityService() {
 
     companion object {
-        // 从 BuildConfig 或远程配置获取 WebSocket URL
-        // 使用 BuildConfig.WS_URL 在 build.gradle.kts 中配置
-        const val WS_URL = "ws://10.253.61.158:8000"
+        // WebSocket URL 由 BuildConfig.WS_URL 提供(见 app/build.gradle.kts)
         private const val DEBOUNCE_MS = 400L
         private const val TAG = "PhoneAgent"
     }
@@ -73,7 +72,7 @@ class PhoneAgentService : AccessibilityService() {
         repo.updateAccessibility(true)
         val deviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "device"
         wsClient.start(
-            baseUrl = WS_URL,
+            baseUrl = BuildConfig.WS_URL,
             deviceId = deviceId,
             onTaskStart = { goal, _ ->
                 taskActive = true

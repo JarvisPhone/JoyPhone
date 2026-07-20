@@ -19,6 +19,8 @@ android {
         versionCode = 1
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // 默认 emulator loopback(10.0.2.2 指向宿主机)
+        buildConfigField("String", "WS_URL", "\"ws://10.0.2.2:8000\"")
     }
 
     buildTypes {
@@ -28,6 +30,8 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // 部署时改为实际服务端地址
+            buildConfigField("String", "WS_URL", "\"ws://localhost:8000\"")
      }
     }
 
@@ -44,6 +48,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
