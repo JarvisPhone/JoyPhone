@@ -16,8 +16,8 @@ from app.chat_title_helpers import (
 )
 from app.comm_log import log_up, log_down
 from app.decision import DecisionEngine
-from app.llm import FakeLLM, build_llm
-from app.metrics import get_metrics_collector
+from app.decision.llm import FakeLLM, build_llm
+from app.infra.metrics import get_metrics_collector
 from app.protocol import (
     Action,
     ConfirmResponse,
