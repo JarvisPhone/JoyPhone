@@ -1,6 +1,6 @@
 import pytest
 
-from app.llm import FakeLLM, RealLLM, build_llm
+from app.decision.llm import FakeLLM, RealLLM, build_llm
 
 
 class _FakeChoice:
@@ -78,7 +78,7 @@ def test_real_llm_returns_multiline_instructions_verbatim():
 def test_build_llm_falls_back_to_fake_when_no_key(monkeypatch):
     # 隔离磁盘 .env：本测试验证「进程环境无 key 时回退 FakeLLM」的纯逻辑，
     # 不应受本地 server/.env 影响。
-    monkeypatch.setattr("app.llm._load_env_file", lambda: None)
+    monkeypatch.setattr("app.decision.llm._load_env_file", lambda: None)
     monkeypatch.delenv("LLM_API_KEY", raising=False)
     llm = build_llm()
     assert isinstance(llm, FakeLLM)

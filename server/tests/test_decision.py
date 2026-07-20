@@ -2,7 +2,7 @@ import json
 import uuid
 
 from app.decision import DecisionEngine
-from app.llm import FakeLLM
+from app.decision.llm import FakeLLM
 from app.protocol import Node, Perception
 from app.skill_cache import SkillCache
 from app.skills import SkillLibrary

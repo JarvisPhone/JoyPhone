@@ -3,7 +3,7 @@ import logging
 import uuid
 from typing import Optional
 
-from app.llm import LLM
+from app.decision.llm import LLM
 from app.protocol import Action, Node, Perception
 from app.scene import (
     Scene, detect_scene, next_action, fallback_action, SceneConfig,

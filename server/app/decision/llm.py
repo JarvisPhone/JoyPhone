@@ -19,23 +19,6 @@ class LLM(ABC):
         ...
 
 
-class FakeLLM(LLM):
-    def __init__(self, responses: list[str | None] | str | None = None):
-        if responses is None:
-            responses = ["read"]
-        elif isinstance(responses, (str, type(None))):
-            responses = [responses]
-        self._responses = list(responses)
-        self._index = 0
-
-    def complete(self, system: str, user: str, image_b64: str | None = None) -> str:
-        if not self._responses:
-            return "read"
-        response = self._responses[self._index % len(self._responses)]
-        self._index += 1
-        return response if response else ""
-
-
 def _clean_text(text: str | None) -> str:
     """剥掉 <think>...</think> 推理标签，返回纯文本指令。"""
     if not text:
@@ -130,6 +113,6 @@ def _load_env_file() -> None:
         return
     from pathlib import Path
 
-    env_path = Path(__file__).resolve().parents[1] / ".env"
+    env_path = Path(__file__).resolve().parents[2] / ".env"
     if env_path.exists():
         load_dotenv(env_path, override=False)

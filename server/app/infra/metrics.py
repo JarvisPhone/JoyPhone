@@ -36,7 +36,7 @@ class TaskMetrics:
 
 class MetricsCollector:
     def __init__(self, log_dir: Path | None = None):
-        self._log_dir = log_dir or Path(__file__).resolve().parents[1] / "data" / "metrics"
+        self._log_dir = log_dir or Path(__file__).resolve().parents[2] / "data" / "metrics"
         self._log_dir.mkdir(parents=True, exist_ok=True)
         self._tasks: dict[str, TaskMetrics] = {}
 
