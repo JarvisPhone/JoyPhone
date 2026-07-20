@@ -14,6 +14,7 @@ engine/scenario_packs/metrics/max_steps 与可选 negotiation bot。
 from __future__ import annotations
 
 import logging
+import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -94,7 +95,7 @@ async def handle_uplink(
     elif isinstance(uplink, ActionResult):
         await _on_action_result(uplink, store, deps)
     elif isinstance(uplink, Heartbeat):
-        await conn.send(HeartbeatAck(deviceId=uplink.deviceId))
+        await conn.send(HeartbeatAck(deviceId=uplink.deviceId, ts=int(time.time())))
     elif isinstance(uplink, ConfirmResponse):
         await _on_confirm_response(uplink, store, conn, deps)
     elif isinstance(uplink, NewMessage):
