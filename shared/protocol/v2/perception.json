@@ -1,0 +1,30 @@
+{
+  "type": "perception",
+  "nodeTree": [
+    {
+      "id": "n1",
+      "text": "搜索",
+      "desc": "search box",
+      "className": "android.widget.EditText",
+      "viewIdResourceName": "com.ss.android.lark:id/search_input",
+      "bounds": [10, 20, 300, 80],
+      "clickable": true,
+      "editable": true
+    },
+    {
+      "id": "n2",
+      "text": "发送",
+      "desc": "send button",
+      "className": "android.widget.Button",
+      "viewIdResourceName": null,
+      "bounds": null,
+      "clickable": true,
+      "editable": false
+    }
+  ],
+  "screenshot": null,
+  "pkg": "com.ss.android.lark",
+  "activity": ".MainActivity",
+  "ts": 1750300000000,
+  "seq": 42
+}

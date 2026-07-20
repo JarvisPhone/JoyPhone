@@ -1,0 +1,6 @@
+{
+  "type": "task.start",
+  "taskId": "task-20260720-001",
+  "goal": "给张三发一条飞书消息:周报已提交",
+  "target": "张三"
+}

@@ -1,0 +1,8 @@
+{
+  "type": "task.confirm",
+  "taskId": "task-20260720-001",
+  "confirmId": "cfm-0001",
+  "target": "张三",
+  "message": "周报已提交",
+  "timeoutMs": 5000
+}

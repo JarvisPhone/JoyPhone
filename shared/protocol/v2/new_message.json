@@ -1,0 +1,7 @@
+{
+  "type": "event.newMessage",
+  "app": "com.ss.android.lark",
+  "sender": "张三",
+  "text": "周报记得发我",
+  "ts": 1750300000200
+}

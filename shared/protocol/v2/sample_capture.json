@@ -1,0 +1,30 @@
+{
+  "type": "sample.capture",
+  "label": "lark_chat_page",
+  "nodeTree": [
+    {
+      "id": "n1",
+      "text": "消息输入框",
+      "desc": null,
+      "className": "android.widget.EditText",
+      "viewIdResourceName": "com.ss.android.lark:id/input",
+      "bounds": [0, 1800, 1080, 1980],
+      "clickable": true,
+      "editable": true
+    },
+    {
+      "id": "n2",
+      "text": null,
+      "desc": "更多",
+      "className": "android.widget.ImageView",
+      "viewIdResourceName": null,
+      "bounds": [900, 1800, 1080, 1980],
+      "clickable": true,
+      "editable": false
+    }
+  ],
+  "pkg": "com.ss.android.lark",
+  "activity": ".ChatActivity",
+  "ts": 1750300000500,
+  "device": "pixel-7-pro-01"
+}
