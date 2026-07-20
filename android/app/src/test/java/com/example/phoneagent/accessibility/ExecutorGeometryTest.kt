@@ -58,7 +58,7 @@ class ExecutorGeometryTest {
     }
 
     @Test
-    fun containing_index_returns_first_when_point_in_none() {
+    fun containing_index_returns_null_when_point_in_none() {
         val candidates = listOf(
             listOf(0, 0, 100, 100),
             listOf(200, 200, 300, 300),

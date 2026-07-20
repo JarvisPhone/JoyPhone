@@ -23,7 +23,7 @@ object GestureGeometry {
     }
 
     /** 在一组候选 bounds 中找第一个包含点 (x, y) 的下标；无命中返回 null。
-     *  用于 input 按坐标从多个 editable 中选中正确那个。 */
+     *  生产路径:Executor.findEditableAt 按 DFS 前序收集 editable bounds 后用它选中命中者。 */
     fun indexOfBoundsContaining(candidates: List<List<Int>>, x: Float, y: Float): Int? {
         return candidates.indexOfFirst { pointInBounds(it, x, y) }.takeIf { it >= 0 }
     }

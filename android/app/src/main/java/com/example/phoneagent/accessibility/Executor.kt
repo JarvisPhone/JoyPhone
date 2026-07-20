@@ -96,7 +96,8 @@ class Executor(
                 }
                 return editable.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
             } finally {
-                editable.recycle()
+                // editable 可能就是 root 本身(root editable 且命中时),外层 finally 会回收 root,这里避免 double-recycle
+                if (editable !== root) editable.recycle()
             }
         } finally {
             root.recycle()
@@ -122,27 +123,35 @@ class Executor(
     }
 
     /**
-     * 找 bounds 包含点 (x, y) 的 editable。命中节点所有权转移给调用方(调用方用完 recycle);
-     * 未命中的 child 在此回收。
+     * 找 bounds 包含点 (x, y) 的 editable:先按 DFS 前序收集全部 editable 及其 bounds,
+     * 再用 GestureGeometry.indexOfBoundsContaining 选中首个命中者(与单测覆盖的函数即同一实现)。
+     * 命中节点所有权转移给调用方(调用方用完 recycle);未命中的节点在此回收。
+     * 传入的 node 本身所有权仍归调用方,命中时直接返回、未命中也不在此回收。
      */
     private fun findEditableAt(node: AccessibilityNodeInfo, x: Float, y: Float): AccessibilityNodeInfo? {
+        val candidates = mutableListOf<Pair<AccessibilityNodeInfo, List<Int>>>()
+        collectEditables(node, candidates)
+        val hit = GestureGeometry.indexOfBoundsContaining(candidates.map { it.second }, x, y)
+            ?.let { candidates[it].first }
+        candidates.forEach { if (it.first !== hit && it.first !== node) it.first.recycle() }
+        return hit
+    }
+
+    /** DFS 前序收集 editable 节点及其屏幕 bounds;非 editable 的 child 遍历后即时回收。 */
+    private fun collectEditables(
+        node: AccessibilityNodeInfo,
+        out: MutableList<Pair<AccessibilityNodeInfo, List<Int>>>,
+    ) {
         if (node.isEditable) {
             val rect = Rect()
             node.getBoundsInScreen(rect)
-            if (GestureGeometry.pointInBounds(listOf(rect.left, rect.top, rect.right, rect.bottom), x, y)) {
-                return node
-            }
+            out.add(node to listOf(rect.left, rect.top, rect.right, rect.bottom))
         }
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
-            val found = findEditableAt(child, x, y)
-            if (found != null) {
-                if (found !== child) child.recycle()
-                return found
-            }
-            child.recycle()
+            collectEditables(child, out)
+            if (!child.isEditable) child.recycle()
         }
-        return null
     }
 
     private fun swipe(params: Map<String, String>): Boolean {
