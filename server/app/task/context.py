@@ -63,6 +63,9 @@ class TaskContext:
     # 瞬态槽:调用方在 decide 之后、跑 post_policies 之前写入本帧决策动作,
     # 后置策略(confirm 拦截 / INPUT_GUARD)从这里读取,不在任务间留存。
     decided_actions: list[Action] = field(default_factory=list)
+    # 上帧 Decision 的来源(cache/skill/pkg_guard/llm);action.result ok
+    # 且来源为 cache/skill 时 handler 据此推进 cursor(T11)。
+    last_decision_source: str = ""
     guard: dict = field(
         default_factory=lambda: {
             "scene_history": [],

@@ -196,6 +196,11 @@ class DecisionEngine:
         self._cache = cache
         self._escape_llm = escape_llm if escape_llm is not None else llm
 
+    @property
+    def cache(self) -> SkillCache | None:
+        """只读暴露技能缓存,供任务层在任务完成时 learn(T11)。"""
+        return self._cache
+
     def decide(self, d: DecideInput) -> Decision:
         cached = self._cache_step(d)
         if cached is not None:
