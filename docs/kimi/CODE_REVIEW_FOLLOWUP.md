@@ -1,5 +1,6 @@
 # JoyPhone 三次代码审查报告（Kimi）
 
+> **状态注记（2026-07-20）**: 本报告所列问题已在 `code-review-fixes` 分支的全面重构中解决（服务端分层重构 protocol/gateway/task/scenario/decision/infra + 端侧协议 v2 对齐），详见 `docs/superpowers/plans/2026-07-20-architecture-refactor.md`。
 > **审查时间**: 2026-07-20
 > **审查基准**: `docs/CODE_REVIEW_REPORT.md`（v1.0）→ 修复 `c85fa2a` → 本报告 v1.0（2026-07-17）→ 后续修复 `5b874d6` / `f4161ae` / `5a7bbfa`（当前 HEAD，工作区干净）
 > **审查方式**: 全量源码精读 + 服务端测试实跑（**162 passed, 0 failed**）+ Android 单元测试实跑（**BUILD SUCCESSFUL**）+ 关键路径调用点核验
