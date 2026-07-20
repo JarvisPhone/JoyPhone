@@ -234,7 +234,10 @@ class DecisionEngine:
         )
 
     def _skill_step(self, d: DecideInput) -> Decision | None:
-        step = d.bound_skill.next_step(d.frame.nodeTree, d.cursor.index)
+        skill = d.bound_skill
+        if skill is None:
+            return None
+        step = skill.next_step(d.frame.nodeTree, d.cursor.index)
         if step is None:
             return None
 
@@ -247,12 +250,12 @@ class DecisionEngine:
             if current_title and match_title(expected, current_title):
                 _logger.info(
                     "[VERIFY_TITLE_PASS] skill=%s expected=%r current=%r",
-                    d.bound_skill.name, expected, current_title,
+                    skill.name, expected, current_title,
                 )
                 return Decision(actions=[_read_screen_action()], source="skill")
             _logger.warning(
                 "[VERIFY_TITLE_FAIL] skill=%s expected=%r current=%r 回退 LLM 决策",
-                d.bound_skill.name, expected, current_title,
+                skill.name, expected, current_title,
             )
             d.cursor.fail()
             return None

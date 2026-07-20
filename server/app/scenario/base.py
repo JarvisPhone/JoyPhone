@@ -53,8 +53,8 @@ class ScenarioPack(Protocol):
         """决策后策略列表。"""
         ...
 
-    def ui_profile(self, pkg: str) -> AppProfile:
-        """按 pkg 取 L2 UI 识别特征。"""
+    def ui_profile(self, pkg: str) -> AppProfile | None:
+        """按 pkg 取 L2 UI 识别特征;未覆盖的 pkg 返回 None。"""
         ...
 
 

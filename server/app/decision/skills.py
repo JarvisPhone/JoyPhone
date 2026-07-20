@@ -44,7 +44,7 @@ class SkillStep:
     match_text: Optional[str] = None
 
     def to_dict(self) -> dict:
-        d = {"op": self.op}
+        d: dict[str, str | int] = {"op": self.op}
         if self.text is not None:
             d["text"] = self.text
         if self.desc is not None:
@@ -131,10 +131,12 @@ class BoundSkill:
             for key, val in bindings.items():
                 placeholder = "{" + key + "}"
                 for f in _BIND_FIELDS:
-                    if values[f] is not None:
-                        values[f] = values[f].replace(placeholder, val)
+                    v = values[f]
+                    if v is not None:
+                        values[f] = v.replace(placeholder, val)
             for f in _BIND_FIELDS:
-                if values[f] is not None and "{" in values[f]:
+                v = values[f]
+                if v is not None and "{" in v:
                     logging.getLogger("phoneagent.skills").warning(
                         "[SKILL_BIND_MISSING_PARAM] skill=%s field=%s 参数未绑定，放弃技能",
                         tpl.name, f,

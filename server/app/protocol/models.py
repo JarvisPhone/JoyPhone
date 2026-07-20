@@ -95,9 +95,10 @@ def parse_uplink(raw: str) -> Uplink:
         raise ValueError(f"malformed JSON: {exc.msg}") from exc
     if not isinstance(data, dict):
         raise ValueError(f"JSON root must be object, got {type(data).__name__}")
-    cls = _UPLINK_MAP.get(data.get("type"))
+    uplink_type = data.get("type")
+    cls = _UPLINK_MAP.get(uplink_type) if isinstance(uplink_type, str) else None
     if cls is None:
-        raise ValueError(f"unknown uplink type: {data.get('type')}")
+        raise ValueError(f"unknown uplink type: {uplink_type}")
     return cls(**data)
 
 
@@ -114,10 +115,13 @@ class TaskStart(_Downlink):
     target: str
 
 
+Op = Literal["tap", "input", "swipe", "back", "home", "wait", "read_screen", "done", "abort"]
+
+
 class Action(_Downlink):
     type: Literal["action"] = "action"
     actionId: str
-    op: Literal["tap", "input", "swipe", "back", "home", "wait", "read_screen", "done", "abort"]
+    op: Op
     params: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("params", mode="before")

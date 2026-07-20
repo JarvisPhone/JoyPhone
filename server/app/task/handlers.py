@@ -77,7 +77,7 @@ def persist_sample(sample: SampleCapture, base_dir: Path | None = None) -> Path:
     """把一帧采样落盘为 <label>-<ts>.json,返回落盘路径。"""
     target_dir = base_dir if base_dir is not None else _SAMPLES_DIR
     target_dir.mkdir(parents=True, exist_ok=True)
-    path = target_dir / "%s-%s.json" % (sample.label, sample.ts)
+    path = target_dir / ("%s-%s.json" % (sample.label, sample.ts))
     path.write_text(sample.model_dump_json(indent=2), encoding="utf-8")
     return path
 

@@ -39,7 +39,7 @@ class FakeLLM(LLM):
         if not self._responses:
             return ""
         if self._index >= len(self._responses):
-            return self._responses[-1]
+            return self._responses[-1] or ""
         resp = self._responses[self._index]
         self._index += 1
         return resp if resp is not None else ""
@@ -52,7 +52,7 @@ class RealLLM(LLM):
 
     def complete(self, system: str, user: str, image_b64: str | None = None) -> str:
         try:
-            messages = [
+            messages: list[dict] = [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ]
