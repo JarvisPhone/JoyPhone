@@ -24,6 +24,10 @@ android {
     }
 
     buildTypes {
+        debug {
+            // 真机经 USB 调试：adb reverse tcp:8000 tcp:8000 后 localhost 指向宿主机
+            buildConfigField("String", "WS_URL", "\"ws://10.253.61.158:8000\"")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(

@@ -44,6 +44,8 @@ class PhoneAgentService : AccessibilityService() {
     @Volatile private var taskActive: Boolean = false
     // 消息序号计数器:perception 与 action.result 共用,用于消息乱序检测
     @Volatile private var msgSeq: Int = 0
+    // wsClient.start() 仅调用一次
+    @Volatile private var wsStarted = false
 
     /** 最近一次窗口状态变更事件带来的 Activity 类名(带包名前缀补全)。用于采样元数据,与 taskActive 无关。 */
     @Volatile private var lastActivity: String = ""
@@ -70,6 +72,11 @@ class PhoneAgentService : AccessibilityService() {
         super.onServiceConnected()
         executor = Executor(service = this, context = applicationContext)
         repo.updateAccessibility(true)
+
+        // 仅在首次调用时启动 WebSocket
+        if (wsStarted) return
+        wsStarted = true
+
         val deviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "device"
         wsClient.start(
             baseUrl = BuildConfig.WS_URL,
@@ -209,7 +216,7 @@ class PhoneAgentService : AccessibilityService() {
         pendingReport?.let { handler.removeCallbacks(it) }
         confirmManager.onDestroy()
         repo.updateAccessibility(false)
-        wsClient.close()
+        wsClient.destroy()
         serviceScope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
         super.onDestroy()
     }
