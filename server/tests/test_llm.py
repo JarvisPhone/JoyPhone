@@ -1,6 +1,6 @@
 import pytest
 
-from app.llm import FakeLLM, LLM, _clean_text
+from app.decision.llm import FakeLLM, LLM, _clean_text
 
 
 def test_fake_llm_allows_empty_responses_on_init():
@@ -18,6 +18,13 @@ def test_fake_llm_returns_last_when_exhausted():
     assert llm.complete(system="s", user="u") == "a"
     assert llm.complete(system="s", user="u") == "b"
     assert llm.complete(system="s", user="u") == "b"
+
+
+def test_fake_llm_single_class_exhaustion_semantics():
+    import app.decision.llm as m
+    assert len([n for n in dir(m) if n == "FakeLLM"]) == 1
+    llm = m.FakeLLM(["a", "b"])
+    assert [llm.complete("", ""), llm.complete("", ""), llm.complete("", "")] == ["a", "b", "b"]
 
 
 def test_llm_is_abstract():

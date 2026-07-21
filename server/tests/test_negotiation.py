@@ -1,4 +1,4 @@
-from app.llm import FakeLLM
+from app.decision.llm import FakeLLM
 from app.negotiation import NegotiationBot, NegotiationIntent, NegotiationAction
 
 
@@ -97,7 +97,7 @@ class TestRespond:
             captured["user"] = user
             return '{"action":"continue","reply":"收到"}'
 
-        from app.llm import LLM
+        from app.decision.llm import LLM
 
         class CapturingLLM(LLM):
             def complete(self, system, user, image_b64=None):

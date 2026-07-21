@@ -1,0 +1,197 @@
+import json
+from pathlib import Path
+
+import pytest
+
+from app.protocol import (
+    Action,
+    ActionResult,
+    ConfirmResponse,
+    Heartbeat,
+    HeartbeatAck,
+    NewMessage,
+    Perception,
+    SampleCapture,
+    TaskAbort,
+    TaskConfirm,
+    TaskDone,
+    TaskRequest,
+    TaskStart,
+    parse_uplink,
+)
+
+GOLDEN_DIR = Path(__file__).resolve().parents[2] / "shared" / "protocol" / "v2"
+
+
+def _load(name: str) -> dict:
+    return json.loads((GOLDEN_DIR / name).read_text(encoding="utf-8"))
+
+
+def test_golden_dir_has_all_samples():
+    expected = {
+        "perception.json",
+        "action_result.json",
+        "new_message.json",
+        "heartbeat.json",
+        "task_request.json",
+        "confirm_response.json",
+        "sample_capture.json",
+        "task_start.json",
+        "action.json",
+        "task_done.json",
+        "task_abort.json",
+        "task_confirm.json",
+        "heartbeat_ack.json",
+    }
+    actual = {p.name for p in GOLDEN_DIR.glob("*.json")}
+    assert expected == actual
+
+
+# ---- 上行:parse_uplink 解析 + 关键字段断言 ----
+
+
+def test_uplink_perception():
+    raw = _load("perception.json")
+    msg = parse_uplink(json.dumps(raw))
+    assert isinstance(msg, Perception)
+    assert msg.seq == 42
+    assert msg.seq > 0
+    assert msg.pkg == "com.ss.android.lark"
+    assert msg.activity == ".MainActivity"
+    assert len(msg.nodeTree) == 2
+    editable = msg.nodeTree[0]
+    assert editable.editable is True
+    assert editable.bounds == (10, 20, 300, 80)
+    assert msg.nodeTree[1].editable is False
+
+
+def test_uplink_action_result_has_seq_and_no_at_end():
+    raw = _load("action_result.json")
+    assert "atEnd" not in raw
+    msg = parse_uplink(json.dumps(raw))
+    assert isinstance(msg, ActionResult)
+    assert msg.actionId == "act-0007"
+    assert msg.ok is False
+    assert msg.error == "node_not_found"
+    assert msg.seq == 43
+    assert "atEnd" not in msg.model_dump()
+
+
+def test_uplink_new_message():
+    raw = _load("new_message.json")
+    msg = parse_uplink(json.dumps(raw))
+    assert isinstance(msg, NewMessage)
+    assert msg.app == "com.ss.android.lark"
+    assert msg.sender == "张三"
+    assert msg.text == "周报记得发我"
+
+
+def test_uplink_heartbeat():
+    raw = _load("heartbeat.json")
+    msg = parse_uplink(json.dumps(raw))
+    assert isinstance(msg, Heartbeat)
+    assert msg.deviceId == "pixel-7-pro-01"
+
+
+def test_uplink_task_request():
+    raw = _load("task_request.json")
+    msg = parse_uplink(json.dumps(raw))
+    assert isinstance(msg, TaskRequest)
+    assert msg.goal == "给张三发一条飞书消息:周报已提交"
+
+
+def test_uplink_confirm_response():
+    raw = _load("confirm_response.json")
+    msg = parse_uplink(json.dumps(raw))
+    assert isinstance(msg, ConfirmResponse)
+    assert msg.taskId == "task-20260720-001"
+    assert msg.confirmId == "cfm-0001"
+    assert msg.approved is True
+
+
+def test_uplink_sample_capture():
+    raw = _load("sample_capture.json")
+    msg = parse_uplink(json.dumps(raw))
+    assert isinstance(msg, SampleCapture)
+    assert msg.label == "lark_chat_page"
+    assert len(msg.nodeTree) == 2
+    assert msg.nodeTree[0].editable is True
+    assert msg.device == "pixel-7-pro-01"
+
+
+# ---- 上行:roundtrip 键集断言 ----
+
+
+def _assert_golden_keys_covered(golden, dumped, path="$"):
+    """递归断言:golden 中出现的每个键,在解析后 model_dump() 的输出中都存在。
+
+    意图:pydantic 默认忽略 extra key,若上行模型删除某个 optional 字段,
+    golden 中该键会被静默丢弃、既有测试照常变绿。此断言让这类契约漂移立刻变红。
+
+    实现说明:dump 键名取 model_dump() 默认输出(即字段名);本协议未使用
+    pydantic alias,字段名就是线协议键名,可直接与 golden 键比较。若未来引入
+    alias,此处应改用 model_dump(by_alias=True)。
+    """
+    missing = set(golden) - set(dumped)
+    assert not missing, f"{path}: golden keys silently dropped by model: {sorted(missing)}"
+    for key, gv in golden.items():
+        dv = dumped[key]
+        if isinstance(gv, dict) and isinstance(dv, dict):
+            _assert_golden_keys_covered(gv, dv, f"{path}.{key}")
+        elif isinstance(gv, list) and isinstance(dv, list):
+            for i, (gi, di) in enumerate(zip(gv, dv)):
+                if isinstance(gi, dict) and isinstance(di, dict):
+                    _assert_golden_keys_covered(gi, di, f"{path}.{key}[{i}]")
+
+
+@pytest.mark.parametrize(
+    "golden_name",
+    [
+        "perception.json",
+        "action_result.json",
+        "new_message.json",
+        "heartbeat.json",
+        "task_request.json",
+        "confirm_response.json",
+        "sample_capture.json",
+    ],
+)
+def test_uplink_roundtrip_covers_golden_keys(golden_name):
+    raw = _load(golden_name)
+    msg = parse_uplink(json.dumps(raw))
+    _assert_golden_keys_covered(raw, msg.model_dump())
+
+
+# ---- 下行:model_validate 后 model_dump 与 golden 逐字段一致 ----
+
+
+@pytest.mark.parametrize(
+    "golden_name,model",
+    [
+        ("task_start.json", TaskStart),
+        ("action.json", Action),
+        ("task_done.json", TaskDone),
+        ("task_abort.json", TaskAbort),
+        ("task_confirm.json", TaskConfirm),
+        ("heartbeat_ack.json", HeartbeatAck),
+    ],
+)
+def test_downlink_roundtrip_matches_golden(golden_name, model):
+    raw = _load(golden_name)
+    msg = model.model_validate(raw)
+    assert msg.model_dump() == raw
+
+
+def test_downlink_action_params_all_strings():
+    raw = _load("action.json")
+    assert raw["params"]
+    assert all(isinstance(v, str) for v in raw["params"].values())
+    msg = Action.model_validate(raw)
+    assert all(isinstance(v, str) for v in msg.params.values())
+    assert msg.op == "input"
+
+
+def test_downlink_task_confirm_timeout():
+    raw = _load("task_confirm.json")
+    msg = TaskConfirm.model_validate(raw)
+    assert msg.timeoutMs == 5000

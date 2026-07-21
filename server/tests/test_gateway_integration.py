@@ -1,82 +1,110 @@
+# server/tests/test_gateway_integration.py
+"""端到端回放:create_app + TestClient websocket 驱动 fixtures/feishu_happy_path.json。
+
+fixture 是「send/expect 帧序」格式:send 帧里 {goal}/{taskId}/{confirmId}/{actionId}
+为动态占位符,expect 帧逐字段断言下行消息;末帧后再发一次 heartbeat 验证
+task.done 之后连接未异常断开。goal 为「给研发部群发飞书消息」,同时回归
+extract_target 剥「群」字(T11 遗留 concern):task.confirm.target 必须是不带
+「群」的「研发部」。
+"""
+from __future__ import annotations
+
 import json
+from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
-from app.gateway import _load_fixture_steps, create_app
+from app.main import create_app
+
+FIXTURE = Path(__file__).parent / "fixtures" / "feishu_happy_path.json"
 
 
-def test_gateway_replay_heartbeat_returns_expected_message_type():
-    app = create_app()
-    client = TestClient(app)
-    # 心跳文本内联构造，与回放夹具（动作数组）语义解耦
-    heartbeat = json.dumps(
-        {"type": "heartbeat", "deviceId": "device-1", "ts": 1720000000}
+def _substitute(value, ctx: dict):
+    if isinstance(value, str):
+        for key, val in ctx.items():
+            value = value.replace("{%s}" % key, str(val))
+        return value
+    if isinstance(value, dict):
+        return {k: _substitute(v, ctx) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_substitute(v, ctx) for v in value]
+    return value
+
+
+def _capture(ctx: dict, received: dict) -> None:
+    for key in ("taskId", "confirmId", "actionId"):
+        if received.get(key):
+            ctx[key] = received[key]
+
+
+def _check_expect(expected: dict, received: dict, ctx: dict, idx: int) -> None:
+    for key, val in expected.items():
+        if key == "ts_positive":
+            assert received.get("ts", 0) > 0, "step %d: ts 未填当前时间戳" % idx
+            continue
+        if key == "text":
+            got = received.get("params", {}).get("text")
+            assert got == val, "step %d: params.text=%r != %r" % (idx, got, val)
+            continue
+        want = _substitute(val, ctx)
+        assert received.get(key) == want, (
+            "step %d: %s=%r != %r (full=%r)" % (idx, key, received.get(key), want, received)
+        )
+
+
+@pytest.fixture
+def replay_env(tmp_path, monkeypatch):
+    fixture = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    monkeypatch.setenv(
+        "PHONEAGENT_FAKE_LLM", json.dumps(fixture["llm_responses"], ensure_ascii=False)
     )
-
-    with client.websocket_connect("/ws/device-1") as ws:
-        ws.send_text(heartbeat)
-        msg = ws.receive_json()
-
-    assert msg["type"] in {
-        "task.start",
-        "action",
-        "task.done",
-        "task.abort",
-    }
+    monkeypatch.setenv("SKILL_CACHE_PATH", str(tmp_path / "skill_cache.json"))
+    monkeypatch.setenv("PHONEAGENT_LOG_DIR", str(tmp_path))
+    return fixture
 
 
-def test_load_fixture_steps_returns_action_sequence():
-    steps = _load_fixture_steps()
-
-    assert isinstance(steps, list)
-    assert len(steps) == 4
-    assert steps[0]["op"] == "tap"
-    assert steps[-1]["op"] == "tap"
-    assert steps[-1]["params"]["match_text"] == "发送"
-
-
-def test_persist_sample_writes_json_file(tmp_path):
-    from app.gateway import _persist_sample
-    from app.protocol import SampleCapture
-
-    sample = SampleCapture(
-        label="minus_one",
-        nodeTree=[],
-        pkg="com.android.launcher",
-        activity="Launcher",
-        ts=1784168979000,
-        device="OPPO",
-    )
-    path = _persist_sample(sample, base_dir=tmp_path)
-
-    assert path.exists()
-    assert path.parent == tmp_path
-    assert path.name.startswith("minus_one-")
-    assert path.suffix == ".json"
-    data = json.loads(path.read_text(encoding="utf-8"))
-    assert data["label"] == "minus_one"
-    assert data["pkg"] == "com.android.launcher"
-    assert data["device"] == "OPPO"
+def test_feishu_happy_path_replay(replay_env):
+    ctx = {"goal": replay_env["goal"]}
+    client = TestClient(create_app())
+    with client.websocket_connect("/ws/dev-1?v=2") as ws:
+        for idx, step in enumerate(replay_env["script"]):
+            if "send" in step:
+                payload = _substitute(step["send"], ctx)
+                ws.send_text(json.dumps(payload, ensure_ascii=False))
+            if "expect" in step:
+                received = json.loads(ws.receive_text())
+                _capture(ctx, received)
+                _check_expect(step["expect"], received, ctx, idx)
 
 
-def test_gateway_sample_capture_persists_file(tmp_path, monkeypatch):
-    import app.gateway as gw
-    monkeypatch.setattr(gw, "_SAMPLES_DIR", tmp_path)
-    app = create_app()
-    client = TestClient(app)
-    sample_msg = json.dumps({
-        "type": "sample.capture",
-        "label": "home_first",
-        "nodeTree": [{"id": "n1", "text": "相机"}],
-        "pkg": "com.android.launcher",
-        "activity": "Launcher",
-        "ts": 1720000000,
-        "device": "OPPO",
-    })
-    with client.websocket_connect("/ws/device-1") as ws:
-        ws.send_text(sample_msg)
-        ws.send_text(json.dumps({"type": "heartbeat","deviceId": "device-1", "ts": 1}))
-        ws.receive_json()  # 采样不回消息,后发心跳确认连接仍活着且能拿到回复
+def test_invalid_uplink_aborts_and_closes(replay_env):
+    client = TestClient(create_app())
+    with client.websocket_connect("/ws/dev-1?v=2") as ws:
+        ws.send_text("this is not json")
+        received = json.loads(ws.receive_text())
+        assert received["type"] == "task.abort"
+        assert received["reason"] == "invalid_uplink"
+        with pytest.raises(WebSocketDisconnect):
+            ws.receive_text()
 
-    files = list(tmp_path.glob("home_first-*.json"))
-    assert len(files) == 1
+
+# ---- 协议版本握手(F1)----
+
+
+def test_handshake_rejects_missing_or_mismatched_version(replay_env):
+    client = TestClient(create_app())
+    for url in ("/ws/dev-1", "/ws/dev-1?v=1", "/ws/dev-1?v=abc"):
+        with pytest.raises(WebSocketDisconnect) as exc_info:
+            with client.websocket_connect(url):
+                pass
+        assert exc_info.value.code == 4402, url
+
+
+def test_handshake_accepts_current_version(replay_env):
+    client = TestClient(create_app())
+    with client.websocket_connect("/ws/dev-1?v=2") as ws:
+        ws.send_text(json.dumps({"type": "heartbeat", "deviceId": "dev-1"}))
+        received = json.loads(ws.receive_text())
+        assert received["type"] == "heartbeat.ack"

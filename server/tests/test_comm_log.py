@@ -1,9 +1,9 @@
-from app.comm_log import log_up, log_down, log_llm_req, log_llm_resp, _comm_logger, _llm_logger
+from app.gateway import connection as comm_log
+from app.gateway.connection import log_up, log_down, log_llm_req, log_llm_resp
 
 
 def test_log_up_writes_line(tmp_path, monkeypatch):
     monkeypatch.setenv("PHONEAGENT_LOG_DIR", str(tmp_path))
-    from app import comm_log
     comm_log._reset_for_test(tmp_path)
     log_up("perception", '{"a":1}')
     content = (tmp_path / "comm.log").read_text(encoding="utf-8")
@@ -11,7 +11,6 @@ def test_log_up_writes_line(tmp_path, monkeypatch):
 
 
 def test_log_down_and_llm(tmp_path):
-    from app import comm_log
     comm_log._reset_for_test(tmp_path)
     log_down("action", "tap 3")
     log_llm_req("system+user")

@@ -1,0 +1,10 @@
+{
+  "type": "action",
+  "actionId": "act-0001",
+  "op": "input",
+  "params": {
+    "match_text": "消息输入框",
+    "text": "周报已提交",
+    "index": "0"
+  }
+}

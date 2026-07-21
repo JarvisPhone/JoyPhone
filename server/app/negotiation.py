@@ -3,7 +3,7 @@ import logging
 from enum import Enum
 from typing import Literal
 
-from app.llm import LLM
+from app.decision.llm import LLM
 
 
 logger = logging.getLogger("phoneagent.negotiation")

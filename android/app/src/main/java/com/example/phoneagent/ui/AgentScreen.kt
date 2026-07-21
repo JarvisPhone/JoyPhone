@@ -192,7 +192,7 @@ private fun PreviewDisconnected() {
                     connection = ConnectionState.DISCONNECTED,
                     task = TaskState.Idle,
                 ),
-                debug = DebugInfo(wsUrl = "ws://10.253.61.158:8000", deviceId = "abc123", reconnectAttempts = 2),
+                debug = DebugInfo(wsUrl = "ws://10.0.2.2:8000", deviceId = "abc123", reconnectAttempts = 2),
                 debugUnlocked = true,
             ),
             onTitleTap = {}, onOpenAccessibility = {}, onRunTestTask = {}, onCaptureSample = {}, onHideDebug = {},

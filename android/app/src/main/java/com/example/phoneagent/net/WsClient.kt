@@ -37,6 +37,7 @@ class WsClient @Inject constructor(
     private companion object {
         const val MAX_RETRY = 5
         const val RETRY_DELAY_MS = 3000L
+        const val PROTOCOL_VERSION = 2
     }
 
     private val client = OkHttpClient()
@@ -58,6 +59,7 @@ class WsClient @Inject constructor(
         onTaskEnd: (reason: String) -> Unit,
         onTaskConfirm: (DownTaskConfirm) -> Unit = {},
     ) {
+        require(deviceId.isNotBlank()) { "deviceId cannot be blank" }
         this.baseUrl = baseUrl
         this.deviceId = deviceId
         this.dispatcher = WsDispatcher(onTaskStart, onAction, onTaskEnd, onTaskConfirm)
@@ -71,8 +73,8 @@ class WsClient @Inject constructor(
         repo.updateConnection(
             if (retryCount == 0) ConnectionState.CONNECTING else ConnectionState.RECONNECTING
         )
-        repo.appendWsEvent(WsEventLog(now(), "connecting", "$baseUrl/ws/$deviceId"))
-        val req = Request.Builder().url("$baseUrl/ws/$deviceId").build()
+        repo.appendWsEvent(WsEventLog(now(), "connecting", "$baseUrl/ws/$deviceId?v=$PROTOCOL_VERSION"))
+        val req = Request.Builder().url("$baseUrl/ws/$deviceId?v=$PROTOCOL_VERSION").build()
         ws = client.newWebSocket(req, listener)
     }
 
@@ -119,8 +121,8 @@ class WsClient @Inject constructor(
         ws?.send(json.encodeToString(p))
     }
 
-    fun sendActionResult(actionId: String, ok: Boolean, atEnd: Boolean = false, error: String? = null) {
-        ws?.send(json.encodeToString(UplinkActionResult(actionId = actionId, ok = ok, atEnd = atEnd, error = error)))
+    fun sendActionResult(actionId: String, ok: Boolean, seq: Int, error: String? = null) {
+        ws?.send(json.encodeToString(UplinkActionResult(actionId = actionId, ok = ok, seq = seq, error = error)))
     }
 
     fun sendTaskRequest(goal: String) {

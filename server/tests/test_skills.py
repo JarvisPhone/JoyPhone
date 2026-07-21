@@ -1,129 +1,75 @@
-import logging
-
+from app.decision.skills import BoundSkill, CursorState, SkillCursor, SkillStep, SkillTemplate, match_node
 from app.protocol import Node
-from app.skills import SkillLibrary, SkillStep, SkillMatcher, Skill
 
+TPL = SkillTemplate(
+    name="send", app="com.x", keywords=["发"], params=["contact"],
+    steps=[
+        SkillStep(op="tap", desc="搜索"),
+        SkillStep(op="input", input_text="{contact}"),
+        SkillStep(op="verify_title", match_text="{contact}"),
+        SkillStep(op="tap", text="发送"),
+    ],
+)
 
-class TestSkillMatcher:
-    def test_match_by_text(self):
-        nodes = [
-            Node(id="n1", text="通讯录", clickable=True),
-            Node(id="n2", text="搜索", clickable=True),
-        ]
+def test_bind_substitutes_placeholders():
+    s = BoundSkill.bind(TPL, {"contact": "张三"})
+    assert s is not None
+    step = s.next_step([Node(id="0", editable=True)], 1)
+    assert step["input_text"] == "张三"
 
-        step = SkillStep(op="tap", text="通讯录")
-        assert SkillMatcher.match_node(step, nodes, 0) is True
-        assert SkillMatcher.match_node(step, nodes, 1) is False
+def test_bind_missing_param_returns_none():
+    assert BoundSkill.bind(TPL, {}) is None
 
-    def test_match_by_desc(self):
-        nodes = [
-            Node(id="n1", text="", desc="搜索图标", clickable=True),
-        ]
+def test_cursor_advance_and_fail():
+    c = SkillCursor()
+    c.advance(); assert c.index == 1 and c.state == "pending"
+    c.fail(); assert c.state == "failed"
 
-        step = SkillStep(op="tap", desc="搜索图标")
-        assert SkillMatcher.match_node(step, nodes, 0) is True
+def test_next_step_out_of_range_returns_none():
+    s = BoundSkill.bind(TPL, {"contact": "张三"})
+    assert s.next_step([], 99) is None
 
-    def test_match_by_view_id(self):
-        nodes = [
-            Node(id="n1", text="", viewIdResourceName="com.feishu:id/search"),
-        ]
+def test_verify_title_step_returns_expected_title():
+    s = BoundSkill.bind(TPL, {"contact": "张三"})
+    step = s.next_step([], 2)
+    assert step == {"op": "verify_title", "expected_title": "张三"}
 
-        step = SkillStep(op="tap", view_id="search")
-        assert SkillMatcher.match_node(step, nodes, 0) is True
+def test_match_node_by_text_substring():
+    nodes = [
+        Node(id="n1", text="通讯录联系人", clickable=True),
+        Node(id="n2", text="搜索", clickable=True),
+    ]
+    step = SkillStep(op="tap", text="通讯录")
+    assert match_node(step, nodes, 0) is True
+    assert match_node(step, nodes, 1) is False
 
-    def test_match_by_index(self):
-        nodes = [
-            Node(id="n1", text="A"),
-            Node(id="n2", text="B"),
-        ]
+def test_match_node_by_desc_substring():
+    nodes = [Node(id="n1", text="", desc="搜索图标", clickable=True)]
+    step = SkillStep(op="tap", desc="搜索")
+    assert match_node(step, nodes, 0) is True
 
-        step = SkillStep(op="tap", index=1)
-        assert SkillMatcher.match_node(step, nodes, 0) is False
-        assert SkillMatcher.match_node(step, nodes, 1) is True
+def test_match_node_by_view_id_substring():
+    nodes = [Node(id="n1", text="", viewIdResourceName="com.feishu:id/search_btn")]
+    step = SkillStep(op="tap", view_id="search_btn")
+    assert match_node(step, nodes, 0) is True
 
+def test_match_node_by_index():
+    nodes = [Node(id="n1", text="A"), Node(id="n2", text="B")]
+    step = SkillStep(op="tap", index=1)
+    assert match_node(step, nodes, 0) is False
+    assert match_node(step, nodes, 1) is True
 
-class TestSkillLibrary:
-    def test_get_skill(self):
-        library = SkillLibrary()
+def test_match_node_no_match_returns_false():
+    nodes = [Node(id="n1", text="通讯录", desc="联系人", viewIdResourceName="com.x:id/list")]
+    step = SkillStep(op="tap", text="发送", desc="搜索", view_id="search", class_name="Button")
+    assert match_node(step, nodes, 0) is False
 
-        skill = library.get("feishu_send_message")
-        assert skill is not None
-        assert skill.name == "feishu_send_message"
-        assert skill.app == "com.ss.android.lark"
+def test_match_node_by_class_name_positive():
+    nodes = [Node(id="0", className="android.widget.Button")]
+    step = SkillStep(op="tap", class_name="Button")
+    assert match_node(step, nodes, 0) is True
 
-    def test_unknown_skill_returns_none(self):
-        library = SkillLibrary()
-
-        step = library.next_step("unknown_skill", [], 0)
-        assert step is None
-
-    def test_next_step_match(self):
-        library = SkillLibrary()
-        nodes = [
-            Node(id="n1", text="", desc="搜索", clickable=True),
-            Node(id="n2", text="发送", clickable=True),
-        ]
-
-        step = library.next_step("feishu_send_message", nodes, 0)
-        assert step is not None
-        assert step["op"] == "tap"
-
-    def test_next_step_cursor_out_of_range(self):
-        library = SkillLibrary()
-        nodes = [Node(id="n1", text="搜索")]
-
-        step = library.next_step("feishu_send_message", nodes, 999)
-        assert step is None
-
-    def test_select_by_goal_and_pkg(self):
-        library = SkillLibrary()
-
-        skill_name = library.select("在飞书给张三发消息", "com.ss.android.lark")
-        assert skill_name == "feishu_send_message"
-
-    def test_select_no_match_returns_none(self):
-        library = SkillLibrary()
-
-        skill_name = library.select("打开微信", "com.tencent.mm")
-        assert skill_name is None
-
-    def test_register_new_skill(self):
-        library = SkillLibrary()
-        new_skill = Skill(
-            name="wechat_send",
-            app="com.tencent.mm",
-            description="微信发送消息",
-            keywords=["微信", "发送"],
-            steps=[SkillStep(op="tap", text="发送")],
-        )
-
-        library.register(new_skill)
-
-        assert library.get("wechat_send") is not None
-        assert library.select("打开微信发消息", "com.tencent.mm") == "wechat_send"
-
-    def test_next_step_logs_when_no_node_matches(self, caplog):
-        library = SkillLibrary()
-        nodes = []  # 空节点，必然匹配失败，回落 LLM
-        with caplog.at_level(logging.WARNING, logger="phoneagent.skills"):
-            result = library.next_step("feishu_send_message", nodes, cursor=0)
-        assert result is None
-        assert any("SKILL_NO_MATCH" in r.message for r in caplog.records)
-
-
-class TestSkillStep:
-    def test_to_dict(self):
-        step = SkillStep(op="tap", text="搜索", input_text="hello")
-        d = step.to_dict()
-
-        assert d["op"] == "tap"
-        assert d["text"] == "搜索"
-        assert d["input_text"] == "hello"
-
-    def test_from_dict(self):
-        d = {"op": "tap", "text": "搜索", "input_text": "hi"}
-        step = SkillStep.from_dict(d)
-
-        assert step.op == "tap"
-        assert step.text == "搜索"
-        assert step.input_text == "hi"
+def test_match_node_input_editable_rule():
+    step = SkillStep(op="input", input_text="x")
+    assert match_node(step, [Node(id="0", editable=True)], 0) is True
+    assert match_node(step, [Node(id="0", editable=False)], 0) is False

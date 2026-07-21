@@ -52,7 +52,14 @@ The two ends communicate over a bidirectional real-time WebSocket channel:
 - **Uplink** (App → Cloud): `perception` (node tree + screenshot), `action.result`, `event.newMessage`, `heartbeat`, `task.request`
 - **Downlink** (Cloud → App): `task.start`, `action`, `task.done`, `task.abort`
 
-Session FSM: `NAVIGATING → IN_CHAT → SENT → WAITING_REPLY → NEGOTIATING → DONE / ABORT`, enforced by `server/app/session.py` with legal-transitions + a step budget to prevent runaway.
+The cloud side is split into layered packages under `server/app/`:
+
+- **`protocol`** — uplink/downlink message models (Pydantic), the single source of truth for the wire format.
+- **`gateway`** — WebSocket connection wrapper (`Connection`, comm/LLM logging) + `route_loop` dispatcher.
+- **`task`** — task runtime: `TaskStore`/`TaskContext`, `TaskFSM` (`IDLE → RUNNING → AWAITING_CONFIRM / WAITING_EVENT → DONE / ABORT` with legal-transition enforcement and a step budget to prevent runaway), uplink handlers, and policies.
+- **`scenario`** — L1 scenario packs (e.g. `SendMessagePack` for "send X a message") + L2 `AppProfile` data (per-app UI recognition features in `scenario/profiles/`); unknown goals fall back to the generic LLM mode.
+- **`decision`** — the L0 kernel decision engine (cache → skill → pkg-guard scene FSM → LLM tiered fallback), LLM abstraction, skill library/cache, and parameterized UI-inspection helpers.
+- **`infra`** — `Config` constants and the per-task metrics collector.
 
 ## Roadmap
 
@@ -73,21 +80,20 @@ JoyPhone is a long-running open-source project that advances by milestone:
 
 ```
 JoyPhone/
-├── server/                 # Cloud: FastAPI + Python ≥3.14
+├── server/                 # Cloud: FastAPI + Python ≥3.14 (uv-managed)
 │   ├── app/
-│   │   ├── gateway.py           # WebSocket gateway + single-task session main loop
-│   │   ├── decision.py          # Decision engine (cache → skill → LLM three-tier fallback)
-│   │   ├── protocol.py          # Uplink/downlink message protocol (Pydantic models)
-│   │   ├── session.py           # Session FSM + step budget
-│   │   ├── llm.py               # LLM abstraction (FakeLLM / RealLLM)
-│   │   ├── skills.py            # Static skill library
-│   │   ├── skill_cache.py       # Runtime self-learning skill cache
-│   │   ├── scene.py             # Screen-scene FSM (cloud-side return-home + stuck/oscillation escape)
-│   │   ├── app_goal_resolver.py # Parse NL goal → target Android package (app-boundary hard constraint)
-│   │   ├── chat_title_helpers.py# Chat-title detection / message-input locate / send-button matching
-│   │   ├── negotiation.py       # Negotiation bot
-│   │   ├── comm_log.py          # Rotating up/down-link + raw-LLM logger
-│   │   └── metrics.py           # Per-task metrics collector (steps, LLM calls, skill/cache hits, duration)
+│   │   ├── main.py              # create_app: wires engine/scenario_packs/metrics, mounts /ws/{device_id}
+│   │   ├── protocol/            # Uplink/downlink message protocol (Pydantic models)
+│   │   ├── gateway/             # connection.py (WS wrapper + comm/LLM log) / router.py (dispatch loop)
+│   │   ├── task/                # context.py (TaskStore) / fsm.py (TaskFSM) / handlers.py / policies.py
+│   │   ├── scenario/            # base.py (ScenarioPack protocol + AppProfile) / send_message.py /
+│   │   │                        #   ui.py (goal→pkg resolution, send-button/input heuristics) /
+│   │   │                        #   profiles/ (L2 per-app UI feature data: feishu / wechat / misc)
+│   │   ├── decision/            # engine.py (cache→skill→pkg_guard→LLM) / cache.py / skills.py /
+│   │   │                        #   llm.py (FakeLLM / RealLLM) / pkg_guard.py (screen-scene FSM) /
+│   │   │                        #   ui_inspect.py (title detection, keyword-parameterized) / types.py
+│   │   ├── infra/               # config.py (budgets/timeouts) / metrics.py (per-task metrics)
+│   │   └── negotiation.py       # Negotiation bot
 │   ├── tests/                   # pytest unit/integration tests + replay fixtures
 │   ├── scripts/e2e_feishu.sh   # Real-device end-to-end debug script
 │   ├── pyproject.toml
@@ -114,7 +120,7 @@ JoyPhone/
 
 ## Cloud Design Highlights
 
-### Decision engine three-tier fallback (`server/app/decision.py`)
+### Decision engine tiered fallback (`server/app/decision/engine.py`)
 
 For every perception frame, the next action is produced by priority:
 
@@ -124,30 +130,30 @@ For every perception frame, the next action is produced by priority:
 
 A `tap` decided by the LLM is resolved on the cloud side to the exact coordinate center using the node `id` / `match_text` before being sent down — avoiding on-device full-screen substring match false hits (e.g. minus-one-screen tiles). The system prompt bakes in common-sense constraints like "minus-one-screen detection" and "swipe on home to find the app".
 
-### Screen-scene FSM (`server/app/scene.py`)
+### Screen-scene FSM (`server/app/decision/pkg_guard.py`)
 
 Frame by frame on the cloud side, the current perception is classified into a finite scene: `HOME` (any desktop page) / `MINUS_ONE` (the -1 screen) / `RECENT_APPS` / `LOCK_SCREEN` / `NOTIFICATION` / `CONTROL_CENTER` / `IN_APP` / `UNKNOWN`. Resource-id matching is suffix-based (`endswith` / `contains`) so it is cross-device without hardcoding any vendor package prefix. The FSM replaces `decision.py`'s pkg-only guard and roots out the endless loop circling between launcher states. It also provides a convergence guard that combines stall (`STALL_THRESHOLD=3` consecutive same-scene same-op) and oscillation (non-target scene repeating `CYCLE_THRESHOLD=2` times inside a `WINDOW=6` window), escalating to an LLM semantic-escape (`LLM_ESCALATION_TRIES=1`) then a mechanical-fallback three-tier ladder (`FALLBACK_TRIES=2`).
 
-### Goal → application boundary (`server/app/app_goal_resolver.py`)
+### Goal → application boundary (`server/app/scenario/ui.py`)
 
-Parses a natural-language goal into a target Android `package` with pure keyword matching — fast, zero-cost, unit-testable. The resolved `pkg` becomes an app-boundary hard constraint: once the perceived `pkg != target pkg`, the cloud first returns to home, then `home` + finds the icon to re-open the target app — it will never tap a notification / tile to jump to another app. Aliases are built in for Feishu / WeChat / QQ / DingTalk / Taobao / JD / Meituan / Xiaohongshu / Douyin / Zhihu / Amap / Baidu Map / Tencent Map / Dialer / Contacts, etc.
+Parses a natural-language goal into a target Android `package` with pure keyword matching over the L2 `AppProfile` aliases (`scenario/profiles/`) — fast, zero-cost, unit-testable. The resolved `pkg` becomes an app-boundary hard constraint: once the perceived `pkg != target pkg`, the cloud first returns to home, then `home` + finds the icon to re-open the target app — it will never tap a notification / tile to jump to another app. Aliases are built in for Feishu / WeChat / QQ / DingTalk / Taobao / JD / Meituan / Xiaohongshu / Douyin / Zhihu / Amap / Baidu Map / Tencent Map / Dialer / Contacts, etc.
 
-### LLM abstraction (`server/app/llm.py`)
+### LLM abstraction (`server/app/decision/llm.py`)
 
 - `FakeLLM`: replays a preset response sequence — for offline / CI tests.
 - `RealLLM`: OpenAI-compatible SDK based; defaults to MiniMax-M2.x (with `extra_body={"thinking":{"type":"disabled"}}` to disable reasoning); auto-strips `` reasoning segments and extracts the first balanced JSON so downstream `json.loads` is always usable. **Any OpenAI-compatible model (Doubao / DeepSeek / Qwen / self-hosted vLLM, etc.) plugs in with one config line.**
 - Without `LLM_API_KEY` it gracefully degrades to `FakeLLM` — runs out of the box, no external network service required.
 
-### Skill self-sedimentation (`server/app/skill_cache.py`)
+### Skill self-sedimentation (`server/app/decision/cache.py`)
 
 When a task ends normally (`done`), the current `applied_steps` are written back to cache keyed by `(goal, pkg)`. The next time the same goal + app appears it replays directly as a script with zero LLM-quota use. If a step can't be re-located the whole entry is invalidated and waits for re-learning — an MVP policy that is simple and reliable, and the primitive underlying the community skill-library flywheel.
 
-### Observability (`server/app/comm_log.py` / `metrics.py`)
+### Observability (`server/app/gateway/connection.py` / `server/app/infra/metrics.py`)
 
 - `comm_log`: a rotating file logger for the bidirectional comm log (`comm.log`) and raw LLM traffic (`llm.log`), capped at 10 MB × 5 files. The log dir is overridable via the `PHONEAGENT_LOG_DIR` env var.
 - `metrics`: a per-task metrics collector (`TaskMetrics`) tracking `steps`, `llm_calls`, `skill_hits`, `cache_hits`, `status`, `error`, and duration, so any task run can be replayed/compared offline.
 
-### Chat-title helpers (`server/app/chat_title_helpers.py`)
+### Chat-title helpers (`server/app/decision/ui_inspect.py`)
 
 Pure heuristics for chat-page anchoring — whether the current page is the target chat title, whether a node is a message-input box, and whether a node is a send button — keeps the cloud side anchored to a specific conversation inside IM apps with very few tokens.
 
@@ -160,7 +166,7 @@ Extends `AccessibilityService`; the accessibility-service core:
 - On `onServiceConnected` it starts the WebSocket, registers callbacks, and reports an `ANDROID_ID`-based device id.
 - After receiving `task.start` it reports the first perception frame; subsequent window changes are debounced by `DEBOUNCE_MS=400` before reporting to avoid jitter.
 - `onAccessibilityEvent` only reacts when `taskActive`; `action` supports a read-only debug mode (triggered by a `[DEBUG-ONESHOT]` goal prefix): report one frame, do not execute the returned action — convenient for manually navigating to a target page and then single-frame-verifying the cloud decision.
-- The default connect address lives in the `PhoneAgentService.WS_URL` constant — modify for your environment.
+- The default connect address lives in `BuildConfig.WS_URL` (defined in `android/app/build.gradle.kts`) — modify for your environment.
 
 ### `Executor` (`accessibility/Executor.kt`)
 
@@ -169,7 +175,7 @@ Translates cloud action commands into Accessibility API calls:
 - `tap`: prefer `dispatchGesture` click using the cloud-sent `x/y` coordinates; when missing, fall back to a center click on the node matched by `match_text` substring.
 - `input`: find the first editable node and perform `ACTION_SET_TEXT`.
 - `swipe` / `back` / `home`: standard gestures and global actions.
-- Desktop paging/scrolling and return-home are driven by the **cloud scene FSM** frame by frame (`server/app/scene.py`): `detect_scene` identifies the current scene → `next_action` looks up the transition table and sends a single atomic action → the cloud guard detects stall and oscillation and applies three-tier escape. The phone side acts as a dumb executor. Coordinate geometry is still extracted into a unit-testable `GestureGeometry`.
+- Desktop paging/scrolling and return-home are driven by the **cloud scene FSM** frame by frame (`server/app/decision/pkg_guard.py`): `detect_scene` identifies the current scene → `next_action` looks up the transition table and sends a single atomic action → the cloud guard detects stall and oscillation and applies three-tier escape. The phone side acts as a dumb executor. Coordinate geometry is still extracted into a unit-testable `GestureGeometry`.
 
 ### Perception & node pruning (`accessibility/NodeFlattener.kt` / `Perception.kt`)
 
@@ -186,8 +192,8 @@ Jetpack Compose (single Activity + Compose UI) + Hilt (`@AndroidEntryPoint` inje
 ```bash
 cd server
 cp .env.example .env            # fill in LLM_API_KEY (any OpenAI-compatible endpoint)
-# Python ≥3.14 recommended, using uv: uv sync
-uv run uvicorn app.gateway:create_app --factory --host 0.0.0.0 --port 8000
+uv sync                         # install deps (uv manages the venv)
+uv run uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000
 ```
 
 Without `LLM_API_KEY` it auto-uses `FakeLLM`, so the protocol chain can be exercised offline.
@@ -198,7 +204,7 @@ Without `LLM_API_KEY` it auto-uses `FakeLLM`, so the protocol chain can be exerc
 2. Configure the SDK path in `android/local.properties` (gitignored).
 3. Open the `android/` project in Android Studio and Run `app`.
 4. System settings → Accessibility → enable the "PhoneAgent" service.
-5. Modify `PhoneAgentService.WS_URL` to point at your cloud address.
+5. Set `WS_URL` in `android/app/build.gradle.kts` to point at your cloud address.
 
 ### Real-device end-to-end debug
 
@@ -215,9 +221,12 @@ The "Task goal" input box at the top of the App ships a natural-language goal (e
 ```bash
 cd server
 uv run pytest                          # full suite
-uv run pytest tests/test_decision.py  # decision engine unit tests
-PHONEAGENT_FAKE_LLM='[...]' uv run pytest tests/test_gateway_loop.py  # inject FakeLLM and run the gateway main loop
+uv run pytest tests/test_engine.py    # decision engine unit tests
+uv run pyright app/                   # static type check (basic mode, zero errors enforced)
+PHONEAGENT_FAKE_LLM='[...]' uv run pytest tests/test_gateway_integration.py  # inject FakeLLM and run the gateway main loop
 ```
+
+CI (`.github/workflows/ci.yml`) enforces all three gates on every push/PR: `uv run pytest tests/ -q`, `uv run pyright app/`, and `./gradlew :app:testDebugUnitTest`.
 
 Android unit tests live in `android/app/src/test/`, covering the pure-logic parts of `GestureGeometry`, `NodeFlattener`, `Messages` (protocol models), `WsDispatcher`, `AgentStateRepository`, `MainViewModel`, and `AccessibilityStatus`.
 

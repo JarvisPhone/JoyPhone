@@ -1,0 +1,8 @@
+{
+  "type": "task.confirm_response",
+  "taskId": "task-20260720-001",
+  "confirmId": "cfm-0001",
+  "approved": true,
+  "reason": "",
+  "ts": 1750300000400
+}

@@ -1,0 +1,8 @@
+{
+  "type": "action.result",
+  "actionId": "act-0007",
+  "ok": false,
+  "error": "node_not_found",
+  "ts": 1750300000100,
+  "seq": 43
+}

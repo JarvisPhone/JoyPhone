@@ -1,0 +1,5 @@
+{
+  "type": "task.abort",
+  "taskId": "task-20260720-001",
+  "reason": "user_cancelled"
+}

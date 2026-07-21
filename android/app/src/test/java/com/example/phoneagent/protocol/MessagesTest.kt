@@ -56,11 +56,33 @@ class MessagesTest {
     }
 
     @Test
-    fun uplinkActionResult_serializes_atEnd() {
-        val result = UplinkActionResult(actionId = "a1", ok = true, atEnd = true)
+    fun uplinkActionResult_serializes_without_atEnd() {
+        val result = UplinkActionResult(actionId = "a1", ok = true, seq = 7, error = null)
         val out = json.encodeToString(result)
 
-        assertTrue(out.contains("\"atEnd\":true"))
+        assertTrue(out.contains("\"type\":\"action.result\""))
+        assertTrue(out.contains("\"actionId\":\"a1\""))
+        assertTrue(out.contains("\"ok\":true"))
+        assertTrue(out.contains("\"seq\":7"))
+        assertTrue(!out.contains("atEnd"))
+    }
+
+    @Test
+    fun uplinkActionResult_roundtrip() {
+        val result = UplinkActionResult(actionId = "a2", ok = false, seq = 3, error = "node_not_found")
+        val decoded = json.decodeFromString<UplinkActionResult>(json.encodeToString(result))
+
+        assertEquals(result, decoded)
+    }
+
+    @Test
+    fun heartbeat_ack_deserializes_from_downlink_json() {
+        val raw = """{"type":"heartbeat.ack","deviceId":"dev-1","ts":456}"""
+        val ack = json.decodeFromString<DownHeartbeatAck>(raw)
+
+        assertEquals("heartbeat.ack", ack.type)
+        assertEquals("dev-1", ack.deviceId)
+        assertEquals(456L, ack.ts)
     }
 
     @Test

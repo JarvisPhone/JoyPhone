@@ -1,6 +1,60 @@
-[
-  {"op":"tap","params":{"match_text":"通讯录"}},
-  {"op":"tap","params":{"match_text":"搜索"}},
-  {"op":"input","params":{"text":"张三"}},
-  {"op":"tap","params":{"match_text":"发送"}}
-]
+{
+  "goal": "给研发部群发飞书消息",
+  "llm_responses": [
+    "tap 0",
+    "input 0 研发部",
+    "tap 0",
+    "input 1 你好",
+    "tap 1"
+  ],
+  "script": [
+    {"send": {"type": "heartbeat", "deviceId": "dev-1"}},
+    {"expect": {"type": "heartbeat.ack", "deviceId": "dev-1", "ts_positive": true}},
+
+    {"send": {"type": "task.request", "goal": "{goal}"}},
+    {"expect": {"type": "task.start", "goal": "{goal}", "target": "com.ss.android.lark"}},
+
+    {"send": {"type": "perception", "seq": 1, "pkg": "com.ss.android.lark", "nodeTree": [
+      {"id": "n1", "text": "搜索", "clickable": true, "bounds": [0, 0, 200, 100]}
+    ]}},
+    {"expect": {"type": "action", "op": "tap"}},
+    {"send": {"type": "action.result", "actionId": "{actionId}", "ok": true}},
+
+    {"send": {"type": "perception", "seq": 2, "pkg": "com.ss.android.lark", "nodeTree": [
+      {"id": "e1", "text": "搜索", "editable": true, "bounds": [0, 0, 1080, 120]}
+    ]}},
+    {"expect": {"type": "action", "op": "input", "text": "研发部"}},
+    {"send": {"type": "action.result", "actionId": "{actionId}", "ok": true}},
+
+    {"send": {"type": "perception", "seq": 3, "pkg": "com.ss.android.lark", "nodeTree": [
+      {"id": "r1", "text": "研发部", "clickable": true, "bounds": [0, 200, 1080, 320]}
+    ]}},
+    {"expect": {"type": "action", "op": "tap"}},
+    {"send": {"type": "action.result", "actionId": "{actionId}", "ok": true}},
+
+    {"send": {"type": "perception", "seq": 4, "pkg": "com.ss.android.lark", "nodeTree": [
+      {"id": "t1", "text": "研发部", "viewIdResourceName": "com.ss.android.lark:id/tv_title", "bounds": [0, 0, 500, 80]},
+      {"id": "e2", "desc": "发消息", "editable": true, "bounds": [0, 1700, 900, 1850]}
+    ]}},
+    {"expect": {"type": "action", "op": "input", "text": "你好"}},
+    {"send": {"type": "action.result", "actionId": "{actionId}", "ok": true}},
+
+    {"send": {"type": "perception", "seq": 5, "pkg": "com.ss.android.lark", "nodeTree": [
+      {"id": "t1", "text": "研发部", "viewIdResourceName": "com.ss.android.lark:id/tv_title", "bounds": [0, 0, 500, 80]},
+      {"id": "b1", "text": "发送", "viewIdResourceName": "com.ss.android.lark:id/btn_send", "clickable": true, "bounds": [930, 1700, 1050, 1850]}
+    ]}},
+    {"expect": {"type": "task.confirm", "target": "研发部", "message": "你好"}},
+
+    {"send": {"type": "task.confirm_response", "taskId": "{taskId}", "confirmId": "{confirmId}", "approved": true}},
+    {"expect": {"type": "action", "op": "tap"}},
+    {"send": {"type": "action.result", "actionId": "{actionId}", "ok": true}},
+
+    {"send": {"type": "perception", "seq": 6, "pkg": "com.ss.android.lark", "nodeTree": [
+      {"id": "t1", "text": "研发部", "viewIdResourceName": "com.ss.android.lark:id/tv_title", "bounds": [0, 0, 500, 80]}
+    ]}},
+    {"expect": {"type": "task.done", "result": "ok"}},
+
+    {"send": {"type": "heartbeat", "deviceId": "dev-1"}},
+    {"expect": {"type": "heartbeat.ack", "deviceId": "dev-1"}}
+  ]
+}
