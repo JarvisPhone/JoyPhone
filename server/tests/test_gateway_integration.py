@@ -68,7 +68,7 @@ def replay_env(tmp_path, monkeypatch):
 def test_feishu_happy_path_replay(replay_env):
     ctx = {"goal": replay_env["goal"]}
     client = TestClient(create_app())
-    with client.websocket_connect("/ws/dev-1") as ws:
+    with client.websocket_connect("/ws/dev-1?v=2") as ws:
         for idx, step in enumerate(replay_env["script"]):
             if "send" in step:
                 payload = _substitute(step["send"], ctx)
@@ -81,10 +81,30 @@ def test_feishu_happy_path_replay(replay_env):
 
 def test_invalid_uplink_aborts_and_closes(replay_env):
     client = TestClient(create_app())
-    with client.websocket_connect("/ws/dev-1") as ws:
+    with client.websocket_connect("/ws/dev-1?v=2") as ws:
         ws.send_text("this is not json")
         received = json.loads(ws.receive_text())
         assert received["type"] == "task.abort"
         assert received["reason"] == "invalid_uplink"
         with pytest.raises(WebSocketDisconnect):
             ws.receive_text()
+
+
+# ---- 协议版本握手(F1)----
+
+
+def test_handshake_rejects_missing_or_mismatched_version(replay_env):
+    client = TestClient(create_app())
+    for url in ("/ws/dev-1", "/ws/dev-1?v=1", "/ws/dev-1?v=abc"):
+        with pytest.raises(WebSocketDisconnect) as exc_info:
+            with client.websocket_connect(url):
+                pass
+        assert exc_info.value.code == 4402, url
+
+
+def test_handshake_accepts_current_version(replay_env):
+    client = TestClient(create_app())
+    with client.websocket_connect("/ws/dev-1?v=2") as ws:
+        ws.send_text(json.dumps({"type": "heartbeat", "deviceId": "dev-1"}))
+        received = json.loads(ws.receive_text())
+        assert received["type"] == "heartbeat.ack"

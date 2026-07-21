@@ -23,6 +23,7 @@ from app.gateway.connection import Connection
 from app.gateway.router import route_loop
 from app.infra.config import Config
 from app.infra.metrics import get_metrics_collector
+from app.protocol import PROTOCOL_VERSION
 from app.scenario.send_message import SendMessagePack
 from app.task.context import TaskStore
 from app.task.handlers import HandlerDeps
@@ -53,6 +54,18 @@ def create_app() -> FastAPI:
 
     @app.websocket("/ws/{device_id}")
     async def ws_gateway(websocket: WebSocket, device_id: str) -> None:
+        raw_v = websocket.query_params.get("v")
+        try:
+            client_version = int(raw_v) if raw_v is not None else None
+        except ValueError:
+            client_version = None
+        if client_version != PROTOCOL_VERSION:
+            logger.warning(
+                "WS 拒绝:协议版本不符 device=%s v=%s expect=%s",
+                device_id, raw_v, PROTOCOL_VERSION,
+            )
+            await websocket.close(code=4402)
+            return
         conn = Connection(websocket, device_id)
         await conn.accept()
         store = TaskStore()

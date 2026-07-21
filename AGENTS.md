@@ -35,3 +35,4 @@ server/app/
 - 新场景 = 新 ScenarioPack(代码);同场景新 app = 新 AppProfile(数据)
 - 端侧 WS_URL 来自 BuildConfig(build.gradle.kts),禁止硬编码
 - 协议双端契约测试样本:shared/protocol/v2/*.json
+- WS 握手:连接 URL 须带 `?v=2`(PROTOCOL_VERSION),缺失或不符直接 close(code=4402)

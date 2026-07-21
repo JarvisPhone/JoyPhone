@@ -37,6 +37,7 @@ class WsClient @Inject constructor(
     private companion object {
         const val MAX_RETRY = 5
         const val RETRY_DELAY_MS = 3000L
+        const val PROTOCOL_VERSION = 2
     }
 
     private val client = OkHttpClient()
@@ -72,8 +73,8 @@ class WsClient @Inject constructor(
         repo.updateConnection(
             if (retryCount == 0) ConnectionState.CONNECTING else ConnectionState.RECONNECTING
         )
-        repo.appendWsEvent(WsEventLog(now(), "connecting", "$baseUrl/ws/$deviceId"))
-        val req = Request.Builder().url("$baseUrl/ws/$deviceId").build()
+        repo.appendWsEvent(WsEventLog(now(), "connecting", "$baseUrl/ws/$deviceId?v=$PROTOCOL_VERSION"))
+        val req = Request.Builder().url("$baseUrl/ws/$deviceId?v=$PROTOCOL_VERSION").build()
         ws = client.newWebSocket(req, listener)
     }
 
