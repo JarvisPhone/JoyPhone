@@ -75,10 +75,10 @@ class RealLLM(LLM):
             return _clean_text(_content)
 
         except httpx.HTTPStatusError as e:
-            logger.error(f"LLM HTTP error: {e.response.status_code} {e.response.text}")
+            logger.error("LLM HTTP error: %s %s", e.response.status_code, e.response.text)
             raise LLMError(f"LLM HTTP error: {e.response.status_code}") from e
         except Exception as e:
-            logger.error(f"LLM call failed: {e}")
+            logger.error("LLM call failed: %s", e)
             raise LLMError(f"LLM call failed: {e}") from e
 
 
@@ -102,7 +102,7 @@ def build_llm() -> LLM:
         client = OpenAI(api_key=api_key, base_url=base_url)
         return RealLLM(client=client, model=model)
     except Exception as e:
-        logger.error(f"Failed to create LLM client: {e}")
+        logger.error("Failed to create LLM client: %s", e)
         return FakeLLM(["read"])
 
 

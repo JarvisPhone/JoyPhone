@@ -13,10 +13,17 @@ import os
 import time
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+from typing import Protocol
 
 from starlette.websockets import WebSocket
 
 logger = logging.getLogger(__name__)
+
+
+class JsonModel(Protocol):
+    """可经 to_json() 序列化下行的协议模型。"""
+
+    def to_json(self) -> str: ...
 
 
 def _log_dir() -> Path:
@@ -91,7 +98,7 @@ class Connection:
     async def receive_text(self) -> str:
         return await self._ws.receive_text()
 
-    async def send(self, model) -> None:
+    async def send(self, model: JsonModel) -> None:
         payload = model.to_json()
         log_down(getattr(model, "type", "?"), payload)
         await self._ws.send_text(payload)

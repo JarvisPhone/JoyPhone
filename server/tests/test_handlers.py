@@ -299,7 +299,7 @@ async def test_cursor_advances_on_ok_from_skill_or_cache(tmp_path):
     for source in ("skill", "cache"):
         store = TaskStore()
         ctx = store.new_task(goal="g", scenario=None)
-        ctx.last_decision_source = source
+        ctx.pending_sources["a1"] = source
         deps = _deps(SpyEngine(), tmp_path=tmp_path)
         await handle_uplink(
             ActionResult(actionId="a1", ok=True), store, FakeConn(), deps
@@ -311,12 +311,49 @@ async def test_cursor_not_advanced_on_llm_source_or_failure(tmp_path):
     for source, ok in (("llm", True), ("pkg_guard", True), ("skill", False)):
         store = TaskStore()
         ctx = store.new_task(goal="g", scenario=None)
-        ctx.last_decision_source = source
+        ctx.pending_sources["a1"] = source
         deps = _deps(SpyEngine(), tmp_path=tmp_path)
         await handle_uplink(
             ActionResult(actionId="a1", ok=ok), store, FakeConn(), deps
         )
         assert ctx.cursor.index == 0, (source, ok)
+
+
+async def test_cursor_reconciles_by_action_id_across_interleaved_decide(tmp_path):
+    """竞态回归:skill 动作下发后、ack 前插入新 perception 触发 llm decide,
+    旧瞬态槽会被覆写导致 cursor 不推进;按 actionId 对账后仍应推进。"""
+    store = TaskStore()
+    engine = SpyEngine(
+        Decision(
+            actions=[Action(actionId="a-skill", op="tap", params={"x": "1"})],
+            source="skill",
+        )
+    )
+    conn = FakeConn()
+    deps = _deps(engine, tmp_path=tmp_path)
+    await handle_uplink(_req(), store, conn, deps)
+    ctx = store.current
+
+    await handle_uplink(_perception(seq=1), store, conn, deps)
+    assert ctx.pending_sources == {"a-skill": "skill"}
+
+    engine.decision = Decision(
+        actions=[Action(actionId="a-llm", op="read_screen", params={})],
+        source="llm",
+    )
+    await handle_uplink(_perception(seq=2), store, conn, deps)
+    assert ctx.cursor.index == 0
+
+    await handle_uplink(
+        ActionResult(actionId="a-skill", ok=True), store, FakeConn(), deps
+    )
+    assert ctx.cursor.index == 1
+    assert "a-skill" not in ctx.pending_sources
+
+    await handle_uplink(
+        ActionResult(actionId="a-llm", ok=True), store, FakeConn(), deps
+    )
+    assert ctx.cursor.index == 1
 
 
 async def test_action_result_appends_history(tmp_path):

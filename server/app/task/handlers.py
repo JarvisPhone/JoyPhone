@@ -22,6 +22,7 @@ from typing import Protocol, Sequence
 
 from app.decision import BoundSkill, DecideInput, DecisionEngine
 from app.decision.llm import build_llm
+from app.gateway.connection import JsonModel
 from app.infra.config import Config
 from app.infra.metrics import MetricsCollector
 from app.negotiation import NegotiationBot
@@ -59,7 +60,7 @@ _SAMPLES_DIR = Path(__file__).resolve().parents[2] / "data" / "samples"
 class Conn(Protocol):
     """下行通道:仅需能把协议模型发出去。"""
 
-    async def send(self, model) -> None: ...
+    async def send(self, model: JsonModel) -> None: ...
 
 
 @dataclass
@@ -176,8 +177,8 @@ async def _on_perception(
         )
     )
     ctx.steps += 1
-    ctx.last_decision_source = decision.meta.get("source", decision.source)
-    _record_decision_metrics(deps, ctx)
+    source = decision.meta.get("source", decision.source)
+    _record_decision_metrics(deps, ctx, source)
     ctx.decided_actions = decision.actions or []
 
     post = list(scenario.post_policies()) if scenario is not None else []
@@ -198,9 +199,9 @@ async def _on_perception(
                 )
             )
             return
-        await _dispatch(ctx, actions, uplink, conn, deps, store)
+        await _dispatch(ctx, actions, uplink, conn, deps, store, source="policy")
         return
-    await _dispatch(ctx, decision.actions, uplink, conn, deps, store)
+    await _dispatch(ctx, decision.actions, uplink, conn, deps, store, source=source)
 
 
 async def _dispatch(
@@ -210,6 +211,7 @@ async def _dispatch(
     conn: Conn,
     deps: HandlerDeps,
     store: TaskStore,
+    source: str = "",
 ) -> None:
     for action in actions:
         if action.op == "done":
@@ -230,6 +232,7 @@ async def _dispatch(
             return
         logger.info("下发动作: task_id=%s op=%s params=%s", ctx.task_id, action.op, action.params)
         ctx.applied_steps.append({"op": action.op, "params": action.params})
+        ctx.pending_sources[action.actionId] = source
         await conn.send(action)
 
 
@@ -262,9 +265,10 @@ async def _on_action_result(
     if ctx is None:
         return
     ctx.history.append({"actionId": uplink.actionId, "ok": uplink.ok})
+    source = ctx.pending_sources.pop(uplink.actionId, "")
     if uplink.ok:
         deps.metrics.record_step(ctx.task_id)
-        if ctx.last_decision_source in ("cache", "skill"):
+        if source in ("cache", "skill"):
             ctx.cursor.advance()
 
 
@@ -425,10 +429,11 @@ def _learn_cache(deps: HandlerDeps, ctx: TaskContext) -> None:
         cache.learn(ctx.goal, ctx.target_pkg, ctx.applied_steps)
 
 
-def _record_decision_metrics(deps: HandlerDeps, ctx: TaskContext) -> None:
-    if ctx.last_decision_source == "skill":
+def _record_decision_metrics(deps: HandlerDeps, ctx: TaskContext, source: str) -> None:
+    # pkg_guard 未消耗 LLM,不计 llm_call(F4:避免虚增)。
+    if source == "skill":
         deps.metrics.record_skill_hit(ctx.task_id)
-    elif ctx.last_decision_source == "cache":
+    elif source == "cache":
         deps.metrics.record_cache_hit(ctx.task_id)
-    else:
+    elif source == "llm":
         deps.metrics.record_llm_call(ctx.task_id)
