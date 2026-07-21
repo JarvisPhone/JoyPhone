@@ -18,6 +18,7 @@ import com.example.phoneagent.protocol.UplinkTaskRequest
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -33,8 +34,14 @@ import javax.inject.Singleton
 import kotlin.random.Random
 
 /**
- * WebSocket 客户端：连接状态写入 Repository，支持无限重试 + 指数退避。
+ * WebSocket 客户端：连接状态写入 Repository，无限重试 + 指数退避（带抖动）。
  * 下行消息仍经 WsDispatcher 分发到 Service 注入的回调。
+ *
+ * 并发约定：
+ * - listener 内所有回调先做 stale 检查（webSocket !== ws 直接丢弃），
+ *   旧 socket 的事件不得污染当前连接状态；
+ * - 重试只有一个在途 Job（retryJob），"立即重连"通过取消该 Job 实现，
+ *   不存在 boolean 标志无法取消 delay 的问题。
  */
 @Singleton
 class WsClient @Inject constructor(
@@ -42,23 +49,37 @@ class WsClient @Inject constructor(
     private val json: Json,
     @ApplicationContext private val context: Context? = null,
 ) {
-    private companion object {
+    companion object {
         const val INITIAL_RETRY_DELAY_MS = 3000L
         const val MAX_RETRY_DELAY_MS = 60000L
         const val JITTER_FACTOR = 0.3
         const val PROTOCOL_VERSION = 2
+
+        /** 退避移位上限：3s * 2^5 = 96s，与 MAX_RETRY_DELAY_MS 取小后稳定封顶在 60s；封顶避免移位溢出。 */
+        private const val BACKOFF_SHIFT_CAP = 5
+
+        /**
+         * 指数退避基础延迟（不含抖动）: 3s → 6s → 12s → 24s → 48s → 60s 封顶。
+         * retryCount 从 1 开始，任意大的值都安全（不会移位/乘法溢出）。
+         */
+        fun backoffDelayMs(retryCount: Int): Long {
+            val shift = (retryCount - 1).coerceIn(0, BACKOFF_SHIFT_CAP)
+            return minOf(INITIAL_RETRY_DELAY_MS shl shift, MAX_RETRY_DELAY_MS)
+        }
     }
 
     private val client = OkHttpClient()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    /** 当前活跃 socket；listener 以此判定 stale。 */
     private var ws: WebSocket? = null
     private var dispatcher: WsDispatcher? = null
+    /** 唯一在途的重试 Job；"立即重连" = 取消它 + connect()。 */
+    private var retryJob: Job? = null
 
     private var baseUrl: String = ""
     private var deviceId: String = ""
     private var retryCount = 0
     private var manuallyClosed = false
-    private var retryJobStarted = false
 
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var isNetworkAvailable = true
@@ -73,22 +94,18 @@ class WsClient @Inject constructor(
         onTaskConfirm: (DownTaskConfirm) -> Unit = {},
     ) {
         require(deviceId.isNotBlank()) { "deviceId cannot be blank" }
-
-        // 双连接防护：先关闭旧 socket
-        ws?.close(1000, "restart")
-        ws = null
-
         this.baseUrl = baseUrl
         this.deviceId = deviceId
         this.dispatcher = WsDispatcher(onTaskStart, onAction, onTaskEnd, onTaskConfirm)
         manuallyClosed = false
         retryCount = 0
-        retryJobStarted = false
+        retryJob?.cancel()
+        retryJob = null
+        // 双连接防护：旧 socket 关闭，其后续事件由 listener 的 stale 检查丢弃
+        ws?.close(1000, "restart")
+        ws = null
         repo.setDebugMeta(baseUrl, deviceId)
-
-        // 注册网络状态监听
         registerNetworkCallback()
-
         connect()
     }
 
@@ -102,89 +119,93 @@ class WsClient @Inject constructor(
     }
 
     private val listener = object : WebSocketListener() {
+
+        /** 非当前活跃 socket 的事件一律丢弃（并顺手关闭），防止旧连接污染状态。 */
+        private fun isStale(webSocket: WebSocket): Boolean {
+            if (webSocket === ws) return false
+            webSocket.close(1000, "stale")
+            return true
+        }
+
         override fun onOpen(webSocket: WebSocket, response: Response) {
+            if (isStale(webSocket)) return
             retryCount = 0
-            retryJobStarted = false
+            retryJob?.cancel()
+            retryJob = null
             repo.setReconnectAttempts(0)
             repo.updateConnection(ConnectionState.CONNECTED)
             repo.appendWsEvent(WsEventLog(now(), "onOpen", "code=${response.code}"))
         }
 
         override fun onMessage(webSocket: WebSocket, text: String) {
+            if (isStale(webSocket)) return
             dispatcher?.dispatch(text)
         }
 
         override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+            if (isStale(webSocket)) return
             repo.appendWsEvent(WsEventLog(now(), "onClosing", "$code $reason"))
-            // 除非手动关闭，否则触发重连
-            if (!manuallyClosed) {
-                repo.updateConnection(ConnectionState.RECONNECTING)
-                scheduleRetry()
-            } else {
-                repo.updateConnection(ConnectionState.DISCONNECTED)
-            }
+            // 应答 close 帧，完成关闭握手
+            webSocket.close(code, null)
+            if (!manuallyClosed) scheduleRetry()
         }
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+            if (isStale(webSocket)) return
             repo.appendWsEvent(WsEventLog(now(), "onFailure", t.message ?: "unknown"))
-            // 防止重复触发重连
-            if (!retryJobStarted) {
-                scheduleRetry()
-            }
+            scheduleRetry()
         }
     }
 
-    /**
-     * 指数退避 + 抖动: 3s → 6s → 12s ... 封顶 60s
-     * 无限重试，直到手动 close() 或成功连接
-     */
+    /** 指数退避无限重试，直到手动 close() 或连接成功。 */
     private fun scheduleRetry() {
         if (manuallyClosed) return
-        if (retryJobStarted) return
+        if (retryJob?.isActive == true) return
 
-        retryJobStarted = true
         retryCount++
         repo.setReconnectAttempts(retryCount)
         repo.updateConnection(ConnectionState.RECONNECTING)
 
-        // 计算延迟: min(60s, 3s * 2^retryCount) + 抖动
-        val baseDelay = minOf(
-            INITIAL_RETRY_DELAY_MS * (1L shl (retryCount - 1)),
-            MAX_RETRY_DELAY_MS
-        )
+        val baseDelay = backoffDelayMs(retryCount)
         val jitter = (baseDelay * JITTER_FACTOR * Random.nextDouble()).toLong()
-        val delay = baseDelay + jitter
+        val delayMs = baseDelay + jitter
+        repo.appendWsEvent(WsEventLog(now(), "retry", "count=$retryCount delay=${delayMs}ms"))
 
-        repo.appendWsEvent(WsEventLog(now(), "retry", "count=$retryCount delay=${delay}ms"))
-
-        scope.launch {
-            delay(delay)
-            if (!manuallyClosed) {
-                retryJobStarted = false
-                connect()
-            }
+        retryJob = scope.launch {
+            delay(delayMs)
+            if (!manuallyClosed) connect()
         }
     }
 
     /**
-     * 网络恢复时立即重连（如果有待重试任务则取消当前延迟，立即重连）
+     * 立即重连：取消在途退避、重置退避计数、关闭旧 socket（可能半开）后新建连接。
+     * 网络恢复 / onResume 触发。
      */
-    private fun onNetworkAvailable() {
+    private fun retryNow(reason: String) {
         if (manuallyClosed) return
-        if (isNetworkAvailable) return
-
-        isNetworkAvailable = true
-        repo.appendWsEvent(WsEventLog(now(), "network", "available, triggering reconnect"))
-
-        // 重置退避计数器，网络恢复后从最短延迟开始
+        retryJob?.cancel()
+        retryJob = null
         retryCount = 0
         repo.setReconnectAttempts(0)
+        ws?.close(1000, reason)
+        ws = null
+        repo.appendWsEvent(WsEventLog(now(), "retryNow", reason))
+        connect()
+    }
 
-        // 如果正在等待重试，立即触发
-        if (retryJobStarted) {
-            retryJobStarted = false
-            connect()
-        }
+    /** 检查是否需要重连（已连接时 no-op；未连接且非手动关闭时立即重连）。 */
+    fun reconnectIfNeeded() {
+        if (manuallyClosed) return
+        val currentState = repo.status.value.connection
+        if (currentState == ConnectionState.CONNECTED) return
+        retryNow("reconnectIfNeeded state=$currentState")
+    }
+
+    private fun onNetworkAvailable() {
+        if (isNetworkAvailable) return
+        isNetworkAvailable = true
+        // 网络刚恢复时 socket 可能处于半开状态，直接重建
+        retryNow("network available")
     }
 
     private fun onNetworkLost() {
@@ -193,11 +214,11 @@ class WsClient @Inject constructor(
     }
 
     private fun registerNetworkCallback() {
-        if (context == null) return
+        val ctx = context ?: return
         unregisterNetworkCallback()
+        val connectivityManager = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return
 
-        val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        networkCallback = object : ConnectivityManager.NetworkCallback() {
+        val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
                 onNetworkAvailable()
             }
@@ -211,46 +232,33 @@ class WsClient @Inject constructor(
                 networkCapabilities: NetworkCapabilities,
             ) {
                 val hasInternet = networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-                if (hasInternet && !isNetworkAvailable) {
-                    onNetworkAvailable()
-                }
+                if (hasInternet) onNetworkAvailable()
             }
         }
 
-        val request = NetworkRequest.Builder()
-            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-            .build()
-        connectivityManager.registerNetworkCallback(request, networkCallback!!)
+        try {
+            val request = NetworkRequest.Builder()
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .build()
+            connectivityManager.registerNetworkCallback(request, callback)
+            networkCallback = callback
 
-        // 检查初始网络状态
-        val activeNetwork = connectivityManager.activeNetwork
-        val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork)
-        isNetworkAvailable = capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+            val capabilities = connectivityManager.getNetworkCapabilities(connectivityManager.activeNetwork)
+            isNetworkAvailable = capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+        } catch (e: SecurityException) {
+            repo.appendWsEvent(WsEventLog(now(), "network", "register callback failed: ${e.message}"))
+        }
     }
 
     private fun unregisterNetworkCallback() {
-        networkCallback?.let { callback ->
-            try {
-                context?.let {
-                    val connectivityManager = it.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-                    connectivityManager.unregisterNetworkCallback(callback)
-                }
-            } catch (_: Exception) {
-                // 已注销或未注册
-            }
-            networkCallback = null
-        }
-    }
-
-    /** 检查是否需要重连（仅在 DISCONNECTED 且非 manuallyClosed 时触发） */
-    fun reconnectIfNeeded() {
-        if (manuallyClosed) return
-        val currentState = repo.status.value.connection
-        if (currentState != ConnectionState.CONNECTED) {
-            repo.appendWsEvent(WsEventLog(now(), "reconnectIfNeeded", "state=$currentState, triggering connect"))
-            retryCount = 0
-            retryJobStarted = false
-            connect()
+        val callback = networkCallback ?: return
+        networkCallback = null
+        val ctx = context ?: return
+        try {
+            val connectivityManager = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            connectivityManager?.unregisterNetworkCallback(callback)
+        } catch (_: Exception) {
+            // 已注销或未注册
         }
     }
 
@@ -288,14 +296,15 @@ class WsClient @Inject constructor(
 
     fun close() {
         manuallyClosed = true
-        retryJobStarted = false
+        retryJob?.cancel()
+        retryJob = null
         ws?.close(1000, "bye")
         ws = null
         unregisterNetworkCallback()
         repo.updateConnection(ConnectionState.DISCONNECTED)
     }
 
-    /** 销毁客户端，释放资源 */
+    /** 销毁客户端，释放资源。 */
     fun destroy() {
         close()
         dispatcher = null
