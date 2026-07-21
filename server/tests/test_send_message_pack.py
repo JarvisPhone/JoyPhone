@@ -5,6 +5,7 @@ from app.scenario.send_message import (
     PostSendForceDonePolicy,
     PostSendPatrolPolicy,
     PreSendRevertPolicy,
+    SendGuardPolicy,
     SendMessagePack,
     WrongChatInputPolicy,
 )
@@ -82,6 +83,7 @@ def test_policies_assembly():
         PostSendPatrolPolicy,
     ]
     assert [type(p) for p in post] == [
+        SendGuardPolicy,
         ConfirmInterceptPolicy,
         WrongChatInputPolicy,
     ]

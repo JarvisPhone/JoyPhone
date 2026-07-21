@@ -2,6 +2,7 @@ from app.decision.engine import DecideInput, DecisionEngine, _encode_nodes, pars
 from app.decision.llm import FakeLLM
 from app.decision.pkg_guard import SceneConfig
 from app.decision.skills import BoundSkill, SkillCursor, SkillStep, SkillTemplate
+from app.infra.config import Config
 from app.protocol import Node, Perception
 
 TPL = SkillTemplate(
@@ -271,3 +272,105 @@ def test_pkg_guard_level2_exhausted_aborts(monkeypatch):
         d = _guard_decide(eng, guard)
     assert d.actions[0].op == "abort"
     assert d.actions[0].params["reason"].startswith("pkg_guard_stuck")
+
+
+# ---- cache 回放:上下文/禁用/占位符/锚点 ----
+
+from app.decision.cache import SkillCache
+
+
+def _active_cache(tmp_path, goal="g", context="com.x|unknown", steps=None):
+    cache = SkillCache(tmp_path / "c.json")
+    key = "%s|%s" % (goal, context)
+    cache._data[key] = {
+        "key": key, "status": "active",
+        "steps": steps or [{"op": "tap", "params": {"match_text": "发送"}}],
+        "count": 3, "hits": 0, "created_ts": 0, "updated_ts": 0,
+    }
+    cache._flush()
+    return cache
+
+
+def _cache_decide(eng, pkg="com.x", text="发送", desc=None, **kw):
+    nodes = [Node(id="n", text=text, desc=desc)]
+    frame = Perception(pkg=pkg, nodeTree=nodes)
+    return eng.decide(DecideInput(
+        goal="g", frame=frame, target_pkg=pkg, cursor=SkillCursor(),
+        bound_skill=None, guard={}, title_keywords=(), **kw,
+    ))
+
+
+def test_cache_hit_uses_cache_context(tmp_path):
+    cache = _active_cache(tmp_path)
+    eng = DecisionEngine(llm=FakeLLM(["read"]), cache=cache)
+    d = _cache_decide(eng, cache_context="com.x|unknown")
+    assert d.source == "cache" and d.actions[0].op == "tap"
+
+
+def test_cache_disabled_skips_replay(tmp_path):
+    cache = _active_cache(tmp_path)
+    eng = DecisionEngine(llm=FakeLLM(["read"]), cache=cache)
+    d = _cache_decide(eng, cache_context="com.x|unknown", cache_disabled=True)
+    assert d.source != "cache"
+
+
+def test_cache_binds_placeholders(tmp_path):
+    cache = _active_cache(
+        tmp_path,
+        steps=[{"op": "input", "params": {"text": "{contact}"}}],
+    )
+    eng = DecisionEngine(llm=FakeLLM(["read"]), cache=cache)
+    d = _cache_decide(eng, cache_context="com.x|unknown", bindings={"contact": "张三"})
+    assert d.source == "cache" and d.actions[0].params["text"] == "张三"
+
+
+def test_cache_unbound_placeholder_skips(tmp_path):
+    cache = _active_cache(
+        tmp_path,
+        steps=[{"op": "input", "params": {"text": "{contact}"}}],
+    )
+    eng = DecisionEngine(llm=FakeLLM(["read"]), cache=cache)
+    d = _cache_decide(eng, cache_context="com.x|unknown", bindings={})
+    assert d.source != "cache"
+
+
+def test_cache_relocates_anchor_by_desc(tmp_path):
+    cache = _active_cache(tmp_path)
+    eng = DecisionEngine(llm=FakeLLM(["read"]), cache=cache)
+    d = _cache_decide(eng, text=None, desc="发送", cache_context="com.x|unknown")
+    assert d.source == "cache"
+
+
+def test_cache_miss_when_anchor_not_on_screen(tmp_path):
+    cache = _active_cache(tmp_path)
+    eng = DecisionEngine(llm=FakeLLM(["read"]), cache=cache)
+    d = _cache_decide(eng, text="别的", cache_context="com.x|unknown")
+    assert d.source != "cache"
+
+
+# ---- skill 无匹配熔断 ----
+
+
+def test_skill_disabled_after_max_misses():
+    eng = DecisionEngine(llm=FakeLLM(["read"] * 10), cache=None)
+    skill = BoundSkill.bind(TPL, {"contact": "张三"})
+    cur = SkillCursor(index=0)
+    frame = Perception(pkg="com.x", nodeTree=[Node(id="n", text="无关页面")])
+    for _ in range(Config.SKILL_MAX_MISSES):
+        eng.decide(DecideInput(goal="g", frame=frame, target_pkg="com.x",
+                               cursor=cur, bound_skill=skill, guard={}, title_keywords=()))
+    assert cur.misses == Config.SKILL_MAX_MISSES
+    # 再 decide:skill 已被跳过,misses 不再增长
+    eng.decide(DecideInput(goal="g", frame=frame, target_pkg="com.x",
+                           cursor=cur, bound_skill=skill, guard={}, title_keywords=()))
+    assert cur.misses == Config.SKILL_MAX_MISSES
+
+
+# ---- LLM tap/input 语义锚点注入 ----
+
+
+def test_llm_tap_injects_match_text_anchor():
+    eng = DecisionEngine(llm=FakeLLM(["tap 0"]), cache=None)
+    nodes = [Node(id="a", text="飞书", clickable=True, bounds=(0, 0, 100, 100))]
+    d = _llm_decide(eng, nodes)
+    assert d.actions[0].params["match_text"] == "飞书"

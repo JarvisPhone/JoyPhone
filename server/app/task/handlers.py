@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Protocol, Sequence
 
 from app.decision import BoundSkill, DecideInput, DecisionEngine
+from app.decision.cache import generalize_steps
 from app.decision.llm import build_llm
 from app.gateway.connection import JsonModel
 from app.infra.config import Config
@@ -174,6 +175,7 @@ async def _on_perception(
         return
 
     profile = scenario.ui_profile(ctx.target_pkg) if scenario is not None else None
+    _maybe_classify_entry(uplink, ctx, scenario)
     decision = deps.engine.decide(
         DecideInput(
             goal=ctx.goal,
@@ -183,6 +185,9 @@ async def _on_perception(
             bound_skill=ctx.bound_skill,
             guard=ctx.guard,
             title_keywords=tuple(profile.title_rid_keywords) if profile else (),
+            bindings=ctx.bindings,
+            cache_context=ctx.cache_context if uplink.pkg == ctx.target_pkg else "",
+            cache_disabled=ctx.cache_disabled,
         )
     )
     ctx.steps += 1
@@ -240,7 +245,13 @@ async def _dispatch(
             store.clear()
             return
         logger.info("下发动作: task_id=%s op=%s params=%s", ctx.task_id, action.op, action.params)
-        ctx.applied_steps.append({"op": action.op, "params": action.params})
+        ctx.applied_steps.append({
+            "op": action.op,
+            "params": action.params,
+            "pkg": frame.pkg,
+            "actionId": action.actionId,
+            "ok": None,
+        })
         ctx.pending_sources[action.actionId] = source
         if action.op in _MUTATING_OPS:
             ctx.pending_mutating.add(action.actionId)
@@ -282,10 +293,29 @@ async def _on_action_result(
     source = ctx.pending_sources.pop(uplink.actionId, "")
     was_mutating = uplink.actionId in ctx.pending_mutating
     ctx.pending_mutating.discard(uplink.actionId)
+    # 动作↔步骤对账:ack 结果回写到 applied_steps,供 learn 时过滤失败步骤
+    for step in reversed(ctx.applied_steps):
+        if step.get("actionId") == uplink.actionId:
+            step["ok"] = uplink.ok
+            break
     if uplink.ok:
         deps.metrics.record_step(ctx.task_id)
         if source in ("cache", "skill"):
             ctx.cursor.advance()
+        ctx.cache_step_fails = 0
+    elif source == "cache":
+        # 回放熔断:同一步连续 ack 失败达阈值,整条作废并本场禁用,
+        # 回落 skill/LLM(旧行为是不推进 cursor 无限重放同一必败步骤)
+        ctx.cache_step_fails += 1
+        if ctx.cache_step_fails >= Config.CACHE_STEP_MAX_FAILS:
+            cache = deps.engine.cache
+            if cache is not None:
+                cache.mark_miss(ctx.goal, ctx.cache_context or ctx.target_pkg, ctx.cursor.index)
+            ctx.cache_disabled = True
+            logger.warning(
+                "[CACHE_FUSE] task_id=%s cursor=%d 连续 %d 次 ack 失败,整条作废并禁用",
+                ctx.task_id, ctx.cursor.index, ctx.cache_step_fails,
+            )
     # 【F2】mutating 动作全部 ack 后,主动补一帧 read_screen:端侧此时已完成
     # 动作,抓到的才是「动作后的新帧」,驱动下一轮 decide,也避免动作无事件
     # (如 tap 落空)时云端停摆。ok=False 同样补帧观察现场。
@@ -350,7 +380,13 @@ async def _on_confirm_response(
         send_act = Action(
             actionId=str(uuid.uuid4()), op="tap", params={**pending.params}
         )
-        ctx.applied_steps.append({"op": "tap", "params": send_act.params})
+        ctx.applied_steps.append({
+            "op": "tap",
+            "params": send_act.params,
+            "pkg": ctx.target_pkg,
+            "actionId": send_act.actionId,
+            "ok": None,
+        })
         ctx.post_send.acked = True
         ctx.pending_mutating.add(send_act.actionId)
         await conn.send(send_act)
@@ -445,10 +481,55 @@ def _ensure_state(ctx: TaskContext, to: TaskState, reason: str) -> None:
         ctx.fsm.force(to, reason=reason)
 
 
+def _maybe_classify_entry(
+    frame: Perception, ctx: TaskContext, scenario: ScenarioPack | None
+) -> None:
+    """首次进入目标 app 时做落地页分类,并设置 cache_context。
+
+    每次进入 app 的落地页可能不同(冷启动在主页/热启动在上次聊天页):
+    - 分类结果写入 ctx.entry_state,cache 学习与回放都按入口状态分开;
+    - 若已在目标会话且 skill 未起步(cursor=0),cursor 快进至 verify_title 步,
+      跳过搜索段(热启动直接恢复在目标群里的常见场景)。
+    """
+    if scenario is None or ctx.entry_state is not None:
+        return
+    if not ctx.target_pkg or frame.pkg != ctx.target_pkg:
+        return
+    classify = getattr(scenario, "classify_entry", None)
+    if classify is None:
+        return
+    state = classify(frame, ctx)
+    ctx.entry_state = state
+    ctx.cache_context = "%s|%s" % (frame.pkg, state)
+    logger.info(
+        "[ENTRY_STATE] task_id=%s pkg=%s entry=%s", ctx.task_id, frame.pkg, state
+    )
+    if state == "target_chat" and ctx.cursor.index == 0 and ctx.bound_skill is not None:
+        for i, s in enumerate(ctx.bound_skill.steps):
+            if s.op == "verify_title":
+                ctx.cursor.index = i
+                logger.info(
+                    "[ENTRY_ALIGN] 已在目标会话,skill cursor 快进至 verify_title index=%d",
+                    i,
+                )
+                break
+
+
 def _learn_cache(deps: HandlerDeps, ctx: TaskContext) -> None:
+    """多次验证 + 泛化沉淀:清洗成功轨迹,交 record_success 计数,达标才转正。"""
     cache = deps.engine.cache
-    if cache is not None and ctx.applied_steps:
-        cache.learn(ctx.goal, ctx.target_pkg, ctx.applied_steps)
+    if cache is None or not ctx.applied_steps:
+        return
+    steps = generalize_steps(ctx.applied_steps, ctx.target_pkg, ctx.bindings)
+    if not steps:
+        logger.info("[CACHE_SKIP] task_id=%s 泛化后无可沉淀步骤", ctx.task_id)
+        return
+    if not any(s["op"] == "tap" for s in steps):
+        # 无 tap 的轨迹说明连发送类动作都没发生,不是完整成功路径
+        logger.info("[CACHE_SKIP] task_id=%s 轨迹无 tap 步骤,拒绝沉淀", ctx.task_id)
+        return
+    context = ctx.cache_context or ctx.target_pkg
+    cache.record_success(ctx.goal, context, steps)
 
 
 def _record_decision_metrics(deps: HandlerDeps, ctx: TaskContext, source: str) -> None:

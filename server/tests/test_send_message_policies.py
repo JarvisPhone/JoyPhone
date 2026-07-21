@@ -271,3 +271,66 @@ def test_wrong_chat_input_wrong_pkg_continues():
     frame = _frame(pkg="com.x.other", nodes=[_title_node("别的群"), _msg_input()])
     v = WrongChatInputPolicy().inspect(frame, ctx)
     assert v.kind == "continue"
+
+
+# ---- SendGuardPolicy(done 门槛:未真实发送拦截幻觉 done)----
+
+
+def _done_action():
+    return Action(actionId="d1", op="done", params={})
+
+
+def test_send_guard_blocks_premature_done():
+    from app.scenario.send_message import SendGuardPolicy
+    ctx = _ctx()
+    ctx.decided_actions = [_done_action()]
+    v = SendGuardPolicy().inspect(_frame(), ctx)
+    assert v.kind == "intercept"
+    assert v.actions[0].op == "read_screen"
+    assert ctx.send_guard_count == 1
+
+
+def test_send_guard_passes_after_real_send():
+    from app.scenario.send_message import SendGuardPolicy
+    ctx = _ctx()
+    ctx.post_send.acked = True
+    ctx.decided_actions = [_done_action()]
+    v = SendGuardPolicy().inspect(_frame(), ctx)
+    assert v.kind == "continue"
+
+
+def test_send_guard_ignores_non_done_actions():
+    from app.scenario.send_message import SendGuardPolicy
+    ctx = _ctx()
+    ctx.decided_actions = [_tap()]
+    v = SendGuardPolicy().inspect(_frame(), ctx)
+    assert v.kind == "continue"
+    assert ctx.send_guard_count == 0
+
+
+def test_send_guard_aborts_on_done_loop():
+    from app.scenario.send_message import SendGuardPolicy
+    ctx = _ctx()
+    ctx.decided_actions = [_done_action()]
+    ctx.send_guard_count = Config.SEND_GUARD_MAX - 1
+    v = SendGuardPolicy().inspect(_frame(), ctx)
+    assert v.kind == "terminate"
+    assert "premature_done_loop" in v.reason
+    assert ctx.fsm.state == TaskState.ABORT
+
+
+# ---- classify_entry(入口落地页分类)----
+
+
+def test_classify_entry_target_chat():
+    from app.scenario.send_message import SendMessagePack
+    ctx = _ctx()
+    frame = _frame(nodes=[_title_node("测试群")])
+    assert SendMessagePack().classify_entry(frame, ctx) == "target_chat"
+
+
+def test_classify_entry_unknown_for_other_pages():
+    from app.scenario.send_message import SendMessagePack
+    ctx = _ctx()
+    assert SendMessagePack().classify_entry(_frame(nodes=[_title_node("别的群")]), ctx) == "unknown"
+    assert SendMessagePack().classify_entry(_frame(nodes=[]), ctx) == "unknown"

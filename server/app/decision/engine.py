@@ -15,12 +15,13 @@ import logging
 import uuid
 from dataclasses import dataclass
 
-from app.decision.cache import SkillCache
+from app.decision.cache import SkillCache, bind_params
 from app.decision.llm import LLM
 from app.decision.pkg_guard import pkg_guard_action
 from app.decision.skills import BoundSkill, SkillCursor
 from app.decision.types import Decision
 from app.decision.ui_inspect import detect_title, match_title
+from app.infra.config import Config
 from app.protocol import Action, Node, Perception
 
 _logger = logging.getLogger("phoneagent.decision")
@@ -35,6 +36,13 @@ class DecideInput:
     bound_skill: BoundSkill | None
     guard: dict
     title_keywords: tuple[str, ...]
+    # 场景参数绑定(如 {"contact": "张三"}),回放 cache 步骤时绑定 {placeholder}
+    bindings: dict | None = None
+    # cache 查询上下文:入口状态分类后由任务层给出(如 "pkg|target_chat"),
+    # 缺省回落 frame.pkg;仅在目标 app 内才有值
+    cache_context: str = ""
+    # 回放熔断后本场禁用 cache(同一步连续 ack 失败)
+    cache_disabled: bool = False
 
 
 _SYSTEM_PROMPT = """你是一个 Android 手机操作代理的决策核心。给定当前屏幕的可交互元素列表(screen)、当前应用(pkg)、任务目标解析出的目标应用(target_pkg)、任务目标和历史操作，你要决定接下来执行的一批 UI 动作。
@@ -206,7 +214,8 @@ class DecisionEngine:
         if cached is not None:
             return Decision(actions=[cached], source="cache")
 
-        if d.bound_skill is not None and d.cursor.state != "failed":
+        if d.bound_skill is not None and d.cursor.state != "failed" \
+                and d.cursor.misses < Config.SKILL_MAX_MISSES:
             skilled = self._skill_step(d)
             if skilled is not None:
                 return skilled
@@ -218,19 +227,26 @@ class DecisionEngine:
         return self._llm_decide(d)
 
     def _cache_step(self, d: DecideInput) -> Action | None:
-        if self._cache is None:
+        if self._cache is None or d.cache_disabled:
             return None
-        entry = self._cache.get(d.goal, d.frame.pkg)
+        entry = self._cache.get(d.goal, d.cache_context or d.frame.pkg)
         if entry is None or d.cursor.index >= len(entry["steps"]):
             return None
         step = entry["steps"][d.cursor.index]
-        match_text = step.get("params", {}).get("match_text", "")
-        if match_text and not any(match_text in (n.text or "") for n in d.frame.nodeTree):
+        params = bind_params(step.get("params", {}), d.bindings or {})
+        if params is None:
+            _logger.info("[CACHE_UNBOUND] 占位符无法绑定,放弃本次回放")
+            return None
+        anchor = params.get("match_text", "")
+        if anchor and not any(
+            anchor in (n.text or "") or anchor in (n.desc or "")
+            for n in d.frame.nodeTree
+        ):
             return None  # 无法重定位 -> 回退
         return Action(
             actionId=str(uuid.uuid4()),
             op=step["op"],
-            params=step.get("params", {}),
+            params=params,
         )
 
     def _skill_step(self, d: DecideInput) -> Decision | None:
@@ -239,7 +255,14 @@ class DecisionEngine:
             return None
         step = skill.next_step(d.frame.nodeTree, d.cursor.index)
         if step is None:
+            d.cursor.misses += 1
+            if d.cursor.misses >= Config.SKILL_MAX_MISSES:
+                _logger.warning(
+                    "[SKILL_DISABLED] skill=%s 连续 %d 帧无节点匹配,本场禁用",
+                    skill.name, d.cursor.misses,
+                )
             return None
+        d.cursor.misses = 0
 
         # verify_title 步:仅做标题校验。PASS 下发无副作用 read_screen 占位让
         # 端侧重抓帧(cursor 由 handler 在 ack ok 后推进);FAIL 标记 cursor
@@ -301,6 +324,10 @@ class DecisionEngine:
                     if center is not None:
                         params["x"] = str(center[0])
                         params["y"] = str(center[1])
+                    # 保留语义锚点:端侧可 match_text 回落,成功后可沉淀进 cache
+                    anchor = (target.text or target.desc or "").strip()
+                    if anchor:
+                        params["match_text"] = anchor[:50]
                 actions.append(Action(actionId=str(uuid.uuid4()), op=op, params=params))
                 break  # 批处理截断：遇首个 tap/input 收尾，本批结束重抓帧
             actions.append(Action(actionId=str(uuid.uuid4()), op=op, params=params))

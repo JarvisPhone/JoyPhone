@@ -218,6 +218,41 @@ class PostSendPatrolPolicy:
 # ---- 后置策略(决策后,经 ctx.decided_actions 读取本帧动作)----
 
 
+class SendGuardPolicy:
+    """done 门槛:未真实发送(post_send.acked=False)时拦截 LLM 的幻觉 done。
+
+    拦截后剥掉 done 改发 read_screen 让决策继续——若真的万事俱备,LLM 下一帧
+    会 tap 发送按钮,由 ConfirmInterceptPolicy 接管确认流,正确闭环。
+    连续拦截达 Config.SEND_GUARD_MAX 说明 LLM 陷入幻觉循环,强 abort。
+    """
+
+    name = "send_guard"
+
+    def inspect(self, frame: Perception | None, ctx: TaskContext) -> Verdict:
+        if frame is None:
+            return continue_()
+        if not (ctx.target_pkg and ctx.target_chat):
+            return continue_()
+        if frame.pkg != ctx.target_pkg:
+            return continue_()
+        if ctx.post_send.acked:
+            return continue_()
+        if not any(a.op == "done" for a in ctx.decided_actions):
+            return continue_()
+        ctx.send_guard_count += 1
+        logger.warning(
+            "[SEND_GUARD] 拦截幻觉 done(未检测到发送行为)task_id=%s count=%d",
+            ctx.task_id, ctx.send_guard_count,
+        )
+        if ctx.send_guard_count >= Config.SEND_GUARD_MAX:
+            logger.error(
+                "[SEND_GUARD_ABORT] 连续 %d 次幻觉 done,强 abort", ctx.send_guard_count
+            )
+            ctx.fsm.transition(TaskState.ABORT, reason=self.name)
+            return terminate("send_guard:premature_done_loop", "aborted")
+        return intercept([Action(actionId=str(uuid.uuid4()), op="read_screen", params={})])
+
+
 class ConfirmInterceptPolicy:
     """tap 发送按钮拦截(旧 :546-586)。
 
@@ -376,7 +411,21 @@ class SendMessagePack:
         return [PreSendRevertPolicy(), PostSendForceDonePolicy(), PostSendPatrolPolicy()]
 
     def post_policies(self) -> list:
-        return [ConfirmInterceptPolicy(), WrongChatInputPolicy()]
+        return [SendGuardPolicy(), ConfirmInterceptPolicy(), WrongChatInputPolicy()]
+
+    def classify_entry(self, frame: Perception, ctx: TaskContext) -> str:
+        """进入目标 app 的落地页分类:学习与回放按入口状态分开。
+
+        保守策略:只识别「已在目标会话」这一种可行动状态(用于 skill cursor
+        快进),其余一律 unknown——避免误判后在别人群里乱 back。
+        """
+        profile = _profile_for(ctx)
+        if profile is None:
+            return "unknown"
+        title = _detect_chat_title(frame.nodeTree, profile)
+        if title and ctx.target_chat and match_title(ctx.target_chat, title):
+            return "target_chat"
+        return "unknown"
 
     def ui_profile(self, pkg: str) -> AppProfile | None:
         if pkg == FEISHU_PROFILE.pkg:

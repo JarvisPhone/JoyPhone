@@ -60,6 +60,17 @@ class TaskContext:
     post_send: PostSendState = field(default_factory=PostSendState)
     # INPUT_GUARD 计数:错群输正文的次数,配合 Config.WRONG_CHAT_INPUT_THRESHOLD。
     wrong_chat_input_count: int = 0
+    # SEND_GUARD 计数:未真实发送的幻觉 done 被拦截次数,配合 Config.SEND_GUARD_MAX。
+    send_guard_count: int = 0
+    # 进入目标 app 的落地页分类(target_chat/unknown 等,由场景包 classify_entry)。
+    # 每次进入 app 的落地页可能不同(冷启动在主页/热启动在上次聊天页),
+    # 学习与回放都按入口状态分开进行。
+    entry_state: str | None = None
+    # cache 查询上下文:首次进入目标 app 时置为 "{pkg}|{entry_state}"。
+    cache_context: str = ""
+    # 回放熔断:cache 同一步连续 ack 失败达 Config.CACHE_STEP_MAX_FAILS 后本场禁用。
+    cache_disabled: bool = False
+    cache_step_fails: int = 0
     # 瞬态槽:调用方在 decide 之后、跑 post_policies 之前写入本帧决策动作,
     # 后置策略(confirm 拦截 / INPUT_GUARD)从这里读取,不在任务间留存。
     decided_actions: list[Action] = field(default_factory=list)

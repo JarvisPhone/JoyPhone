@@ -519,3 +519,168 @@ async def test_read_screen_ack_does_not_gate_or_trigger(tmp_path):
     assert len(conn.sent) == sent_before  # 不补帧
     await handle_uplink(_perception(seq=3), store, conn, deps)
     assert len(engine.calls) == 2  # 未被 gate
+
+
+# ---- ack 对账回写 applied_steps ----
+
+
+async def test_ack_result_recorded_into_applied_steps(tmp_path):
+    store = TaskStore()
+    engine = SpyEngine(
+        Decision(actions=[Action(actionId="a-tap", op="tap", params={"x": "1"})], source="llm")
+    )
+    conn = FakeConn()
+    deps = _deps(engine, tmp_path=tmp_path)
+    await handle_uplink(_req(), store, conn, deps)
+    await handle_uplink(_perception(seq=1, pkg="com.x"), store, conn, deps)
+    ctx = store.current
+    assert ctx.applied_steps[-1]["ok"] is None
+    assert ctx.applied_steps[-1]["pkg"] == "com.x"
+    assert ctx.applied_steps[-1]["actionId"] == "a-tap"
+
+    await handle_uplink(ActionResult(actionId="a-tap", ok=True), store, conn, deps)
+    assert ctx.applied_steps[-1]["ok"] is True
+
+
+# ---- cache 回放熔断 ----
+
+
+class _FakeCache:
+    def __init__(self):
+        self.missed: list = []
+
+    def mark_miss(self, goal, context, cursor):
+        self.missed.append((goal, context, cursor))
+
+
+async def test_cache_fuse_after_consecutive_failures(tmp_path):
+    store = TaskStore()
+    ctx = store.new_task(goal="g", scenario=None)
+    ctx.target_pkg = "com.x"
+    ctx.cache_context = "com.x|unknown"
+    cache = _FakeCache()
+    engine = SpyEngine()
+    engine.cache = cache
+    deps = _deps(engine, tmp_path=tmp_path)
+
+    for i in range(Config.CACHE_STEP_MAX_FAILS):
+        ctx.pending_sources[f"a-fail-{i}"] = "cache"
+        await handle_uplink(
+            ActionResult(actionId=f"a-fail-{i}", ok=False), store, FakeConn(), deps
+        )
+    assert cache.missed == [("g", "com.x|unknown", 0)]
+    assert ctx.cache_disabled is True
+
+
+async def test_cache_fuse_reset_on_ok(tmp_path):
+    store = TaskStore()
+    ctx = store.new_task(goal="g", scenario=None)
+    cache = _FakeCache()
+    engine = SpyEngine()
+    engine.cache = cache
+    deps = _deps(engine, tmp_path=tmp_path)
+
+    ctx.pending_sources["f1"] = "cache"
+    await handle_uplink(ActionResult(actionId="f1", ok=False), store, FakeConn(), deps)
+    ctx.pending_sources["ok1"] = "cache"
+    await handle_uplink(ActionResult(actionId="ok1", ok=True), store, FakeConn(), deps)
+    assert ctx.cache_step_fails == 0
+    ctx.pending_sources["f2"] = "cache"
+    await handle_uplink(ActionResult(actionId="f2", ok=False), store, FakeConn(), deps)
+    assert cache.missed == [] and ctx.cache_disabled is False
+
+
+# ---- 入口分类 + skill cursor 快进 ----
+
+
+def _title_frame(seq, title, pkg=LARK):
+    return _perception(
+        seq=seq, pkg=pkg,
+        nodes=[Node(id="t1", text=title, viewIdResourceName=f"{LARK}:id/tv_title")],
+    )
+
+
+async def test_entry_classification_and_cursor_fast_forward(tmp_path):
+    """热启动直接落在目标群:entry=target_chat,cursor 快进至 verify_title。"""
+    store = TaskStore()
+    engine = SpyEngine()
+    conn = FakeConn()
+    deps = _deps(engine, packs=[SendMessagePack()], tmp_path=tmp_path)
+    await handle_uplink(_req("给群「测试群」发飞书消息"), store, conn, deps)
+    ctx = store.current
+    assert ctx.bound_skill is not None
+
+    await handle_uplink(_title_frame(seq=1, title="测试群"), store, conn, deps)
+    assert ctx.entry_state == "target_chat"
+    assert ctx.cache_context == f"{LARK}|target_chat"
+    verify_idx = next(
+        i for i, s in enumerate(ctx.bound_skill.steps) if s.op == "verify_title"
+    )
+    assert ctx.cursor.index == verify_idx
+
+
+async def test_entry_unknown_keeps_cursor_at_zero(tmp_path):
+    store = TaskStore()
+    engine = SpyEngine()
+    conn = FakeConn()
+    deps = _deps(engine, packs=[SendMessagePack()], tmp_path=tmp_path)
+    await handle_uplink(_req("给群「测试群」发飞书消息"), store, conn, deps)
+    ctx = store.current
+
+    await handle_uplink(_title_frame(seq=1, title="别的群"), store, conn, deps)
+    assert ctx.entry_state == "unknown"
+    assert ctx.cursor.index == 0
+
+
+# ---- learn:泛化 + 候选计数 ----
+
+
+async def test_done_records_generalized_candidate(tmp_path):
+    from app.decision.cache import SkillCache
+    store = TaskStore()
+    cache = SkillCache(tmp_path / "c.json")
+    engine = SpyEngine(
+        Decision(actions=[Action(actionId="a-done", op="done", params={})], source="llm")
+    )
+    engine.cache = cache
+    conn = FakeConn()
+    deps = _deps(engine, packs=[SendMessagePack()], tmp_path=tmp_path)
+    await handle_uplink(_req("给群「测试群」发飞书消息"), store, conn, deps)
+    ctx = store.current
+    ctx.applied_steps = [
+        {"op": "home", "params": {}, "pkg": "com.android.launcher", "actionId": "h", "ok": True},
+        {"op": "tap", "params": {"match_text": "搜索", "x": "1", "y": "2"}, "pkg": LARK, "actionId": "t1", "ok": True},
+        {"op": "input", "params": {"text": "测试群"}, "pkg": LARK, "actionId": "i1", "ok": True},
+        {"op": "tap", "params": {"match_text": "发送"}, "pkg": LARK, "actionId": "t2", "ok": True},
+    ]
+    ctx.cache_context = f"{LARK}|unknown"
+    ctx.post_send.acked = True  # 真实发送过,SendGuard 才放行 done
+    await handle_uplink(_perception(seq=1, pkg=LARK), store, conn, deps)
+    assert store.current is None  # done
+    key = f"给群「测试群」发飞书消息|{LARK}|unknown"
+    raw = cache._data[key]
+    assert raw["status"] == "candidate" and raw["count"] == 1
+    assert raw["steps"] == [
+        {"op": "tap", "params": {"match_text": "搜索"}},
+        {"op": "input", "params": {"text": "{contact}"}},
+        {"op": "tap", "params": {"match_text": "发送"}},
+    ]
+
+
+async def test_done_without_tap_steps_skips_learning(tmp_path):
+    from app.decision.cache import SkillCache
+    store = TaskStore()
+    cache = SkillCache(tmp_path / "c.json")
+    engine = SpyEngine(
+        Decision(actions=[Action(actionId="a-done", op="done", params={})], source="llm")
+    )
+    engine.cache = cache
+    conn = FakeConn()
+    deps = _deps(engine, tmp_path=tmp_path)
+    await handle_uplink(_req(), store, conn, deps)
+    ctx = store.current
+    ctx.applied_steps = [
+        {"op": "input", "params": {"text": "幻觉消息"}, "pkg": "com.x", "actionId": "i", "ok": True},
+    ]
+    await handle_uplink(_perception(seq=1, pkg="com.x"), store, conn, deps)
+    assert cache._data == {}

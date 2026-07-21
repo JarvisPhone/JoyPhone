@@ -51,6 +51,9 @@ class RealLLM(LLM):
         self._model = model
 
     def complete(self, system: str, user: str, image_b64: str | None = None) -> str:
+        # 原始流量落 llm.log(延迟导入避免 decision->gateway 的模块级依赖)
+        from app.gateway.connection import log_llm_req, log_llm_resp
+        log_llm_req(user)
         try:
             messages: list[dict] = [
                 {"role": "system", "content": system},
@@ -72,7 +75,9 @@ class RealLLM(LLM):
                 extra_body={"thinking": {"type": "disabled"}},
             )
             _content = resp.choices[0].message.content
-            return _clean_text(_content)
+            cleaned = _clean_text(_content)
+            log_llm_resp(cleaned)
+            return cleaned
 
         except httpx.HTTPStatusError as e:
             logger.error("LLM HTTP error: %s %s", e.response.status_code, e.response.text)

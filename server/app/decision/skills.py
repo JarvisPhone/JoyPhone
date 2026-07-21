@@ -21,10 +21,13 @@ _BIND_FIELDS = ("input_text", "match_text", "text", "desc")
 class SkillCursor:
     index: int = 0
     state: CursorState = "pending"
+    # skill 连续「当前帧无节点匹配」计数,达到 Config.SKILL_MAX_MISSES 本场禁用
+    misses: int = 0
 
     def advance(self) -> None:
         self.index += 1
         self.state = "pending"
+        self.misses = 0
 
     def fail(self) -> None:
         self.state = "failed"
