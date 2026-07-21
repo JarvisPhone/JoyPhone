@@ -425,3 +425,97 @@ async def test_no_scenario_match_runs_generic(tmp_path):
     assert conn.sent[-1].type == "action"
     assert conn.sent[-1].op == "read_screen"
     assert ctx.steps == 1
+
+
+# ---- F2: 动作↔帧因果对账(UI 动作未 ack 期间跳过 decide)----
+
+
+def _tap_decision(action_id="a-tap"):
+    return Decision(
+        actions=[Action(actionId=action_id, op="tap", params={"x": "1", "y": "2"})],
+        source="llm",
+    )
+
+
+async def test_perception_skipped_while_mutating_action_pending(tmp_path):
+    """tap 下发后、ack 前的 perception(动作前的旧帧)不得再触发 decide。"""
+    store = TaskStore()
+    engine = SpyEngine(_tap_decision())
+    conn = FakeConn()
+    deps = _deps(engine, tmp_path=tmp_path)
+    await handle_uplink(_req(), store, conn, deps)
+    await handle_uplink(_perception(seq=1), store, conn, deps)  # decide#1 → tap
+    assert len(engine.calls) == 1
+
+    await handle_uplink(_perception(seq=2), store, conn, deps)  # tap 未 ack → 跳过
+    assert len(engine.calls) == 1
+
+
+async def test_ack_of_mutating_action_triggers_read_screen_then_resume(tmp_path):
+    """mutating 动作 ack 后云端主动补 read_screen 抓新帧;之后 perception 恢复 decide。"""
+    store = TaskStore()
+    engine = SpyEngine(_tap_decision())
+    conn = FakeConn()
+    deps = _deps(engine, tmp_path=tmp_path)
+    await handle_uplink(_req(), store, conn, deps)
+    await handle_uplink(_perception(seq=1), store, conn, deps)
+    sent_before = len(conn.sent)
+
+    await handle_uplink(
+        ActionResult(actionId="a-tap", ok=True, seq=2), store, conn, deps
+    )
+    new_sent = conn.sent[sent_before:]
+    assert any(getattr(m, "op", None) == "read_screen" for m in new_sent)
+
+    await handle_uplink(_perception(seq=3), store, conn, deps)
+    assert len(engine.calls) == 2
+
+
+async def test_batch_mutating_acks_trigger_read_screen_only_when_drained(tmp_path):
+    """一批多个 mutating 动作,只有最后一个 ack(清空 pending)才补 read_screen。"""
+    store = TaskStore()
+    engine = SpyEngine(
+        Decision(
+            actions=[
+                Action(actionId="a-back", op="back", params={}),
+                Action(actionId="a-tap", op="tap", params={"x": "1", "y": "2"}),
+            ],
+            source="llm",
+        )
+    )
+    conn = FakeConn()
+    deps = _deps(engine, tmp_path=tmp_path)
+    await handle_uplink(_req(), store, conn, deps)
+    await handle_uplink(_perception(seq=1), store, conn, deps)
+
+    sent_before = len(conn.sent)
+    await handle_uplink(
+        ActionResult(actionId="a-back", ok=True, seq=2), store, conn, deps
+    )
+    assert not any(
+        getattr(m, "op", None) == "read_screen" for m in conn.sent[sent_before:]
+    )
+
+    await handle_uplink(
+        ActionResult(actionId="a-tap", ok=True, seq=3), store, conn, deps
+    )
+    assert any(
+        getattr(m, "op", None) == "read_screen" for m in conn.sent[sent_before:]
+    )
+
+
+async def test_read_screen_ack_does_not_gate_or_trigger(tmp_path):
+    """read_screen 非 mutating:其 ack 不补帧,期间 perception 正常 decide。"""
+    store = TaskStore()
+    engine = SpyEngine()  # 默认 read_screen
+    conn = FakeConn()
+    deps = _deps(engine, tmp_path=tmp_path)
+    await handle_uplink(_req(), store, conn, deps)
+    await handle_uplink(_perception(seq=1), store, conn, deps)  # decide#1
+    sent_before = len(conn.sent)
+    await handle_uplink(
+        ActionResult(actionId="a-read", ok=True, seq=2), store, conn, deps
+    )
+    assert len(conn.sent) == sent_before  # 不补帧
+    await handle_uplink(_perception(seq=3), store, conn, deps)
+    assert len(engine.calls) == 2  # 未被 gate

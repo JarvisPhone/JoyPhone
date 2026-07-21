@@ -67,6 +67,10 @@ class TaskContext:
     # action.result 到达时 pop 取出,仅 cache/skill 且 ok 才推进 cursor(T11)。
     # 避免「下发后 ack 前插入新 decide」覆写瞬态槽的竞态。
     pending_sources: dict[str, str] = field(default_factory=dict)
+    # 未 ack 的 UI 变更动作(tap/input/swipe/back/home)的 actionId 集合。
+    # 非空期间到达的 perception 是「动作生效前的旧帧」,handlers 跳过 decide,
+    # 待全部 ack 后由云端主动补 read_screen 抓动作后的新帧(F2 因果对账)。
+    pending_mutating: set[str] = field(default_factory=set)
     guard: dict = field(
         default_factory=lambda: {
             "scene_history": [],

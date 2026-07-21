@@ -94,7 +94,7 @@ async def handle_uplink(
     elif isinstance(uplink, Perception):
         await _on_perception(uplink, store, conn, deps)
     elif isinstance(uplink, ActionResult):
-        await _on_action_result(uplink, store, deps)
+        await _on_action_result(uplink, store, conn, deps)
     elif isinstance(uplink, Heartbeat):
         await conn.send(HeartbeatAck(deviceId=uplink.deviceId, ts=int(time.time())))
     elif isinstance(uplink, ConfirmResponse):
@@ -162,6 +162,15 @@ async def _on_perception(
         return
 
     if ctx.fsm.state == TaskState.AWAITING_CONFIRM:
+        return
+
+    # 【F2 因果对账】有 UI 变更动作未 ack 时,本帧是动作生效前的旧帧,
+    # 跳过 decide,防止 LLM 拿旧帧做终态决策(如 back 未执行就 abort)。
+    if ctx.pending_mutating:
+        logger.info(
+            "UI 动作未 ack,跳过 decide: task_id=%s pending=%d seq=%s",
+            ctx.task_id, len(ctx.pending_mutating), uplink.seq,
+        )
         return
 
     profile = scenario.ui_profile(ctx.target_pkg) if scenario is not None else None
@@ -233,6 +242,8 @@ async def _dispatch(
         logger.info("下发动作: task_id=%s op=%s params=%s", ctx.task_id, action.op, action.params)
         ctx.applied_steps.append({"op": action.op, "params": action.params})
         ctx.pending_sources[action.actionId] = source
+        if action.op in _MUTATING_OPS:
+            ctx.pending_mutating.add(action.actionId)
         await conn.send(action)
 
 
@@ -257,19 +268,29 @@ async def _terminate(
 
 # ---- action.result ----
 
+# 会改变 UI 的动作:ack 前到达的帧视为「动作前旧帧」(见 _on_perception 的 F2 闸门)。
+_MUTATING_OPS = frozenset({"tap", "input", "swipe", "back", "home"})
+
 
 async def _on_action_result(
-    uplink: ActionResult, store: TaskStore, deps: HandlerDeps
+    uplink: ActionResult, store: TaskStore, conn: Conn, deps: HandlerDeps
 ) -> None:
     ctx = store.current
     if ctx is None:
         return
     ctx.history.append({"actionId": uplink.actionId, "ok": uplink.ok})
     source = ctx.pending_sources.pop(uplink.actionId, "")
+    was_mutating = uplink.actionId in ctx.pending_mutating
+    ctx.pending_mutating.discard(uplink.actionId)
     if uplink.ok:
         deps.metrics.record_step(ctx.task_id)
         if source in ("cache", "skill"):
             ctx.cursor.advance()
+    # 【F2】mutating 动作全部 ack 后,主动补一帧 read_screen:端侧此时已完成
+    # 动作,抓到的才是「动作后的新帧」,驱动下一轮 decide,也避免动作无事件
+    # (如 tap 落空)时云端停摆。ok=False 同样补帧观察现场。
+    if was_mutating and not ctx.pending_mutating:
+        await conn.send(Action(actionId=str(uuid.uuid4()), op="read_screen", params={}))
 
 
 # ---- task.confirm_response ----
@@ -331,6 +352,7 @@ async def _on_confirm_response(
         )
         ctx.applied_steps.append({"op": "tap", "params": send_act.params})
         ctx.post_send.acked = True
+        ctx.pending_mutating.add(send_act.actionId)
         await conn.send(send_act)
     else:
         ctx.confirm.pending_action = None

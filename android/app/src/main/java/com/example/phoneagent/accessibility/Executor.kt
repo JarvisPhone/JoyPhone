@@ -7,9 +7,7 @@ import android.graphics.Path
 import android.graphics.Rect
 import android.os.Bundle
 import android.view.accessibility.AccessibilityNodeInfo
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
+import android.util.Log
 
 /** 单步动作执行结果。 */
 data class ExecResult(val ok: Boolean)
@@ -165,7 +163,7 @@ class Executor(
         val gesture = GestureDescription.Builder()
             .addStroke(GestureDescription.StrokeDescription(path, 0, 300))
             .build()
-        return dispatchGestureBlocking(gesture)
+        return dispatchGestureFireAndForget(gesture, "swipe")
     }
 
     private fun dispatchTap(x: Float, y: Float): Boolean {
@@ -173,33 +171,25 @@ class Executor(
         val gesture = GestureDescription.Builder()
             .addStroke(GestureDescription.StrokeDescription(path, 0, 50))
             .build()
-        return dispatchGestureBlocking(gesture)
+        return dispatchGestureFireAndForget(gesture, "tap")
     }
 
     /**
-     * 派发手势并等待真实结果:onCompleted→true / onCancelled→false。
-     * execute 为同步签名,这里用 CountDownLatch 阻塞等待,2s 超时兜底返回 false。
-     * 注意:阻塞的是 WS listener 线程(OkHttp 回调线程,非主线程),不会卡 UI。
+     * 非阻塞派发手势:返回值仅代表「框架已受理」,不代表手势已执行完成。
+     * 不在 WS reader 线程上等待 GestureResultCallback——实测部分 ROM 上回调
+     * 延迟 1.7~6s,等待会把后续动作全部堵在队列里(2026-07-21 back 延迟 6s
+     * 导致误判 abort 事故的根因)。动作的真实结果由云端通过后续 perception
+     * 帧判定(归位判定在云端),onCancelled 仅记日志。
      */
-    private fun dispatchGestureBlocking(gesture: GestureDescription): Boolean {
-        val latch = CountDownLatch(1)
-        val ok = AtomicBoolean(false)
-        val accepted = service.dispatchGesture(
+    private fun dispatchGestureFireAndForget(gesture: GestureDescription, tag: String): Boolean {
+        return service.dispatchGesture(
             gesture,
             object : AccessibilityService.GestureResultCallback() {
-                override fun onCompleted(gestureDescription: GestureDescription?) {
-                    ok.set(true)
-                    latch.countDown()
-                }
-
                 override fun onCancelled(gestureDescription: GestureDescription?) {
-                    ok.set(false)
-                    latch.countDown()
+                    Log.w("PhoneAgent", "gesture cancelled: $tag")
                 }
             },
             null,
         )
-        if (!accepted) return false
-        return latch.await(2, TimeUnit.SECONDS) && ok.get()
     }
 }
