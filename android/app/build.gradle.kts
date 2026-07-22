@@ -25,8 +25,10 @@ android {
 
     buildTypes {
         debug {
-            // 真机经 USB 调试：adb reverse tcp:8000 tcp:8000 后 localhost 指向宿主机
-            buildConfigField("String", "WS_URL", "\"ws://10.253.61.158:8000\"")
+            // 真机经 WiFi 同网段直连服务端(改 IP 时同步)
+            // 历史: adb reverse + localhost 已弃用,改走同网段直连
+            // 当前本机 en0 IP: 192.168.123.204
+            buildConfigField("String", "WS_URL", "\"ws://192.168.123.204:8000\"")
         }
         release {
             isMinifyEnabled = false
