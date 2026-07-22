@@ -4,13 +4,13 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.content.Context
 import android.graphics.Path
-import android.graphics.Rect
 import android.os.Bundle
 import android.view.accessibility.AccessibilityNodeInfo
 import android.util.Log
+import com.example.phoneagent.protocol.NodeDto
 
-/** 单步动作执行结果。 */
-data class ExecResult(val ok: Boolean)
+/** 单步动作执行结果。error 为机器可读错误码(anchor_not_found 等),随 action.result 回传云端。 */
+data class ExecResult(val ok: Boolean, val error: String? = null)
 
 /**
  * 真实动作执行器。framework 集成部分仅在真机联调验证；
@@ -30,71 +30,79 @@ class Executor(
 ) {
     fun execute(op: String, params: Map<String, String>): ExecResult {
         return when (op) {
-            "tap" -> ExecResult(ok = tap(params))
-            "input" -> ExecResult(ok = input(params))
+            "tap" -> tap(params)
+            "tap_at" -> tapAt(params)
+            "input" -> input(params)
             "swipe" -> ExecResult(ok = swipe(params))
             "back" -> ExecResult(ok = service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK))
             "home" -> ExecResult(ok = service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME))
             "read_screen", "wait" -> ExecResult(true)
-            else -> ExecResult(false)
+            else -> ExecResult(false, "unknown_op")
         }
     }
 
-    private fun findByText(text: String): AccessibilityNodeInfo? {
-        if (text.isBlank()) return null
+    /** 实时树快照:flatten 内部回收子节点,root 由本方法回收。 */
+    private fun liveNodes(): List<NodeDto>? {
         val root = service.rootInActiveWindow ?: return null
-        try {
-            val matches = root.findAccessibilityNodeInfosByText(text)
-            val picked = matches.firstOrNull { it.isClickable } ?: matches.firstOrNull()
-            matches.forEach { if (it !== picked) it.recycle() }
-            return picked
+        return try {
+            NodeFlattener.flatten(root)
         } finally {
             root.recycle()
         }
     }
 
     /**
-     * tap 优先按云侧下发的 x/y 坐标点击(云侧已把选中节点解析为 bounds 中心，避免端侧全屏
-     * 子串匹配误命中负一屏磁贴)；坐标缺失时回退 match_text 子串匹配。
+     * tap 只接受语义锚点:执行瞬间在实时树上重新定位,用「当下的」bounds 点击。
+     * 不使用云端坐标(帧过期即点歪);匹配不到/有歧义 fail-closed 报错。
      */
-    private fun tap(params: Map<String, String>): Boolean {
-        GestureGeometry.tapPointFromParams(params)?.let { (x, y) ->
-            return dispatchTap(x, y)
+    private fun tap(params: Map<String, String>): ExecResult {
+        val anchor = AnchorResolver.fromParams(params)
+            ?: return ExecResult(false, "anchor_missing")
+        val nodes = liveNodes() ?: return ExecResult(false, "no_window")
+        return when (val r = AnchorResolver.resolve(nodes, anchor)) {
+            is ResolveResult.Found -> {
+                val bounds = r.node.bounds
+                    ?: return ExecResult(false, "anchor_no_bounds")
+                val (cx, cy) = GestureGeometry.centerOf(bounds)
+                ExecResult(dispatchTap(cx, cy))
+            }
+            ResolveResult.NotFound -> ExecResult(false, "anchor_not_found")
+            is ResolveResult.Ambiguous -> ExecResult(false, "anchor_ambiguous")
         }
-        return tapByText(params["match_text"].orEmpty())
     }
 
-    private fun tapByText(matchText: String): Boolean {
-        val node = findByText(matchText) ?: return false
-        val rect = Rect()
-        node.getBoundsInScreen(rect)
-        node.recycle()
-        val (cx, cy) = GestureGeometry.centerOf(listOf(rect.left, rect.top, rect.right, rect.bottom))
-        return dispatchTap(cx, cy)
+    /** tap_at:原始坐标点击,逃生舱(画布/地图等无语义节点场景),正常任务不生成。 */
+    private fun tapAt(params: Map<String, String>): ExecResult {
+        val point = GestureGeometry.tapPointFromParams(params)
+            ?: return ExecResult(false, "bad_coords")
+        return ExecResult(dispatchTap(point.first, point.second))
     }
 
     /**
-     * input 优先按 params 的 x/y 坐标命中 editable(bounds 包含该点),与云端
-     * _input_target_node 逻辑对称;坐标缺失时才回退首个 editable。
-     * 坐标存在但无命中返回 false,让云侧感知失败重新决策,而不是写进错误的输入框。
+     * input 只接受语义锚点:在实时树上解析出目标 editable 的 NodeDto(含 id 路径),
+     * 再按 id 路径在活树上找到对应 AccessibilityNodeInfo 执行 SET_TEXT。
+     * 无锚点/未命中 fail-closed,绝不写进错误的输入框。
      */
-    private fun input(params: Map<String, String>): Boolean {
+    private fun input(params: Map<String, String>): ExecResult {
         val text = params["text"].orEmpty()
-        val root = service.rootInActiveWindow ?: return false
+        val anchor = AnchorResolver.fromParams(params)
+            ?: return ExecResult(false, "anchor_missing")
+        val root = service.rootInActiveWindow ?: return ExecResult(false, "no_window")
         try {
-            val point = GestureGeometry.tapPointFromParams(params)
-            val editable = if (point != null) {
-                findEditableAt(root, point.first, point.second)
-            } else {
-                findEditable(root)
-            } ?: return false
+            val targetId = when (val r = AnchorResolver.resolve(NodeFlattener.flatten(root), anchor, editableOnly = true)) {
+                is ResolveResult.Found -> r.node.id
+                ResolveResult.NotFound -> return ExecResult(false, "anchor_not_found")
+                is ResolveResult.Ambiguous -> return ExecResult(false, "anchor_ambiguous")
+            }
+            val editable = findNodeByPath(root, targetId)
+                ?: return ExecResult(false, "anchor_stale")
             try {
                 val args = Bundle().apply {
                     putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
                 }
-                return editable.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+                return ExecResult(editable.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args), null)
             } finally {
-                // editable 可能就是 root 本身(root editable 且命中时),外层 finally 会回收 root,这里避免 double-recycle
+                // editable 可能就是 root 本身(id="0"),外层 finally 会回收 root,避免 double-recycle
                 if (editable !== root) editable.recycle()
             }
         } finally {
@@ -103,53 +111,26 @@ class Executor(
     }
 
     /**
-     * 找首个 editable。命中节点所有权转移给调用方(调用方用完 recycle);
-     * 未命中的 child 在此回收。
+     * 按 NodeFlattener 的 id(DFS 下标路径,如 "0-1-2")在活树上定位节点。
+     * 命中节点所有权转移给调用方(用完 recycle);路径失效(树已变化)返回 null。
      */
-    private fun findEditable(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-        if (node.isEditable) return node
-        for (i in 0 until node.childCount) {
-            val child = node.getChild(i) ?: continue
-            val found = findEditable(child)
-            if (found != null) {
-                if (found !== child) child.recycle()
-                return found
-            }
-            child.recycle()
+    private fun findNodeByPath(root: AccessibilityNodeInfo, id: String): AccessibilityNodeInfo? {
+        val segments = id.split("-").mapNotNull { it.toIntOrNull() }
+        if (segments.isEmpty()) return null
+        val chain = mutableListOf<AccessibilityNodeInfo>()
+        var current: AccessibilityNodeInfo = root
+        for (seg in segments.drop(1)) {
+            val child = current.getChild(seg) ?: break
+            chain.add(child)
+            current = child
         }
-        return null
-    }
-
-    /**
-     * 找 bounds 包含点 (x, y) 的 editable:先按 DFS 前序收集全部 editable 及其 bounds,
-     * 再用 GestureGeometry.indexOfBoundsContaining 选中首个命中者(与单测覆盖的函数即同一实现)。
-     * 命中节点所有权转移给调用方(调用方用完 recycle);未命中的节点在此回收。
-     * 传入的 node 本身所有权仍归调用方,命中时直接返回、未命中也不在此回收。
-     */
-    private fun findEditableAt(node: AccessibilityNodeInfo, x: Float, y: Float): AccessibilityNodeInfo? {
-        val candidates = mutableListOf<Pair<AccessibilityNodeInfo, List<Int>>>()
-        collectEditables(node, candidates)
-        val hit = GestureGeometry.indexOfBoundsContaining(candidates.map { it.second }, x, y)
-            ?.let { candidates[it].first }
-        candidates.forEach { if (it.first !== hit && it.first !== node) it.first.recycle() }
-        return hit
-    }
-
-    /** DFS 前序收集 editable 节点及其屏幕 bounds;非 editable 的 child 遍历后即时回收。 */
-    private fun collectEditables(
-        node: AccessibilityNodeInfo,
-        out: MutableList<Pair<AccessibilityNodeInfo, List<Int>>>,
-    ) {
-        if (node.isEditable) {
-            val rect = Rect()
-            node.getBoundsInScreen(rect)
-            out.add(node to listOf(rect.left, rect.top, rect.right, rect.bottom))
+        if (chain.size != segments.size - 1) {
+            chain.forEach { it.recycle() }
+            return null
         }
-        for (i in 0 until node.childCount) {
-            val child = node.getChild(i) ?: continue
-            collectEditables(child, out)
-            if (!child.isEditable) child.recycle()
-        }
+        val target = chain.lastOrNull() ?: return root
+        chain.dropLast(1).forEach { it.recycle() }
+        return target
     }
 
     private fun swipe(params: Map<String, String>): Boolean {

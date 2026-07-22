@@ -152,61 +152,78 @@ def test_cap_nodes_over_threshold_prefers_interactive():
     assert target in capped
 
 
-# ---- tap/input 坐标注入 ----
+# ---- tap/input 语义锚点(不注入坐标,端侧实时定位) ----
 
-def test_tap_by_id_injects_bounds_center():
+def test_tap_by_id_emits_anchor_without_coords():
     eng = DecisionEngine(llm=FakeLLM(["tap 1"]), cache=None)
     nodes = [
         Node(id="a", text="微信", clickable=True, bounds=(0, 0, 100, 100)),
-        Node(id="b", text="飞书", clickable=True, bounds=(200, 300, 400, 500)),
+        Node(id="b", text="飞书", clickable=True, bounds=(200, 300, 400, 500),
+             viewIdResourceName="com.x:id/icon_lark"),
     ]
     d = _llm_decide(eng, nodes)
     action = d.actions[-1]
     assert action.op == "tap"
-    assert action.params["x"] == "300"
-    assert action.params["y"] == "400"
+    assert "x" not in action.params and "y" not in action.params
+    assert action.params["match_text"] == "飞书"
+    assert action.params["match_rid"] == "icon_lark"
+    assert "occurrence" not in action.params  # 标签唯一,无需序号
 
 
-def test_input_by_id_injects_bounds_center():
+def test_tap_duplicate_labels_emits_occurrence():
+    eng = DecisionEngine(llm=FakeLLM(["tap 2"]), cache=None)
+    nodes = [
+        Node(id="a", text="发送", clickable=True),
+        Node(id="b", text="发送", clickable=True),
+        Node(id="c", text="发送", clickable=True),
+    ]
+    action = _llm_decide(eng, nodes).actions[-1]
+    assert action.params["match_text"] == "发送"
+    assert action.params["occurrence"] == "2"
+
+
+def test_input_by_id_emits_anchor_without_coords():
     eng = DecisionEngine(llm=FakeLLM(["input 0 你好"]), cache=None)
     nodes = [Node(id="a", text="搜索框", editable=True, bounds=(0, 0, 100, 100))]
     d = _llm_decide(eng, nodes)
     action = d.actions[0]
     assert action.op == "input"
     assert action.params["text"] == "你好"
-    assert action.params["x"] == "50"
-    assert action.params["y"] == "50"
+    assert action.params["match_text"] == "搜索框"
+    assert "x" not in action.params and "y" not in action.params
 
 
-def test_tap_out_of_range_id_no_coords():
+def test_tap_out_of_range_id_no_anchor():
     eng = DecisionEngine(llm=FakeLLM(["tap 99"]), cache=None)
     nodes = [Node(id="a", text="飞书", clickable=True, bounds=(200, 300, 400, 500))]
     action = _llm_decide(eng, nodes).actions[-1]
     assert action.op == "tap"
     assert "x" not in action.params and "y" not in action.params
+    assert "match_text" not in action.params
     assert action.params.get("id") == "99"
 
 
-def test_tap_non_int_id_no_coords():
+def test_tap_non_int_id_no_anchor():
     eng = DecisionEngine(llm=FakeLLM(["tap abc"]), cache=None)
     nodes = [Node(id="a", text="飞书", clickable=True, bounds=(0, 0, 10, 10))]
     action = _llm_decide(eng, nodes).actions[-1]
-    assert "x" not in action.params and "y" not in action.params
+    assert "match_text" not in action.params
 
 
-def test_tap_empty_id_no_coords():
+def test_tap_empty_id_no_anchor():
     eng = DecisionEngine(llm=FakeLLM(["tap"]), cache=None)
     nodes = [Node(id="a", text="飞书", clickable=True, bounds=(0, 0, 10, 10))]
     action = _llm_decide(eng, nodes).actions[-1]
-    assert "x" not in action.params and "y" not in action.params
+    assert "match_text" not in action.params
 
 
-def test_tap_node_without_bounds_no_coords():
+def test_tap_node_without_text_uses_rid_label_only():
     eng = DecisionEngine(llm=FakeLLM(["tap 0"]), cache=None)
-    nodes = [Node(id="a", text="飞书", clickable=True, bounds=None)]
+    nodes = [Node(id="a", text=None, desc=None, clickable=True,
+                 viewIdResourceName="com.x:id/btn_send")]
     action = _llm_decide(eng, nodes).actions[-1]
-    assert "x" not in action.params and "y" not in action.params
-    assert action.params.get("id") == "0"
+    assert "match_text" not in action.params  # 无文本锚点
+    assert action.params["match_rid"] == "btn_send"  # rid 锚点兜底
 
 
 # ---- pkg_guard 三级脱困阶梯 ----

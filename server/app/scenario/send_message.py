@@ -30,6 +30,7 @@ from app.scenario.ui import (
     is_message_input,
     is_send_button,
     match_title,
+    resolve_anchor_node,
     resolve_pkg,
 )
 from app.task.context import TaskContext
@@ -59,39 +60,15 @@ def _detect_chat_title(nodes: list[Node], profile: AppProfile) -> str | None:
 
 
 def _tap_hits_send_button(action: Action, nodes: list[Node], profile: AppProfile) -> bool:
-    """判断 tap action 是否命中当前屏的「发送」按钮(坐标落 bounds)。"""
-    try:
-        x = int(action.params.get("x", ""))
-        y = int(action.params.get("y", ""))
-    except (ValueError, TypeError):
-        return False
-    for n in nodes:
-        if not is_send_button(n, profile):
-            continue
-        if not n.bounds or len(n.bounds) != 4:
-            continue
-        left, top, right, bottom = n.bounds
-        if left <= x <= right and top <= y <= bottom:
-            return True
-    return False
+    """判断 tap action 是否命中当前屏的「发送」按钮(语义锚点解析)。"""
+    node = resolve_anchor_node(action.params, nodes)
+    return node is not None and is_send_button(node, profile)
 
 
 def _input_target_node(action: Action, nodes: list[Node]) -> Node | None:
-    """把 input action 还原为被输入的目标 Node(坐标命中的第一个 editable 节点)。"""
-    try:
-        x = int(action.params.get("x", ""))
-        y = int(action.params.get("y", ""))
-    except (ValueError, TypeError):
-        return None
-    for n in nodes:
-        if not n.editable:
-            continue
-        if not n.bounds or len(n.bounds) != 4:
-            continue
-        left, top, right, bottom = n.bounds
-        if left <= x <= right and top <= y <= bottom:
-            return n
-    return None
+    """把 input action 还原为被输入的目标 editable 节点(语义锚点解析)。"""
+    node = resolve_anchor_node(action.params, nodes)
+    return node if (node is not None and node.editable) else None
 
 
 def _extract_last_input_text(applied_steps: list[dict]) -> str:

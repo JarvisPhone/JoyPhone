@@ -44,39 +44,4 @@ class ExecutorGeometryTest {
     fun point_below_bounds_misses() {
         assertFalse(GestureGeometry.pointInBounds(listOf(100, 200, 300, 400), 200f, 401f))
     }
-
-    // ---- indexOfBoundsContaining:多个 editable 选正确那个 ----
-
-    @Test
-    fun containing_index_picks_matching_bounds_among_many() {
-        val candidates = listOf(
-            listOf(0, 0, 500, 100),     // 顶部输入框
-            listOf(0, 200, 500, 300),   // 中部输入框
-            listOf(0, 400, 500, 500),   // 底部输入框
-        )
-        assertEquals(1, GestureGeometry.indexOfBoundsContaining(candidates, 250f, 250f))
-    }
-
-    @Test
-    fun containing_index_returns_null_when_point_in_none() {
-        val candidates = listOf(
-            listOf(0, 0, 100, 100),
-            listOf(200, 200, 300, 300),
-        )
-        assertEquals(null, GestureGeometry.indexOfBoundsContaining(candidates, 150f, 150f))
-    }
-
-    @Test
-    fun containing_index_empty_candidates_returns_null() {
-        assertEquals(null, GestureGeometry.indexOfBoundsContaining(emptyList(), 10f, 10f))
-    }
-
-    @Test
-    fun containing_index_first_match_wins_when_overlapping() {
-        val candidates = listOf(
-            listOf(0, 0, 500, 500),
-            listOf(100, 100, 200, 200),
-        )
-        assertEquals(0, GestureGeometry.indexOfBoundsContaining(candidates, 150f, 150f))
-    }
 }

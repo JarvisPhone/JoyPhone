@@ -89,7 +89,7 @@ _SYSTEM_PROMPT = """你是一个 Android 手机操作代理的决策核心。给
 
 【重要·负一屏识别】桌面最左侧的「负一屏」(又称小布建议/智能助手页)不是真正的应用桌面，上面的「XX 有 N 条通知」「XX 推荐」等磁贴不是应用图标，误点会进入错误的 app。识别特征：屏幕里出现「小布建议」「小布」等文字，或大量「...有...条通知」「为你推荐」类磁贴，一旦判断当前在负一屏，必须先 swipe right 向右滑动退出，回到真正的桌面第一屏后再找应用图标；绝不能在负一屏上 tap 任何磁贴。
 
-【重要·tap 定位】tap n 用行号定位，系统会自动把该行节点解析为精确坐标点击，比文字匹配更可靠(避免误命中同名文字)。
+【重要·tap 定位】tap n 用行号定位,系统会把该行节点解析为语义锚点(文本/rid),端侧执行时按锚点在当前屏幕实时定位后点击;页面已变化导致锚点失效时会返回失败并重新抓屏,届时按新屏幕重新决策即可,不要反复重试同一行号。
 
 示例(多行批处理)：
 home
@@ -122,6 +122,13 @@ def _node_type(node: Node) -> str:
     return "text"
 
 
+def _rid_tail(rid: str | None) -> str:
+    """rid 末段(锚点匹配用,保留原始下划线):com.x:id/btn_send -> "btn_send"。"""
+    if not rid:
+        return ""
+    return rid.rsplit("/", 1)[-1].strip()
+
+
 def _rid_label(rid: str | None) -> str:
     """rid 末段转可读标签。
 
@@ -142,6 +149,25 @@ def _encode_nodes(nodes: list[Node]) -> str:
     return "\n".join(lines)
 
 
+def _anchor_occurrence(target: Node, nodes: list[Node]) -> int | None:
+    """同名锚点在可交互节点中出现多次时,返回 target 的 0 基序号;唯一则 None。
+
+    例:搜索结果一页三个「发送」按钮,LLM 说的 tap n 是第二个,
+    occurrence=1 让端侧在实时树上也能选中同一个。
+    """
+    label = (target.text or target.desc or "").strip()
+    if not label:
+        return None
+    same = [n for n in nodes if (n.clickable or n.editable)
+            and (n.text or n.desc or "").strip() == label]
+    if len(same) <= 1:
+        return None
+    for i, n in enumerate(same):
+        if n is target:
+            return i
+    return None
+
+
 def _resolve_tap_node(params: dict, nodes: list[Node]) -> Node | None:
     """把 LLM 的 tap 参数还原为被选中的 Node。
 
@@ -157,13 +183,6 @@ def _resolve_tap_node(params: dict, nodes: list[Node]) -> Node | None:
         if 0 <= idx < len(nodes):
             return nodes[idx]
     return None
-
-
-def _bounds_center(bounds) -> tuple[int, int] | None:
-    if not bounds or len(bounds) != 4:
-        return None
-    left, top, right, bottom = bounds
-    return (left + right) // 2, (top + bottom) // 2
 
 
 _NOARG_OPS = {
@@ -335,14 +354,18 @@ class DecisionEngine:
             if op in ("tap", "input"):
                 target = _resolve_tap_node(params, nodes)
                 if target is not None:
-                    center = _bounds_center(target.bounds)
-                    if center is not None:
-                        params["x"] = str(center[0])
-                        params["y"] = str(center[1])
-                    # 保留语义锚点:端侧可 match_text 回落,成功后可沉淀进 cache
+                    # 语义锚点下行(不注入坐标):端侧执行时按锚点在实时树上
+                    # 重新定位点击,fail-closed;坐标会随帧过期点歪(2026-07-22
+                    # 错群事故根因),锚点不会。
                     anchor = (target.text or target.desc or "").strip()
                     if anchor:
                         params["match_text"] = anchor[:50]
+                    rid_tail = _rid_tail(target.viewIdResourceName)
+                    if rid_tail:
+                        params["match_rid"] = rid_tail
+                    occ = _anchor_occurrence(target, nodes)
+                    if occ is not None:
+                        params["occurrence"] = str(occ)
                 actions.append(Action(actionId=str(uuid.uuid4()), op=op, params=params))
                 break  # 批处理截断：遇首个 tap/input 收尾，本批结束重抓帧
             actions.append(Action(actionId=str(uuid.uuid4()), op=op, params=params))

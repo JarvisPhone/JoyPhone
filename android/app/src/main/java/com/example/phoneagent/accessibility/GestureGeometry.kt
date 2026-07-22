@@ -22,14 +22,7 @@ object GestureGeometry {
         return x >= bounds[0] && x <= bounds[2] && y >= bounds[1] && y <= bounds[3]
     }
 
-    /** 在一组候选 bounds 中找第一个包含点 (x, y) 的下标；无命中返回 null。
-     *  生产路径:Executor.findEditableAt 按 DFS 前序收集 editable bounds 后用它选中命中者。 */
-    fun indexOfBoundsContaining(candidates: List<List<Int>>, x: Float, y: Float): Int? {
-        return candidates.indexOfFirst { pointInBounds(it, x, y) }.takeIf { it >= 0 }
-    }
-
-    /** tap 坐标下发：云侧把选中节点解析为 x/y 中心坐标塞进 params，端侧优先按此坐标点击。
-     *  x 或 y 缺失/非法返回 null，调用方回退 match_text 子串匹配。 */
+    /** tap_at 逃生舱坐标解析:x 或 y 缺失/非法返回 null。 */
     fun tapPointFromParams(params: Map<String, String>): Pair<Float, Float>? {
         val x = params["x"]?.toFloatOrNull()
         val y = params["y"]?.toFloatOrNull()

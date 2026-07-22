@@ -115,7 +115,7 @@ class TaskStart(_Downlink):
     target: str
 
 
-Op = Literal["tap", "input", "swipe", "back", "home", "wait", "read_screen", "done", "abort"]
+Op = Literal["tap", "tap_at", "input", "swipe", "back", "home", "wait", "read_screen", "done", "abort"]
 
 
 class Action(_Downlink):

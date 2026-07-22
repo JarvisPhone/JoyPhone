@@ -47,8 +47,14 @@ def _msg_input(bounds=(0, 200, 100, 300)):
     return Node(id="e1", desc="发消息", editable=True, bounds=bounds)
 
 
-def _tap(x=50, y=50):
-    return Action(actionId="a1", op="tap", params={"x": x, "y": y})
+def _tap():
+    """命中发送按钮的 tap:match_rid 锚点解析到 btn_send 节点。"""
+    return Action(actionId="a1", op="tap", params={"match_rid": "btn_send"})
+
+
+def _tap_miss():
+    """锚点指向发送按钮之外的节点(标题),不触发确认拦截。"""
+    return Action(actionId="a1", op="tap", params={"match_text": "测试群"})
 
 
 # ---- PostSendPatrolPolicy(旧 :409-426)----
@@ -166,7 +172,7 @@ def test_pre_send_revert_not_awaiting_confirm_continues():
 def test_confirm_intercept_captures_send_tap():
     ctx = _ctx()
     ctx.applied_steps.append({"op": "input", "params": {"text": "晚上好"}})
-    ctx.decided_actions = [_tap(50, 50)]
+    ctx.decided_actions = [_tap()]
     frame = _frame(nodes=[_title_node(), _send_button()])
     v = ConfirmInterceptPolicy().inspect(frame, ctx)
     assert v.kind == "intercept"
@@ -184,7 +190,7 @@ def test_confirm_intercept_captures_send_tap():
 
 def test_confirm_intercept_tap_misses_send_button_continues():
     ctx = _ctx()
-    ctx.decided_actions = [_tap(500, 500)]
+    ctx.decided_actions = [_tap_miss()]
     frame = _frame(nodes=[_title_node(), _send_button()])
     v = ConfirmInterceptPolicy().inspect(frame, ctx)
     assert v.kind == "continue"
@@ -193,7 +199,7 @@ def test_confirm_intercept_tap_misses_send_button_continues():
 
 def test_confirm_intercept_title_mismatch_continues():
     ctx = _ctx()
-    ctx.decided_actions = [_tap(50, 50)]
+    ctx.decided_actions = [_tap()]
     frame = _frame(nodes=[_title_node("别的群"), _send_button()])
     v = ConfirmInterceptPolicy().inspect(frame, ctx)
     assert v.kind == "continue"
@@ -202,7 +208,7 @@ def test_confirm_intercept_title_mismatch_continues():
 def test_confirm_intercept_max_confirm_count_continues():
     ctx = _ctx()
     ctx.confirm.count = Config.MAX_CONFIRM_COUNT
-    ctx.decided_actions = [_tap(50, 50)]
+    ctx.decided_actions = [_tap()]
     frame = _frame(nodes=[_title_node(), _send_button()])
     v = ConfirmInterceptPolicy().inspect(frame, ctx)
     assert v.kind == "continue"
@@ -219,8 +225,9 @@ def test_confirm_intercept_non_tap_action_continues():
 # ---- WrongChatInputPolicy(旧 :592-638)----
 
 
-def _input(x=50, y=250, text="正文"):
-    return Action(actionId="a3", op="input", params={"x": x, "y": y, "text": text})
+def _input(text="正文", anchor="发消息"):
+    """input 经 match_text 锚点解析到目标 editable(desc 精确匹配)。"""
+    return Action(actionId="a3", op="input", params={"match_text": anchor, "text": text})
 
 
 def test_wrong_chat_input_intercepts_with_back():
@@ -258,7 +265,7 @@ def test_wrong_chat_input_title_matches_continues():
 def test_wrong_chat_input_search_box_continues():
     """搜索框输群名(is_message_input=False)不进守卫分支,正常放行。"""
     ctx = _ctx()
-    ctx.decided_actions = [_input(text="测试群")]
+    ctx.decided_actions = [_input(text="测试群", anchor="搜索")]
     search = Node(id="s1", desc="搜索", editable=True, bounds=(0, 200, 100, 300))
     frame = _frame(nodes=[_title_node("别的群"), search])
     v = WrongChatInputPolicy().inspect(frame, ctx)

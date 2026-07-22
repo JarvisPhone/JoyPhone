@@ -383,7 +383,7 @@ async def test_send_message_scenario_intercepts_send_tap(tmp_path):
     store = TaskStore()
     engine = SpyEngine(
         Decision(
-            actions=[Action(actionId="a-tap", op="tap", params={"x": "50", "y": "50"})],
+            actions=[Action(actionId="a-tap", op="tap", params={"match_rid": "btn_send"})],
             source="llm",
         )
     )
