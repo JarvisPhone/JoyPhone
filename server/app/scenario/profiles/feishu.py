@@ -44,6 +44,7 @@ FEISHU_PROFILE = AppProfile(
         "输入",
         "发消息",
         "发送消息",
+        "发送给",
         "说点什么",
         "写点什么",
         "message",

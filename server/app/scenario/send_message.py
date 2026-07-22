@@ -71,14 +71,23 @@ def _input_target_node(action: Action, nodes: list[Node]) -> Node | None:
     return node if (node is not None and node.editable) else None
 
 
-def _draft_text_in_frame(nodes: list[Node]) -> str:
-    """输入框当前文本(残留草稿):第一个有文本的 editable 节点的 text。
+def _draft_text_in_frame(nodes: list[Node], profile: AppProfile) -> str:
+    """输入框草稿文本:第一个有文本且文本不是输入提示语的 editable。
 
-    仅在「标题匹配的会话页 + 发送 tap」语境下调用,此时的 editable 即消息框。
+    空输入框的 text 是 hint(如飞书「发送给 X」)不是草稿——把 hint 当草稿
+    会造成「确认发送占位符 -> 空点发送 -> 假 done」(真机八轮任务4)。
+    仅在「标题匹配的会话页 + 发送 tap」语境下调用。
     """
+    hints = tuple(h.lower() for h in profile.message_input_hints)
     for n in nodes:
-        if n.editable and (n.text or "").strip():
-            return (n.text or "").strip()
+        if not n.editable:
+            continue
+        text = (n.text or "").strip()
+        if not text:
+            continue
+        if any(h in text.lower() for h in hints):
+            continue  # 提示语 = 输入框为空,无草稿
+        return text
     return ""
 
 
@@ -364,7 +373,7 @@ class ConfirmInterceptPolicy:
             if not message_text:
                 # 本任务没有 input 记录时,取输入框当前文本(上次残留的草稿):
                 # 草稿发送同样要过人审,不能因 text 非本任务所输就跳过确认。
-                message_text = _draft_text_in_frame(frame.nodeTree)
+                message_text = _draft_text_in_frame(frame.nodeTree, profile)
             if not message_text:
                 # 无 input 正文时点发送:不进确认流(message="" 的确认无意义,
                 # 且空输入框点发送本就无效)。透传该 tap,让 LLM 看到屏幕

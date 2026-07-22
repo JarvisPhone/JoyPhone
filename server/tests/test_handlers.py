@@ -160,7 +160,9 @@ async def test_confirm_approved_sends_pending_tap(tmp_path):
     assert len(taps) == 1
     assert taps[0].op == "tap"
     assert taps[0].params == {"x": "50", "y": "50"}
-    assert ctx.post_send.acked is True
+    # 补发已派发但未 ack:acked 不得提前置位(ack ok 后才标记真实发送)
+    assert ctx.post_send.acked is False
+    assert ctx.confirm.resend_action_id == taps[0].actionId
     assert ctx.fsm.state == TaskState.RUNNING
     assert ctx.confirm.pending_action is None
 
@@ -870,3 +872,43 @@ async def test_pre_policy_intercept_dispatches_without_decide(tmp_path):
     tap_at = [m for m in conn.sent if getattr(m, "op", None) == "tap_at"]
     assert len(tap_at) == 1
     assert engine.calls == []  # 未触发 LLM 决策
+
+
+async def test_confirm_resend_acked_only_on_ack_ok(tmp_path):
+    # post_send.acked 只在补发 tap ack ok 时置位;ack 失败不得标记为已发送
+    store = TaskStore()
+    engine = SpyEngine(
+        Decision(
+            actions=[Action(actionId="a-tap", op="tap", params={"match_rid": "btn_send"})],
+            source="llm",
+        )
+    )
+    conn = FakeConn()
+    deps = _deps(engine, packs=[SendMessagePack()], tmp_path=tmp_path)
+    await handle_uplink(_req("给阿强发飞书消息"), store, conn, deps)
+    ctx = store.current
+    ctx.applied_steps.append({"op": "input", "params": {"text": "晚上好"}})
+    await handle_uplink(_chat_frame(), store, conn, deps)
+    assert ctx.fsm.state == TaskState.AWAITING_CONFIRM
+
+    # 确认通过 -> 补发 tap;此刻 acked 不得提前置位
+    await handle_uplink(
+        ConfirmResponse(taskId=ctx.task_id, confirmId=ctx.confirm.confirm_id,
+                        approved=True),
+        store, conn, deps,
+    )
+    assert ctx.post_send.acked is False
+    resend_id = ctx.confirm.resend_action_id
+    assert resend_id is not None
+
+    # 补发失败 -> acked 保持 False(巡逻不得视为已发送)
+    await handle_uplink(
+        ActionResult(actionId=resend_id, ok=False, error="anchor_not_found"),
+        store, conn, deps,
+    )
+    assert ctx.post_send.acked is False
+
+    #  ack ok -> acked 置 True
+    ctx.confirm.resend_action_id = "rid-2"
+    await handle_uplink(ActionResult(actionId="rid-2", ok=True), store, conn, deps)
+    assert ctx.post_send.acked is True

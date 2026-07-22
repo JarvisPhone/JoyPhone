@@ -46,11 +46,11 @@ def resolve_anchor_node(params: Mapping[str, object], nodes: list[Node]) -> Node
     if not matches and rid:
         matches = [n for n in nodes
                    if (n.viewIdResourceName or "").rsplit("/", 1)[-1] == rid]
-    if len(matches) > 1 and rid:
-        narrowed = [n for n in matches
-                    if (n.viewIdResourceName or "").rsplit("/", 1)[-1] == rid]
-        if narrowed:
-            matches = narrowed
+    elif rid:
+        # rid 一致性约束(fail-closed,与端侧 AnchorResolver 同步):
+        # 文本命中但 rid 不符的是另一个节点,收窄为空即未命中,不回落。
+        matches = [n for n in matches
+                   if (n.viewIdResourceName or "").rsplit("/", 1)[-1] == rid]
     if not matches:
         return None
     occ = params.get("occurrence")

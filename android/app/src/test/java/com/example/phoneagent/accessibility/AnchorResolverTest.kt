@@ -140,3 +140,37 @@ class AnchorResolverTest {
         assertTrue(r is ResolveResult.NotFound)
     }
 }
+
+class AnchorResolverRidConsistencyTest {
+
+    private fun node(id: String, text: String?, rid: String?) = NodeDto(
+        id = id, text = text, viewIdResourceName = rid,
+        bounds = listOf(0, 0, 100, 100), clickable = true,
+    )
+
+    @Test
+    fun text_match_with_rid_mismatch_is_not_found() {
+        // 真机八轮:名单行锚点(文本=群名, rid=shortcut_item_container)在聊天页
+        // 文本层命中标题(title_zone)——rid 不符不是同一节点,必须 fail-closed
+        val nodes = listOf(
+            node("0-46", "Android AI 开发组", "com.x:id/title_zone"),
+            node("0-48", "Android AI 开发组", "com.x:id/title_zone"),
+        )
+        val r = AnchorResolver.resolve(
+            nodes,
+            Anchor(text = "Android AI 开发组", rid = "shortcut_item_container", occurrence = 1),
+        )
+        assertTrue(r is ResolveResult.NotFound)
+    }
+
+    @Test
+    fun unique_text_match_with_rid_mismatch_also_not_found() {
+        // 唯一文本命中但 rid 不符,同样 fail-closed
+        val nodes = listOf(node("0-46", "Android AI 开发组", "com.x:id/title_zone"))
+        val r = AnchorResolver.resolve(
+            nodes,
+            Anchor(text = "Android AI 开发组", rid = "shortcut_item_container", occurrence = null),
+        )
+        assertTrue(r is ResolveResult.NotFound)
+    }
+}

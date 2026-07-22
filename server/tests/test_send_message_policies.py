@@ -458,3 +458,14 @@ def test_sidebar_dismiss_wrong_pkg_passes():
     ctx = _ctx()
     frame = Perception(pkg="com.other", nodeTree=_drawer_frame().nodeTree)
     assert SidebarDismissPolicy().inspect(frame, ctx).kind == "continue"
+
+
+def test_confirm_intercept_hint_text_is_not_draft():
+    # 空输入框的 hint「发送给 X」不是草稿:不得进入确认流(假 done 根因)
+    ctx = _ctx()
+    ctx.decided_actions = [_tap()]
+    empty_input = Node(id="e9", text="发送给 测试群", editable=True)
+    frame = _frame(nodes=[_title_node(), empty_input, _send_button()])
+    v = ConfirmInterceptPolicy().inspect(frame, ctx)
+    assert v.kind == "continue"
+    assert ctx.confirm.confirm_id is None

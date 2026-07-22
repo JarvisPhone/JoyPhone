@@ -163,14 +163,16 @@ def _encode_nodes(nodes: list[Node]) -> str:
 def _anchor_occurrence(target: Node, nodes: list[Node]) -> int | None:
     """同名锚点在可交互节点中出现多次时,返回 target 的 0 基序号;唯一则 None。
 
-    例:搜索结果一页三个「发送」按钮,LLM 说的 tap n 是第二个,
-    occurrence=1 让端侧在实时树上也能选中同一个。
+    与端侧 rid 一致性约束同步:只统计「标签相同且 rid 尾段一致」的节点,
+    保证 occurrence 双端语义对齐(同名不同 rid 是另一个节点,不计入)。
     """
     label = (target.text or target.desc or "").strip()
     if not label:
         return None
+    rid_tail = _rid_tail(target.viewIdResourceName)
     same = [n for n in nodes if (n.clickable or n.editable)
-            and (n.text or n.desc or "").strip() == label]
+            and (n.text or n.desc or "").strip() == label
+            and (not rid_tail or _rid_tail(n.viewIdResourceName) == rid_tail)]
     if len(same) <= 1:
         return None
     for i, n in enumerate(same):

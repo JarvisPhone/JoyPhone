@@ -328,6 +328,10 @@ async def _on_action_result(
         if source in ("cache", "skill"):
             ctx.cursor.advance()
         ctx.cache_step_fails = 0
+        if uplink.actionId == ctx.confirm.resend_action_id:
+            # confirm 补发的发送 tap ack ok = 真实发送完成
+            ctx.post_send.acked = True
+            ctx.confirm.resend_action_id = None
     elif source == "cache":
         # 回放熔断:同一步连续 ack 失败达阈值,整条作废并本场禁用,
         # 回落 skill/LLM(旧行为是不推进 cursor 无限重放同一必败步骤)
@@ -412,7 +416,10 @@ async def _on_confirm_response(
             "actionId": send_act.actionId,
             "ok": None,
         })
-        ctx.post_send.acked = True
+        # post_send.acked 只在补发 tap「ack ok」后才置位(见 _on_action_result):
+        # 派发≠发送成功——补发可能 anchor_not_found(页面已变),提前置位会让
+        # 巡逻策略误判已发送而 abort(真机八轮任务3)。
+        ctx.confirm.resend_action_id = send_act.actionId
         ctx.pending_mutating.add(send_act.actionId)
         await conn.send(send_act)
     else:

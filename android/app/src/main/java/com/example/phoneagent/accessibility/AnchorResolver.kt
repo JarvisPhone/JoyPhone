@@ -47,10 +47,12 @@ object AnchorResolver {
         }
         if (candidates.isEmpty() && anchor.rid != null) {
             candidates = pool.filter { it.viewIdResourceName?.substringAfterLast('/') == anchor.rid }
-        }
-        if (candidates.size > 1 && anchor.rid != null) {
-            val narrowed = candidates.filter { it.viewIdResourceName?.substringAfterLast('/') == anchor.rid }
-            if (narrowed.isNotEmpty()) candidates = narrowed
+        } else if (anchor.rid != null) {
+            // rid 一致性约束(fail-closed):云端说的是「文本 X 且 rid Y 的节点」,
+            // 文本命中但 rid 不符的是另一个节点(聊天页标题 vs 列表行同名),
+            // 收窄为空必须 NotFound,绝不回落到 rid 不符的候选(真机八轮:
+            // 名单行锚点在聊天页命中标题栏误入群设置)。
+            candidates = candidates.filter { it.viewIdResourceName?.substringAfterLast('/') == anchor.rid }
         }
         if (candidates.isEmpty()) return ResolveResult.NotFound
         if (candidates.size == 1) return ResolveResult.Found(candidates[0])

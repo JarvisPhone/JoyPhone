@@ -25,6 +25,8 @@ class ConfirmState:
     confirm_id: str | None = None
     sent_ts: float | None = None
     reverted: bool = False
+    # 确认通过后补发的发送 tap 的 actionId;ack ok 时才置 post_send.acked
+    resend_action_id: str | None = None
     count: int = 0
     message_text: str = ""
 
