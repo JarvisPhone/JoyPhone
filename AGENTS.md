@@ -30,6 +30,9 @@ server/app/
 ## 关键约定
 
 - Python 一律用 uv:`uv add <pkg>` 加依赖,`uv run <cmd>` 执行
+- 设备能力架构(设计中,未实装):见 `docs/superpowers/specs/2026-07-22-device-capability-architecture-design.md`;
+  三条已拍板约定——①能力矩阵经握手首帧 `device.hello` 上报 ②动作空间由能力矩阵生成,
+  无 SDK 设备 prompt 零变化 ③op 路由全在端侧,云端只感知能力不感知 Provider
 - 日志禁止 f-string,统一 `logger.info("msg %s", arg)`
 - decide() 返回 `Decision(actions, source, meta)`,永不返回 None
 - 记忆回放(cache/skill)由 `Config.REPLAY_ENABLED` 总开关控制,LLM 链路未稳定前=False,每帧 LLM 决策
