@@ -82,3 +82,17 @@ def test_build_llm_falls_back_to_fake_when_no_key(monkeypatch):
     monkeypatch.delenv("LLM_API_KEY", raising=False)
     llm = build_llm()
     assert isinstance(llm, FakeLLM)
+
+def test_real_llm_logs_req_resp_to_llm_log(tmp_path, monkeypatch):
+    # llm.log 观测链路:RealLLM 每次调用须落 LLM-REQ/LLM-RESP 原始流量。
+    from app.gateway import connection
+    connection._reset_for_test(tmp_path)
+
+    client = _FakeClient("tap 5")
+    llm = RealLLM(client=client, model="MiniMax-M3")
+    llm.complete(system="sys", user="usr-payload")
+
+    content = (tmp_path / "llm.log").read_text(encoding="utf-8")
+    assert "LLM-REQ" in content and "usr-payload" in content
+    assert "LLM-RESP" in content and "tap 5" in content
+    connection._reset_for_test(tmp_path)
