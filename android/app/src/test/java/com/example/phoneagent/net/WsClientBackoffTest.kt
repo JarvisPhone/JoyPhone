@@ -37,3 +37,16 @@ class WsClientBackoffTest {
         assertEquals(3000L, WsClient.backoffDelayMs(-5))
     }
 }
+
+class WsClientReconnectGuardTest {
+
+    @Test
+    fun reconnectIfNeeded_before_start_is_noop_not_crash() {
+        // 回归:无障碍服务未绑定时 start() 从未调用,baseUrl 为空,
+        // MainActivity.onResume -> reconnectIfNeeded 不得在 connect() 里崩掉
+        val repo = com.example.phoneagent.data.AgentStateRepository()
+        val client = WsClient(repo, kotlinx.serialization.json.Json { ignoreUnknownKeys = true })
+        client.reconnectIfNeeded()  // 修复前:IllegalArgumentException(no scheme)
+        assertTrue(repo.debug.value.wsEvents.isEmpty())
+    }
+}

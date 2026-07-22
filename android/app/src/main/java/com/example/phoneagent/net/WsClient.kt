@@ -183,6 +183,9 @@ class WsClient @Inject constructor(
      */
     private fun retryNow(reason: String) {
         if (manuallyClosed) return
+        // start() 未调用过(无障碍服务未绑定/未注入回调)时 baseUrl 为空,
+        // 此时 MainActivity.onResume / 网络回调触发的重连无意义且 connect() 必崩
+        if (baseUrl.isBlank()) return
         retryJob?.cancel()
         retryJob = null
         retryCount = 0
