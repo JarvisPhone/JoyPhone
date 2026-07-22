@@ -28,4 +28,7 @@ class Config:
     LOOP_GUARD_MAX_BACKS = 2
     # ---- 记忆回放总开关 ----
     # LLM 链路未稳定前关闭 cache/skill 回放,每帧由 LLM 决策(代码保留,稳定后再开)
-    REPLAY_ENABLED = False
+    # 2026-07-23 实测:三次任务平均 86s,236s/258s 在 LLM 上。
+    # 复用已有 cache/skill 路径,可让同场景任务避开绝大多数 LLM 调用。
+    # 锚点失败/cursor 失败/cache fuse 都有安全网,开启风险可控。
+    REPLAY_ENABLED = True

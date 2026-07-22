@@ -218,10 +218,20 @@ async def _on_perception(
     if post_verdict.kind == "intercept":
         actions = post_verdict.actions or []
         if ctx.decided_actions:
-            # LLM 反馈通道:决策被策略拦截(幻觉 done/标题栏点击等),告知原因
-            ctx.llm_feedback = "上一条 %s 被策略 %s 拦截" % (
-                ctx.decided_actions[0].op, post_verdict.policy,
-            )
+            # LLM 反馈通道:决策被策略拦截(幻觉 done/标题栏点击/loop_guard 等)。
+            # 优先用策略 verdict 自带的 reason(精确,能区分 SETTLE/BACK 等阶段),
+            # 退化到 "上一条 X 被策略 Y 拦截"。
+            replaced_op = actions[0].op if actions else "policy"
+            if post_verdict.reason:
+                ctx.llm_feedback = (
+                    "上一条 %s 被策略 %s 拦截(%s,已改发 %s)"
+                    % (ctx.decided_actions[0].op, post_verdict.policy,
+                       post_verdict.reason, replaced_op)
+                )
+            else:
+                ctx.llm_feedback = "上一条 %s 被策略 %s 拦截" % (
+                    ctx.decided_actions[0].op, post_verdict.policy,
+                )
         if not actions and ctx.confirm.confirm_id:
             await conn.send(
                 TaskConfirm(

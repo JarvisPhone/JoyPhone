@@ -41,8 +41,14 @@ def terminate(reason: str, status: str) -> Verdict:
     return Verdict(kind="terminate", reason=reason, status=status)
 
 
-def intercept(actions: list[Action]) -> Verdict:
-    return Verdict(kind="intercept", actions=actions)
+def intercept(actions: list[Action], reason: str = "") -> Verdict:
+    """策略拦截:下发替换动作并说明原因。
+
+    reason 写进 verdict,handlers.py 据此构造 LLM feedback,
+    让 LLM 区分「动作未生效已改发 read_screen 等稳定」与
+    「动作重复,已改发 back 脱困」。
+    """
+    return Verdict(kind="intercept", actions=actions, reason=reason)
 
 
 class Policy(Protocol):
@@ -157,7 +163,8 @@ class LoopGuardPolicy:
                 ctx.task_id,
             )
             return intercept([Action(actionId=str(uuid.uuid4()),
-                                     op="read_screen", params={})])
+                                     op="read_screen", params={})],
+                             reason="动作可能未生效,等帧稳定")
         if ctx.loop_repeats < Config.LOOP_GUARD_BACK:
             return continue_()
         if ctx.loop_backs >= Config.LOOP_GUARD_MAX_BACKS:
@@ -172,7 +179,8 @@ class LoopGuardPolicy:
             "[LOOP_GUARD] task_id=%s 第 %d 次相同(帧,决策),改发 back (%d/%d)",
             ctx.task_id, ctx.loop_repeats, ctx.loop_backs, Config.LOOP_GUARD_MAX_BACKS,
         )
-        return intercept([Action(actionId=str(uuid.uuid4()), op="back", params={})])
+        return intercept([Action(actionId=str(uuid.uuid4()), op="back", params={})],
+                         reason="动作重复未生效,执行 back 脱困")
 
 
 def run_pipeline(
