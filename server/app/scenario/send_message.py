@@ -71,6 +71,17 @@ def _input_target_node(action: Action, nodes: list[Node]) -> Node | None:
     return node if (node is not None and node.editable) else None
 
 
+def _draft_text_in_frame(nodes: list[Node]) -> str:
+    """输入框当前文本(残留草稿):第一个有文本的 editable 节点的 text。
+
+    仅在「标题匹配的会话页 + 发送 tap」语境下调用,此时的 editable 即消息框。
+    """
+    for n in nodes:
+        if n.editable and (n.text or "").strip():
+            return (n.text or "").strip()
+    return ""
+
+
 def _extract_last_input_text(applied_steps: list[dict]) -> str:
     """从 applied_steps 里取最近一条 input 文本,作为 confirm 预览。"""
     for step in reversed(applied_steps):
@@ -230,6 +241,41 @@ class SendGuardPolicy:
         return intercept([Action(actionId=str(uuid.uuid4()), op="read_screen", params={})])
 
 
+class TitleTapGuardPolicy:
+    """标题栏点击守卫:目标 app 内,decided tap 锚点解析到标题栏节点一律拦截。
+
+    点标题在任何会话页都没有任务价值(只会误入群设置),不靠 LLM 自觉。
+    真机两轮事故:LLM 把 prompt「核对标题」误解为「点击标题」;
+    以及 tap 66(btn send) 转录成 tap 46(标题栏)。
+    """
+
+    name = "title_tap_guard"
+
+    def inspect(self, frame: Perception | None, ctx: TaskContext) -> Verdict:
+        if frame is None or not ctx.target_pkg or frame.pkg != ctx.target_pkg:
+            return continue_()
+        profile = _profile_for(ctx)
+        if profile is None:
+            return continue_()
+        keywords = tuple(kw.lower() for kw in profile.title_rid_keywords)
+        for action in ctx.decided_actions:
+            if action.op != "tap":
+                continue
+            node = resolve_anchor_node(action.params, frame.nodeTree)
+            if node is None:
+                continue
+            rid = (node.viewIdResourceName or "").rsplit("/", 1)[-1].lower()
+            if rid and any(kw in rid for kw in keywords):
+                logger.info(
+                    "[TITLE_TAP_GUARD] 拦截标题栏点击: task_id=%s rid=%s",
+                    ctx.task_id, rid,
+                )
+                return intercept([
+                    Action(actionId=str(uuid.uuid4()), op="read_screen", params={})
+                ])
+        return continue_()
+
+
 class ConfirmInterceptPolicy:
     """tap 发送按钮拦截(旧 :546-586)。
 
@@ -265,6 +311,10 @@ class ConfirmInterceptPolicy:
             ):
                 continue
             message_text = _extract_last_input_text(ctx.applied_steps)
+            if not message_text:
+                # 本任务没有 input 记录时,取输入框当前文本(上次残留的草稿):
+                # 草稿发送同样要过人审,不能因 text 非本任务所输就跳过确认。
+                message_text = _draft_text_in_frame(frame.nodeTree)
             if not message_text:
                 # 无 input 正文时点发送:不进确认流(message="" 的确认无意义,
                 # 且空输入框点发送本就无效)。透传该 tap,让 LLM 看到屏幕
@@ -399,7 +449,12 @@ class SendMessagePack:
         return [PreSendRevertPolicy(), PostSendForceDonePolicy(), PostSendPatrolPolicy()]
 
     def post_policies(self) -> list:
-        return [SendGuardPolicy(), ConfirmInterceptPolicy(), WrongChatInputPolicy()]
+        return [
+            TitleTapGuardPolicy(),
+            SendGuardPolicy(),
+            ConfirmInterceptPolicy(),
+            WrongChatInputPolicy(),
+        ]
 
     def classify_entry(self, frame: Perception, ctx: TaskContext) -> str:
         """进入目标 app 的落地页分类:学习与回放按入口状态分开。

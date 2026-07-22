@@ -20,6 +20,8 @@ FEISHU_PROFILE = AppProfile(
         "toolbar_title",
         "action_bar",
         "tv_conversation",
+        "title_zone",
+        "chat_info_view",
     ],
     send_button_keywords=[
         "send_button",

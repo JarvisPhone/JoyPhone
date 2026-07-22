@@ -1,0 +1,1 @@
+- [JoyPhone 代码开发大赛答辩定位](project_competition.md) — JoyPhone 参加集团代码开发大赛的赛道/阶段/评审导向,以及答辩叙事的关键约束

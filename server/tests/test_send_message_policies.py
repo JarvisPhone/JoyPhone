@@ -351,3 +351,51 @@ def test_confirm_intercept_skips_when_no_prior_input():
     v = ConfirmInterceptPolicy().inspect(frame, ctx)
     assert v.kind == "continue"
     assert ctx.confirm.confirm_id is None
+
+
+# ---- TitleTapGuardPolicy(标题栏点击守卫)----
+
+from app.scenario.send_message import TitleTapGuardPolicy
+
+
+def _title_zone_node(text="测试群"):
+    return Node(id="tz", text=text, viewIdResourceName=f"{LARK}:id/title_zone",
+                clickable=True)
+
+
+def test_title_tap_guard_intercepts_title_tap():
+    ctx = _ctx()
+    ctx.decided_actions = [Action(actionId="a9", op="tap",
+                                  params={"match_text": "测试群", "match_rid": "title_zone"})]
+    frame = _frame(nodes=[_title_zone_node(), _send_button()])
+    v = TitleTapGuardPolicy().inspect(frame, ctx)
+    assert v.kind == "intercept"
+    assert v.actions[0].op == "read_screen"
+
+
+def test_title_tap_guard_passes_send_button_tap():
+    ctx = _ctx()
+    ctx.decided_actions = [_tap()]  # match_rid=btn_send,非标题栏
+    frame = _frame(nodes=[_title_zone_node(), _send_button()])
+    v = TitleTapGuardPolicy().inspect(frame, ctx)
+    assert v.kind == "continue"
+
+
+def test_title_tap_guard_passes_outside_target_pkg():
+    ctx = _ctx()
+    ctx.decided_actions = [Action(actionId="a9", op="tap",
+                                  params={"match_rid": "title_zone"})]
+    frame = _frame(pkg="com.other", nodes=[_title_zone_node()])
+    v = TitleTapGuardPolicy().inspect(frame, ctx)
+    assert v.kind == "continue"
+
+
+def test_confirm_intercept_uses_draft_text_when_no_prior_input():
+    # 输入框残留草稿(非本任务输入):确认消息取草稿文本,草稿也要过人审
+    ctx = _ctx()
+    ctx.decided_actions = [_tap()]
+    draft_input = Node(id="e9", text="大家好", editable=True)
+    frame = _frame(nodes=[_title_node(), draft_input, _send_button()])
+    v = ConfirmInterceptPolicy().inspect(frame, ctx)
+    assert v.kind == "intercept"
+    assert ctx.confirm.message_text == "大家好"
