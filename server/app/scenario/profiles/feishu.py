@@ -22,6 +22,12 @@ FEISHU_PROFILE = AppProfile(
         "tv_conversation",
         "title_zone",
         "chat_info_view",
+        # 群聊页群名节点(text=群名,如 "Android AI 开发组")— 2026-07-23 真机取自
+        # comm.log 00:14:48 perception:id=0-0-1-1-2-0 不在默认集合里时,priority 1
+        # 不命中,会退化命中 chat_message_list_view="Ra" 残留节点,触发 INPUT_GUARD
+        # 误报 → 全帧 input 被拦截。
+        "default_center_view_container",
+        "chat_info_view_redesign",
     ],
     send_button_keywords=[
         "send_button",
