@@ -84,12 +84,12 @@ _SYSTEM_PROMPT = """你是一个 Android 手机操作代理的决策核心。给
 
 在目标 app 内找会话/联系人的流程(pkg == target_pkg 时)：
 1. 优先用顶部搜索：tap 搜索框 -> input 目标名称 -> 在结果里 tap 匹配项。
-2. 进入会话后，先核对页面顶部标题是否与目标会话名一致；不一致说明进错，输出单个 `back` 回上一级，换一个结果再试或重新搜索。
-3. 反复 back 后仍找不到目标会话时，**必须先用顶部搜索框完整搜索一次目标名称**（tap 搜索框 -> input 目标名称 -> 等结果帧）；搜索+滚动都无果后才允许 abort，原因填「未找到会话<名称>」。未执行过搜索就直接 abort 属于违规。禁止用 home 退出 app。
+2. 进入会话后，先核对页面顶部标题是否与目标会话名一致；不一致说明进错，输出单个 `back` 回上一级，换一个结果再试或重新搜索。**严禁点击顶部标题栏**(标题栏不是功能入口,点了会进入群设置页偏离任务;误进设置页立即 back 返回会话)。
+3. 反复 back 后仍找不到目标会话时，**必须先用顶部搜索框完整搜索一次目标名称**（tap 搜索框 -> input 目标名称 -> 等结果帧）；搜索后要点「结果列表里的目标那一行」,**不是搜索框本身**(搜索框里的文字也是目标名,点它没有效果);搜索+滚动都无果后才允许 abort，原因填「未找到会话<名称>」。未执行过搜索就直接 abort 属于违规。禁止用 home 退出 app。
 
 【重要·负一屏识别】桌面最左侧的「负一屏」(又称小布建议/智能助手页)不是真正的应用桌面，上面的「XX 有 N 条通知」「XX 推荐」等磁贴不是应用图标，误点会进入错误的 app。识别特征：屏幕里出现「小布建议」「小布」等文字，或大量「...有...条通知」「为你推荐」类磁贴，一旦判断当前在负一屏，必须先 swipe right 向右滑动退出，回到真正的桌面第一屏后再找应用图标；绝不能在负一屏上 tap 任何磁贴。
 
-【重要·tap 定位】tap n 用行号定位,系统会把该行节点解析为语义锚点(文本/rid),端侧执行时按锚点在当前屏幕实时定位后点击;页面已变化导致锚点失效时会返回失败并重新抓屏,届时按新屏幕重新决策即可,不要反复重试同一行号。
+【重要·tap 定位】tap 支持行号(n)或文本("发送")两种定位,系统都会解析为语义锚点,端侧执行时在当前屏幕实时定位后点击;页面已变化导致锚点失效时会返回失败并重新抓屏,届时按新屏幕重新决策即可,不要反复重试同一目标。
 
 示例(多行批处理)：
 home
@@ -185,6 +185,22 @@ def _resolve_tap_node(params: dict, nodes: list[Node]) -> Node | None:
     return None
 
 
+def _encoded_label(n: Node) -> str:
+    """与 _encode_nodes 一致的节点标签(text/desc -> rid 可读标签兑底)。"""
+    return (n.text or n.desc or "").strip() or _rid_label(n.viewIdResourceName)
+
+
+def _resolve_text_node(label: str, nodes: list[Node]) -> Node | None:
+    """按 LLM 的文本锚点还原 Node:与编码标签精确相等且唯一才返回。
+
+    LLM 看到的是编码标签(如 rid 兑底的 "btn send"),直接透传给端侧会
+    与原始 rid(btn_send)空格/下划线不符;先在这里还原成真实节点,
+    才能补全 match_rid 等端侧可用的锚点。多命中返回 None(端侧判 ambiguous)。
+    """
+    matches = [n for n in nodes if _encoded_label(n) == label]
+    return matches[0] if len(matches) == 1 else None
+
+
 _NOARG_OPS = {
     "back": "back",
     "home": "home",
@@ -197,6 +213,9 @@ def parse_actions(text: str) -> list[dict]:
     """把 LLM 返回的纯文本指令(多行,每行一条)解析成结构化 spec 列表。
 
     纯函数,无副作用。语法按首个空格切「动词 + 参数」。
+    tap 支持两种定位:`tap 5`(行号)或 `tap "发送"`(文本锚点,引号可省——
+    首参数非纯数字即视为文本)。文本锚点没有序号转录错误面(真机事故:
+    LLM 把 tap 66 写成 tap 46 点进群设置),语义清晰的元素应优先用文本。
     空行 / 无法识别的动词 -> 跳过。返回的每个 dict 里所有值都是 str。
     """
     specs: list[dict] = []
@@ -207,7 +226,19 @@ def parse_actions(text: str) -> list[dict]:
         verb, _, rest = line.partition(" ")
         rest = rest.strip()
         if verb == "tap":
-            specs.append({"op": "tap", "id": rest.partition(" ")[0]})
+            if rest[:1] in ('"', "'"):
+                quote = rest[0]
+                end = rest.find(quote, 1)
+                target = rest[1:end] if end > 0 else rest[1:]
+            else:
+                target = rest.partition(" ")[0]
+            target = target.strip()
+            if not target:
+                continue
+            if target.isdigit():
+                specs.append({"op": "tap", "id": target})
+            else:
+                specs.append({"op": "tap", "match_text": target})
         elif verb == "input":
             idx, _, txt = rest.partition(" ")
             specs.append({"op": "input", "id": idx.strip(), "text": txt.strip()})
@@ -353,6 +384,8 @@ class DecisionEngine:
             params = {k: str(v) for k, v in spec.items() if k != "op"}
             if op in ("tap", "input"):
                 target = _resolve_tap_node(params, nodes)
+                if target is None and params.get("match_text"):
+                    target = _resolve_text_node(params["match_text"], nodes)
                 if target is not None:
                     anchor = (target.text or target.desc or "").strip()
                     rid_tail = _rid_tail(target.viewIdResourceName)

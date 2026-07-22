@@ -203,11 +203,12 @@ def test_tap_out_of_range_id_no_anchor():
     assert action.params.get("id") == "99"
 
 
-def test_tap_non_int_id_no_anchor():
+def test_tap_non_int_arg_is_text_anchor():
+    # 非数字首参数视为文本锚点(tap abc -> match_text=abc),未命中节点原样透传
     eng = DecisionEngine(llm=FakeLLM(["tap abc"]), cache=None)
     nodes = [Node(id="a", text="飞书", clickable=True, bounds=(0, 0, 10, 10))]
     action = _llm_decide(eng, nodes).actions[-1]
-    assert "match_text" not in action.params
+    assert action.params["match_text"] == "abc"
 
 
 def test_tap_empty_id_no_anchor():
@@ -431,3 +432,32 @@ def test_tap_anonymous_node_falls_back_to_tap_at():
     action = _llm_decide(eng, nodes).actions[-1]
     assert action.op == "tap_at"
     assert action.params["x"] == "200" and action.params["y"] == "300"
+
+
+# ---- tap 文本锚点定位 ----
+
+
+def test_parse_tap_by_quoted_text():
+    specs = parse_actions('tap "发送"')
+    assert specs == [{"op": "tap", "match_text": "发送"}]
+
+
+def test_parse_tap_by_bare_text_and_digit_stays_id():
+    assert parse_actions("tap 搜索") == [{"op": "tap", "match_text": "搜索"}]
+    assert parse_actions("tap 5") == [{"op": "tap", "id": "5"}]
+
+
+def test_tap_by_text_enriched_with_rid():
+    # LLM 看到编码标签 "btn send"(rid 可读化),文本定位须还原出真实 rid 锚点
+    eng = DecisionEngine(llm=FakeLLM(['tap "btn send"']), cache=None)
+    nodes = [Node(id="a", text=None, desc=None, clickable=True,
+                  viewIdResourceName="com.x:id/btn_send")]
+    action = _llm_decide(eng, nodes).actions[-1]
+    assert action.params["match_rid"] == "btn_send"
+
+
+def test_tap_by_text_plain_label():
+    eng = DecisionEngine(llm=FakeLLM(['tap "发送"']), cache=None)
+    nodes = [Node(id="a", text="发送", clickable=True)]
+    action = _llm_decide(eng, nodes).actions[-1]
+    assert action.params["match_text"] == "发送"
