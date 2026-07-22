@@ -30,27 +30,32 @@ object AnchorResolver {
 
     /**
      * 解析阶梯(与云端 scenario/ui.resolve_anchor_node 同一语义):
-     *   1. rid 尾段精确匹配
-     *   2. text 精确匹配
-     *   3. desc 精确匹配
-     * 单层多命中时用 occurrence 选取,无 occurrence 判 Ambiguous。
+     *   1. text 精确匹配(最具业务语义,列表行通常唯一)
+     *   2. desc 精确匹配
+     *   3. rid 尾段精确匹配(仅文本层全空时兜底——列表行常复用同一容器 rid,
+     *      rid 先行会把唯一文本行淹没在 N 个同 rid 兄弟里)
+     *   文本层多命中且 rid 存在时,用 rid 在候选内收窄;
+     *   仍多命中用 occurrence 选取,无 occurrence 判 Ambiguous。
      * editableOnly=true 时只在 editable 节点中解析(input 用)。
      */
     fun resolve(nodes: List<NodeDto>, anchor: Anchor, editableOnly: Boolean = false): ResolveResult {
         val pool = if (editableOnly) nodes.filter { it.editable } else nodes
-        val matches: List<NodeDto> = when {
-            anchor.rid != null ->
-                pool.filter { it.viewIdResourceName?.substringAfterLast('/') == anchor.rid }
-            anchor.text != null -> {
-                val byText = pool.filter { it.text?.trim() == anchor.text }
-                byText.ifEmpty { pool.filter { it.desc?.trim() == anchor.text } }
-            }
-            else -> emptyList()
+        var candidates: List<NodeDto> = emptyList()
+        if (anchor.text != null) {
+            candidates = pool.filter { it.text?.trim() == anchor.text }
+            if (candidates.isEmpty()) candidates = pool.filter { it.desc?.trim() == anchor.text }
         }
-        if (matches.isEmpty()) return ResolveResult.NotFound
-        if (matches.size == 1) return ResolveResult.Found(matches[0])
+        if (candidates.isEmpty() && anchor.rid != null) {
+            candidates = pool.filter { it.viewIdResourceName?.substringAfterLast('/') == anchor.rid }
+        }
+        if (candidates.size > 1 && anchor.rid != null) {
+            val narrowed = candidates.filter { it.viewIdResourceName?.substringAfterLast('/') == anchor.rid }
+            if (narrowed.isNotEmpty()) candidates = narrowed
+        }
+        if (candidates.isEmpty()) return ResolveResult.NotFound
+        if (candidates.size == 1) return ResolveResult.Found(candidates[0])
         val occ = anchor.occurrence
-        if (occ != null && occ in matches.indices) return ResolveResult.Found(matches[occ])
-        return ResolveResult.Ambiguous(matches.size)
+        if (occ != null && occ in candidates.indices) return ResolveResult.Found(candidates[occ])
+        return ResolveResult.Ambiguous(candidates.size)
     }
 }

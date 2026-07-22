@@ -354,13 +354,24 @@ class DecisionEngine:
             if op in ("tap", "input"):
                 target = _resolve_tap_node(params, nodes)
                 if target is not None:
+                    anchor = (target.text or target.desc or "").strip()
+                    rid_tail = _rid_tail(target.viewIdResourceName)
+                    if not anchor and not rid_tail and op == "tap":
+                        # 完全匿名节点(无 text/desc/rid):锚点无从谈起,走坐标
+                        # 逃生舱(一帧旧可接受——匿名节点本就没有更好的定位方式)。
+                        b = target.bounds
+                        if b is not None and len(b) == 4:
+                            cx, cy = (b[0] + b[2]) // 2, (b[1] + b[3]) // 2
+                            actions.append(Action(
+                                actionId=str(uuid.uuid4()), op="tap_at",
+                                params={"x": str(cx), "y": str(cy)},
+                            ))
+                            break
                     # 语义锚点下行(不注入坐标):端侧执行时按锚点在实时树上
                     # 重新定位点击,fail-closed;坐标会随帧过期点歪(2026-07-22
                     # 错群事故根因),锚点不会。
-                    anchor = (target.text or target.desc or "").strip()
                     if anchor:
                         params["match_text"] = anchor[:50]
-                    rid_tail = _rid_tail(target.viewIdResourceName)
                     if rid_tail:
                         params["match_rid"] = rid_tail
                     occ = _anchor_occurrence(target, nodes)

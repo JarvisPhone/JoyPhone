@@ -28,21 +28,29 @@ __all__ = [
 def resolve_anchor_node(params: Mapping[str, object], nodes: list[Node]) -> Node | None:
     """按语义锚点在节点列表中定位目标节点(与端侧 AnchorResolver 同一阶梯语义)。
 
-    阶梯:match_rid 尾段精确 -> text 精确 -> desc 精确;
-    同名多节点时按 occurrence 选取;无锚点或未命中返回 None(fail-closed,
-    不做子串猜测)。云端策略(确认拦截/错群守卫)借此把 decided action
+    阶梯(与端侧 AnchorResolver 同一语义):
+      1. text 精确 -> 2. desc 精确 -> 3. rid 尾段精确(仅文本层全空时兜底,
+         列表行常复用同一容器 rid,rid 先行会把唯一文本行淹没);
+      文本层多命中且 rid 存在时用 rid 收窄;仍多命中按 occurrence 选取;
+      无锚点或未命中返回 None(fail-closed,不做子串猜测)。
+    云端策略(确认拦截/错群守卫)借此把 decided action
     还原为语义节点,不再依赖会过期的坐标。
     """
     rid = str(params.get("match_rid", "") or "").strip()
     text = str(params.get("match_text", "") or "").strip()
     matches: list[Node] = []
-    if rid:
-        matches = [n for n in nodes
-                   if (n.viewIdResourceName or "").rsplit("/", 1)[-1] == rid]
-    elif text:
+    if text:
         matches = [n for n in nodes if (n.text or "").strip() == text]
         if not matches:
             matches = [n for n in nodes if (n.desc or "").strip() == text]
+    if not matches and rid:
+        matches = [n for n in nodes
+                   if (n.viewIdResourceName or "").rsplit("/", 1)[-1] == rid]
+    if len(matches) > 1 and rid:
+        narrowed = [n for n in matches
+                    if (n.viewIdResourceName or "").rsplit("/", 1)[-1] == rid]
+        if narrowed:
+            matches = narrowed
     if not matches:
         return None
     occ = params.get("occurrence")

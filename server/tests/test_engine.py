@@ -421,3 +421,13 @@ def test_replay_disabled_bypasses_cache_and_skill(tmp_path):
         cache_context="com.x|unknown",
     ))
     assert d.source != "cache" and d.source != "skill"
+
+
+def test_tap_anonymous_node_falls_back_to_tap_at():
+    # 完全匿名节点(无 text/desc/rid):锚点无从谈起,坐标逃生舱
+    eng = DecisionEngine(llm=FakeLLM(["tap 0"]), cache=None)
+    nodes = [Node(id="a", text=None, desc=None, clickable=True,
+                  bounds=(100, 200, 300, 400))]
+    action = _llm_decide(eng, nodes).actions[-1]
+    assert action.op == "tap_at"
+    assert action.params["x"] == "200" and action.params["y"] == "300"

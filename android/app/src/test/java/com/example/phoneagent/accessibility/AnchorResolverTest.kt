@@ -42,13 +42,36 @@ class AnchorResolverTest {
     }
 
     @Test
-    fun rid_exact_match_wins_over_text() {
+    fun text_exact_match_wins_over_generic_container_rid() {
+        // 列表行复用同一容器 rid(shortcut_item_container):rid 不得淹没唯一文本行
         val nodes = listOf(
-            node("0-0", text = "发送", rid = "com.x:id/other"),
-            node("0-1", text = "别的", rid = "com.x:id/btn_send"),
+            node("0-0", text = "MoltPulse", rid = "com.x:id/shortcut_item_container"),
+            node("0-1", text = "展开", rid = "com.x:id/shortcut_item_container"),
+            node("0-2", text = "智研", rid = "com.x:id/shortcut_item_container"),
+        )
+        val r = AnchorResolver.resolve(nodes, Anchor(text = "展开", rid = "shortcut_item_container", occurrence = null))
+        assertEquals("0-1", (r as ResolveResult.Found).node.id)
+    }
+
+    @Test
+    fun rid_is_fallback_when_no_text_match() {
+        // 无文本节点(图标按钮):rid 兑底定位
+        val nodes = listOf(
+            node("0-0", text = "消息", rid = "com.x:id/tab_msg"),
+            node("0-1", text = null, rid = "com.x:id/btn_send"),
+        )
+        val r = AnchorResolver.resolve(nodes, Anchor(text = null, rid = "btn_send", occurrence = null))
+        assertEquals("0-1", (r as ResolveResult.Found).node.id)
+    }
+
+    @Test
+    fun rid_narrows_duplicate_text_matches() {
+        val nodes = listOf(
+            node("0-0", text = "发送", rid = "com.x:id/btn_send"),
+            node("0-1", text = "发送", rid = "com.x:id/menu_send"),
         )
         val r = AnchorResolver.resolve(nodes, Anchor(text = "发送", rid = "btn_send", occurrence = null))
-        assertEquals("0-1", (r as ResolveResult.Found).node.id)
+        assertEquals("0-0", (r as ResolveResult.Found).node.id)
     }
 
     @Test
