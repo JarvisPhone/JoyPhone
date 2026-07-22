@@ -141,34 +141,36 @@ def test_decision_signature_prefers_semantic_anchor():
     assert decision_signature(a1) != decision_signature(a3)
 
 
-def test_loop_guard_continues_before_threshold():
-    ctx = _loop_ctx()
-    p = LoopGuardPolicy()
-    for _ in range(Config.LOOP_GUARD_TRIGGER - 1):
-        ctx.decided_actions = _read_action()
-        assert p.inspect(_same_frame(), ctx).kind == "continue"
-
-
-def test_loop_guard_intercepts_with_back_at_threshold():
-    ctx = _loop_ctx()
-    p = LoopGuardPolicy()
+def _drive(p, ctx, n):
+    """连续 n 次同一(帧,决策),返回最后一次裁决。"""
     v = None
-    for _ in range(Config.LOOP_GUARD_TRIGGER):
+    for _ in range(n):
         ctx.decided_actions = _read_action()
         v = p.inspect(_same_frame(), ctx)
-    assert v.kind == "intercept"
-    assert v.actions[0].op == "back"
+    return v
+
+
+def test_loop_guard_ladder():
+    ctx = _loop_ctx()
+    p = LoopGuardPolicy()
+    # 第 1 次:放行
+    assert _drive(p, ctx, 1).kind == "continue"
+    # 第 2 次:压下动作白看一帧(等 UI 稳定)
+    v = _drive(p, ctx, 1)
+    assert v.kind == "intercept" and v.actions[0].op == "read_screen"
+    # 第 3 次:放行真·重试
+    assert _drive(p, ctx, 1).kind == "continue"
+    # 第 4 次:back 脱困
+    v = _drive(p, ctx, 1)
+    assert v.kind == "intercept" and v.actions[0].op == "back"
     assert ctx.loop_backs == 1
 
 
 def test_loop_guard_aborts_after_max_backs():
     ctx = _loop_ctx()
     p = LoopGuardPolicy()
-    v = None
     # back 后帧/决策不变(查看器吞掉 back),repeats 持续增长直至上限
-    for _ in range(Config.LOOP_GUARD_TRIGGER + Config.LOOP_GUARD_MAX_BACKS):
-        ctx.decided_actions = _read_action()
-        v = p.inspect(_same_frame(), ctx)
+    v = _drive(p, ctx, Config.LOOP_GUARD_BACK + Config.LOOP_GUARD_MAX_BACKS)
     assert v.kind == "terminate"
     assert v.reason == "stuck_loop"
     assert ctx.fsm.state == TaskState.ABORT
@@ -177,9 +179,7 @@ def test_loop_guard_aborts_after_max_backs():
 def test_loop_guard_resets_on_frame_or_decision_change():
     ctx = _loop_ctx()
     p = LoopGuardPolicy()
-    for _ in range(Config.LOOP_GUARD_TRIGGER - 1):
-        ctx.decided_actions = _read_action()
-        p.inspect(_same_frame(), ctx)
+    _drive(p, ctx, 3)  # 推进到放行重试档(此时 loop_repeats=3)
     # 帧变了 -> 计数重置
     ctx.decided_actions = _read_action()
     p.inspect(Perception(pkg="com.x", nodeTree=[Node(id="n1", text="新页面")]), ctx)

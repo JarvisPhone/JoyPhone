@@ -700,29 +700,29 @@ async def test_loop_guard_escalates_back_then_aborts(tmp_path):
 
     frame = lambda seq: _perception(seq=seq, pkg="com.x", nodes=[Node(id="n", text="不变")])
 
-    # 第 1、2 帧:正常放行 read_screen
-    await handle_uplink(frame(1), store, conn, deps)
-    await handle_uplink(frame(2), store, conn, deps)
+    # 第 1 帧:放行;第 2 帧:同帧同决策压下等稳定;第 3 帧:放行真·重试
+    for seq in (1, 2, 3):
+        await handle_uplink(frame(seq), store, conn, deps)
     assert not any(getattr(m, "op", None) == "back" for m in conn.sent)
 
-    # 第 3 帧:触发停滞,改发 back#1
-    await handle_uplink(frame(3), store, conn, deps)
+    # 第 4 帧:改发 back#1
+    await handle_uplink(frame(4), store, conn, deps)
     backs = [m for m in conn.sent if getattr(m, "op", None) == "back"]
     assert len(backs) == 1
 
     # back 未 ack 期间的帧被 F2 闸门跳过
-    await handle_uplink(frame(4), store, conn, deps)
+    await handle_uplink(frame(5), store, conn, deps)
     assert len([m for m in conn.sent if getattr(m, "op", None) == "back"]) == 1
 
     # ack back#1 -> 自动补 read_screen;同帧再来 -> back#2
     await handle_uplink(ActionResult(actionId=backs[0].actionId, ok=True), store, conn, deps)
-    await handle_uplink(frame(5), store, conn, deps)
+    await handle_uplink(frame(6), store, conn, deps)
     backs = [m for m in conn.sent if getattr(m, "op", None) == "back"]
     assert len(backs) == 2
 
     # ack back#2;同帧再来 -> 仍循环,直接 abort(stuck_loop)
     await handle_uplink(ActionResult(actionId=backs[1].actionId, ok=True), store, conn, deps)
-    await handle_uplink(frame(6), store, conn, deps)
+    await handle_uplink(frame(7), store, conn, deps)
     assert conn.sent[-1].type == "task.abort"
     assert conn.sent[-1].reason == "stuck_loop"
     assert store.current is None

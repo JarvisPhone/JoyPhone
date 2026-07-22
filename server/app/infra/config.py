@@ -18,8 +18,12 @@ class Config:
     # LLM 幻觉 done(未真实发送)连续拦截上限,达到强 abort
     SEND_GUARD_MAX = 3
     # ---- 停滞/循环守卫(内核,帧签名×决策签名重复检测)----
-    # 同一(帧,决策)出现次数达到此值判定停滞(容忍 1 次点空重试,第 3 次必是循环)
-    LOOP_GUARD_TRIGGER = 3
+    # 同一(帧,决策)第 2 次:压下动作白看一帧(上一动作大概率还在生效,
+    # 重复下发必点歪/退过头——真机七轮三连事故根因)
+    LOOP_GUARD_SETTLE = 2
+    # 第 3 次:连续两帧未变,确认动作真未生效,放行真·重试
+    # 第 4 次起:机械 back 脱困(最多 LOOP_GUARD_MAX_BACKS 次),仍循环 abort
+    LOOP_GUARD_BACK = 4
     # 机械 back 脱困上限,仍循环直接 abort(stuck_loop) 留现场查原因
     LOOP_GUARD_MAX_BACKS = 2
     # ---- 记忆回放总开关 ----

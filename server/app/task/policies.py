@@ -123,13 +123,15 @@ def decision_signature(actions: Sequence[Action]) -> str:
 class LoopGuardPolicy:
     """停滞/循环守卫(内核策略,对所有任务生效)。
 
-    LLM 是无状态的:同一帧必然产出同一决策,若该决策无效(如面对
-    无可用信息的屏幕反复 read),不拦截就会空转到预算耗尽。
+    ack 只代表手势已派发,不代表 UI 已生效:ack 后的抓帧常是「动作生效前
+    的旧画面」,此时重复下发必点歪/退过头(真机七轮:重复 tap 群名命中
+    聊天页标题进设置、重复 back 退过头、confirm 落在旧帧补发失败)。
 
-    判定:即将下发的动作与「同一帧上已下过的动作」相同,且这是第
-    Config.LOOP_GUARD_TRIGGER 次(容忍 1 次点空重试)。
-    处置:不下发该动作,改发 back 机械脱困(最多 LOOP_GUARD_MAX_BACKS 次);
-    仍循环直接 terminate(stuck_loop) 留现场查原因。帧或决策任一变化即重置。
+    处置阶梯(同一(帧,决策)的连续重复次数):
+      第 LOOP_GUARD_SETTLE(2) 次:压下动作改发 read_screen,等 UI 稳定;
+      第 3 次:两帧未变确认动作真未生效,放行真·重试;
+      第 LOOP_GUARD_BACK(4) 次起:机械 back 脱困(≤LOOP_GUARD_MAX_BACKS 次),
+      仍循环 terminate(stuck_loop)。帧或决策任一变化即重置。
     """
 
     name = "loop_guard"
@@ -147,7 +149,16 @@ class LoopGuardPolicy:
             ctx.loop_repeats = 1
             ctx.loop_backs = 0
 
-        if ctx.loop_repeats < Config.LOOP_GUARD_TRIGGER:
+        if ctx.loop_repeats < Config.LOOP_GUARD_SETTLE:
+            return continue_()
+        if ctx.loop_repeats == Config.LOOP_GUARD_SETTLE:
+            logger.info(
+                "[LOOP_GUARD_SETTLE] task_id=%s 同帧同决策第 2 次,压下等稳定",
+                ctx.task_id,
+            )
+            return intercept([Action(actionId=str(uuid.uuid4()),
+                                     op="read_screen", params={})])
+        if ctx.loop_repeats < Config.LOOP_GUARD_BACK:
             return continue_()
         if ctx.loop_backs >= Config.LOOP_GUARD_MAX_BACKS:
             logger.error(
