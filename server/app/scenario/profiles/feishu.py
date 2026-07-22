@@ -49,4 +49,11 @@ FEISHU_PROFILE = AppProfile(
         "message",
         "type a message",
     ],
+    # 个人主页左侧抽屉(跨启动持久化,back 无效):特征 rid 取自真机帧
+    sidebar_rid_keywords=[
+        "cl_join_team",
+        "layout_personal_status",
+        "tenant_desc",
+        "my_profile",
+    ],
 )

@@ -851,3 +851,22 @@ async def test_end_to_end_expect_feedback_loop(tmp_path):
     assert len(llm.calls) >= 2
     fb = llm.calls[1].get("feedback", "")
     assert "FAIL" in fb and "别的群" in fb
+
+
+async def test_pre_policy_intercept_dispatches_without_decide(tmp_path):
+    # pre-policy 机械拦截(侧边栏消除):不经过 decide 直接下发策略动作
+    store = TaskStore()
+    engine = SpyEngine()
+    conn = FakeConn()
+    deps = _deps(engine, packs=[SendMessagePack()], tmp_path=tmp_path)
+    await handle_uplink(_req("给阿强发飞书消息"), store, conn, deps)
+    nodes = [
+        Node(id="s1", viewIdResourceName=f"{LARK}:id/cl_join_team",
+             text="x", clickable=True, bounds=(0, 676, 288, 1092)),
+        Node(id="s2", viewIdResourceName=f"{LARK}:id/my_profile",
+             text="y", clickable=True, bounds=(288, 1552, 888, 1720)),
+    ]
+    await handle_uplink(_perception(seq=1, pkg=LARK, nodes=nodes), store, conn, deps)
+    tap_at = [m for m in conn.sent if getattr(m, "op", None) == "tap_at"]
+    assert len(tap_at) == 1
+    assert engine.calls == []  # 未触发 LLM 决策

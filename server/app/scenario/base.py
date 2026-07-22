@@ -26,6 +26,8 @@ class AppProfile(BaseModel):
     send_button_keywords: list[str]
     search_hints: list[str]
     message_input_hints: list[str]
+    # 侧边栏抽屉特征 rid(≥2 个命中判定为抽屉页,机械 tap_at 右侧空白消除)
+    sidebar_rid_keywords: list[str] = []
 
 
 class ScenarioPack(Protocol):

@@ -399,3 +399,62 @@ def test_confirm_intercept_uses_draft_text_when_no_prior_input():
     v = ConfirmInterceptPolicy().inspect(frame, ctx)
     assert v.kind == "intercept"
     assert ctx.confirm.message_text == "大家好"
+
+
+# ---- SidebarDismissPolicy(侧边栏抽屉消除)----
+
+from app.scenario.send_message import SidebarDismissPolicy
+
+
+def _sidebar_node(rid, bounds=(0, 0, 888, 2374)):
+    return Node(id="s-" + rid, viewIdResourceName=f"{LARK}:id/{rid}",
+                text="x", clickable=True, bounds=bounds)
+
+
+def _drawer_frame():
+    nodes = [
+        _sidebar_node("cl_join_team", (0, 676, 288, 1092)),
+        _sidebar_node("layout_personal_status", (588, 174, 840, 267)),
+        _sidebar_node("my_profile", (288, 1552, 888, 1720)),
+    ]
+    return _frame(nodes=nodes)
+
+
+def test_sidebar_dismiss_intercepts_with_tap_at_blank():
+    ctx = _ctx()
+    v = SidebarDismissPolicy().inspect(_drawer_frame(), ctx)
+    assert v.kind == "intercept"
+    act = v.actions[0]
+    assert act.op == "tap_at"
+    # 点在特征节点右缘(888)之外的空白区
+    assert int(act.params["x"]) > 888
+    assert ctx.sidebar_dismiss_count == 1
+
+
+def test_sidebar_dismiss_single_marker_passes():
+    ctx = _ctx()
+    frame = _frame(nodes=[_sidebar_node("cl_join_team")])
+    v = SidebarDismissPolicy().inspect(frame, ctx)
+    assert v.kind == "continue"
+
+
+def test_sidebar_dismiss_cap_after_max_attempts():
+    ctx = _ctx()
+    p = SidebarDismissPolicy()
+    p.inspect(_drawer_frame(), ctx)
+    p.inspect(_drawer_frame(), ctx)
+    assert p.inspect(_drawer_frame(), ctx).kind == "continue"  # 达上限交还 LLM
+
+
+def test_sidebar_dismiss_counter_resets_when_gone():
+    ctx = _ctx()
+    p = SidebarDismissPolicy()
+    p.inspect(_drawer_frame(), ctx)
+    p.inspect(_frame(nodes=[_title_node()]), ctx)  # 抽屉消失
+    assert ctx.sidebar_dismiss_count == 0
+
+
+def test_sidebar_dismiss_wrong_pkg_passes():
+    ctx = _ctx()
+    frame = Perception(pkg="com.other", nodeTree=_drawer_frame().nodeTree)
+    assert SidebarDismissPolicy().inspect(frame, ctx).kind == "continue"

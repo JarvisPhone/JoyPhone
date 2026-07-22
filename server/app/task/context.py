@@ -69,6 +69,9 @@ class TaskContext:
     loop_decision_sig: str = ""
     loop_repeats: int = 0
     loop_backs: int = 0
+    # SIDEBAR_DISMISS 计数:连续侧边栏消除 tap_at 次数,特征消失即重置。
+    # SIDEBAR_DISMISS 计数:连续侧边栏消除 tap_at 次数,特征消失即重置。
+    sidebar_dismiss_count: int = 0
     # LLM 反馈通道(一次性):上一条指令的执行失败/策略拦截/expect 判定结果,
     # 随下一帧 decide 的 payload 送达 LLM 后清空。沉默=成功。
     llm_feedback: str = ""

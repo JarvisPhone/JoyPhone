@@ -162,6 +162,11 @@ async def _on_perception(
     if verdict.kind == "terminate":
         await _terminate(ctx, verdict, conn, deps, store)
         return
+    if verdict.kind == "intercept":
+        # pre-policy 机械拦截(如侧边栏消除):不下发 decide,直接执行策略动作
+        await _dispatch(ctx, verdict.actions or [], uplink, conn, deps, store,
+                        source="policy")
+        return
 
     if ctx.fsm.state == TaskState.AWAITING_CONFIRM:
         return

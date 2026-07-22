@@ -206,6 +206,56 @@ class PostSendPatrolPolicy:
 # ---- 后置策略(决策后,经 ctx.decided_actions 读取本帧动作)----
 
 
+class SidebarDismissPolicy:
+    """侧边栏抽屉消除(pre-policy,机械,不问 LLM 省一次决策延迟)。
+
+    飞书个人主页左侧抽屉跨启动持久化,back 无效、重启复现,LLM 面对它
+    会死循环(真机六轮 pkg_guard_stuck)。人类操作是点右侧空白消除——
+    特征 rid 命中 ≥2 个即判定抽屉页,tap_at 特征节点右缘外 48px。
+    连续消除上限 2 次(特征消失即重置),失败交还 LLM。
+    """
+
+    name = "sidebar_dismiss"
+    MAX_DISMISS = 2
+    _TAP_MARGIN_PX = 48
+
+    def inspect(self, frame: Perception | None, ctx: TaskContext) -> Verdict:
+        if frame is None or not ctx.target_pkg or frame.pkg != ctx.target_pkg:
+            return continue_()
+        profile = _profile_for(ctx)
+        if profile is None or not profile.sidebar_rid_keywords:
+            return continue_()
+        keywords = tuple(profile.sidebar_rid_keywords)
+        hits = [
+            n for n in frame.nodeTree
+            if any(kw in (n.viewIdResourceName or "") for kw in keywords)
+        ]
+        if len(hits) < 2:
+            ctx.sidebar_dismiss_count = 0
+            return continue_()
+        if ctx.sidebar_dismiss_count >= self.MAX_DISMISS:
+            logger.warning(
+                "[SIDEBAR_DISMISS_CAP] task_id=%s 连续 %d 次消除未果,交还 LLM",
+                ctx.task_id, ctx.sidebar_dismiss_count,
+            )
+            return continue_()
+        rights = [n.bounds[2] for n in hits if n.bounds and len(n.bounds) == 4]
+        bottoms = [n.bounds[3] for n in hits if n.bounds and len(n.bounds) == 4]
+        if not rights or not bottoms:
+            return continue_()
+        ctx.sidebar_dismiss_count += 1
+        x = max(rights) + self._TAP_MARGIN_PX
+        y = max(bottoms) // 2
+        logger.info(
+            "[SIDEBAR_DISMISS] task_id=%s 抽屉特征 %d 个,tap_at (%d,%d)",
+            ctx.task_id, len(hits), x, y,
+        )
+        return intercept([Action(
+            actionId=str(uuid.uuid4()), op="tap_at",
+            params={"x": str(x), "y": str(y)},
+        )])
+
+
 class SendGuardPolicy:
     """done 门槛:未真实发送(post_send.acked=False)时拦截 LLM 的幻觉 done。
 
@@ -446,7 +496,12 @@ class SendMessagePack:
         ]
 
     def pre_policies(self) -> list:
-        return [PreSendRevertPolicy(), PostSendForceDonePolicy(), PostSendPatrolPolicy()]
+        return [
+            SidebarDismissPolicy(),
+            PreSendRevertPolicy(),
+            PostSendForceDonePolicy(),
+            PostSendPatrolPolicy(),
+        ]
 
     def post_policies(self) -> list:
         return [
