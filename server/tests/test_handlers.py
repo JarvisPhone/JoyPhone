@@ -397,6 +397,8 @@ async def test_send_message_scenario_intercepts_send_tap(tmp_path):
     assert ctx.target_chat == "阿强"
     assert ctx.bound_skill is not None
     assert conn.sent[-1].type == "task.start"
+    # 确认拦截以「已有 input 正文」为前提(无正文的发送 tap 直接透传)
+    ctx.applied_steps.append({"op": "input", "params": {"text": "晚上好"}})
 
     await handle_uplink(_chat_frame(), store, conn, deps)
     confirms = [m for m in conn.sent if m.type == "task.confirm"]

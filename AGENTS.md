@@ -42,7 +42,10 @@ server/app/
   (≤`LOOP_GUARD_MAX_BACKS` 次)→仍循环 abort(stuck_loop);帧或决策任一变化即重置
 - cursor 仅在「动作来自 cache/skill 且端侧 ack ok」时推进;cache 同一步连续 ack 失败
   达 `CACHE_STEP_MAX_FAILS` 整条作废+本场禁用
+- 任务状态跨连接存活:TaskStore 按 device_id 共享(WS 只是传输层,断线重连不丢任务现场)
 - 新场景 = 新 ScenarioPack(代码);同场景新 app = 新 AppProfile(数据)
+- 执行定位只用语义锚点(match_text/match_rid/occurrence),坐标仅 tap_at 逃生舱;
+  锚点 fail-closed,端侧执行瞬间在实时树上重定位
 - 端侧 WS_URL 来自 BuildConfig(build.gradle.kts),禁止硬编码
 - 协议双端契约测试样本:shared/protocol/v2/*.json
 - WS 握手:连接 URL 须带 `?v=2`(PROTOCOL_VERSION),缺失或不符直接 close(code=4402)

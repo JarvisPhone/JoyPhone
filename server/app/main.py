@@ -1,8 +1,10 @@
 # server/app/main.py
 """create_app:装配 engine/scenario_packs/metrics,挂载 /ws/{device_id}。
 
-每连接一个 TaskStore(同时至多一个任务在跑);engine/cache/metrics 跨连接
-共享。env:
+TaskStore 按 device_id 共享、跨连接存活:WS 只是传输层,断线重连是
+移动网络常态,任务状态不能随连接生死(2026-07-22 真机事故:confirm
+瞬间断连重连,confirm_response 落到新连接的空 store 被静默丢弃,
+任务永久挂死)。env:
   PHONEAGENT_FAKE_LLM   JSON 列表,注入 FakeLLM 固定响应序列(回放/测试用)
   PHONEAGENT_MAX_STEPS  每任务步数预算,默认 Config.MAX_STEPS_DEFAULT
   SKILL_CACHE_PATH      技能缓存文件路径,默认 data/skill_cache.json
@@ -52,6 +54,9 @@ def create_app() -> FastAPI:
         metrics=get_metrics_collector(),
         max_steps=max_steps,
     )
+    # 按设备共享 TaskStore:同一 device_id 重连后任务现场仍在,
+    # confirm_response / action.result / perception 可跨连接续传。
+    stores: dict[str, TaskStore] = {}
 
     @app.websocket("/ws/{device_id}")
     async def ws_gateway(websocket: WebSocket, device_id: str) -> None:
@@ -69,7 +74,7 @@ def create_app() -> FastAPI:
             return
         conn = Connection(websocket, device_id)
         await conn.accept()
-        store = TaskStore()
+        store = stores.setdefault(device_id, TaskStore())
         try:
             await route_loop(conn, store, deps)
         except WebSocketDisconnect:

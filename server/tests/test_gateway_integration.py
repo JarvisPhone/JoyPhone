@@ -108,3 +108,40 @@ def test_handshake_accepts_current_version(replay_env):
         ws.send_text(json.dumps({"type": "heartbeat", "deviceId": "dev-1"}))
         received = json.loads(ws.receive_text())
         assert received["type"] == "heartbeat.ack"
+
+
+def test_task_state_survives_reconnect(replay_env):
+    # 真机事故回归:confirm 等待中 WS 断连重连,confirm_response 落到新连接
+    # 时必须仍能找到任务现场(TaskStore 按 device_id 共享,不随连接生死)。
+    fixture = replay_env
+    goal = fixture["goal"]
+    client = TestClient(create_app())
+    script = fixture["script"]
+
+    # 第一段:跑到 task.confirm 出现为止,然后断连
+    ctx = {"goal": goal}
+    confirm_msg = None
+    with client.websocket_connect("/ws/dev-re?v=2") as ws:
+        for idx, step in enumerate(script):
+            if "send" in step:
+                ws.send_text(json.dumps(_substitute(step["send"], ctx), ensure_ascii=False))
+            if "expect" in step:
+                received = json.loads(ws.receive_text())
+                _capture(ctx, received)
+                if received.get("type") == "task.confirm":
+                    confirm_msg = received
+                    break
+    assert confirm_msg is not None, "脚本未跑到 task.confirm"
+
+    # 第二段:同一 device_id 重连,confirm_response 在新连接上送达
+    with client.websocket_connect("/ws/dev-re?v=2") as ws:
+        ws.send_text(json.dumps({
+            "type": "task.confirm_response",
+            "taskId": ctx["taskId"],
+            "confirmId": confirm_msg["confirmId"],
+            "approved": True,
+        }))
+        received = json.loads(ws.receive_text())
+        # 断连前被拦截的发送 tap 必须在新连接上补发
+        assert received["type"] == "action", received
+        assert received["op"] == "tap"

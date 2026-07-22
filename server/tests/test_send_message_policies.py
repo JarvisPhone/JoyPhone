@@ -341,3 +341,13 @@ def test_classify_entry_unknown_for_other_pages():
     ctx = _ctx()
     assert SendMessagePack().classify_entry(_frame(nodes=[_title_node("别的群")]), ctx) == "unknown"
     assert SendMessagePack().classify_entry(_frame(nodes=[]), ctx) == "unknown"
+
+
+def test_confirm_intercept_skips_when_no_prior_input():
+    # 无 input 正文时点发送:不进确认流(message 为空的确认无意义)
+    ctx = _ctx()
+    ctx.decided_actions = [_tap()]
+    frame = _frame(nodes=[_title_node(), _send_button()])
+    v = ConfirmInterceptPolicy().inspect(frame, ctx)
+    assert v.kind == "continue"
+    assert ctx.confirm.confirm_id is None

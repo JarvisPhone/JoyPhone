@@ -264,13 +264,24 @@ class ConfirmInterceptPolicy:
                 and _tap_hits_send_button(action, frame.nodeTree, profile)
             ):
                 continue
+            message_text = _extract_last_input_text(ctx.applied_steps)
+            if not message_text:
+                # 无 input 正文时点发送:不进确认流(message="" 的确认无意义,
+                # 且空输入框点发送本就无效)。透传该 tap,让 LLM 看到屏幕
+                # 未变化后意识到需要先输入(2026-07-22 真机:LLM 跳过 input
+                # 直接点发送,确认弹窗 message 为空)。
+                logger.info(
+                    "[CONFIRM_SKIP_EMPTY] 无 input 正文,发送 tap 透传不拦截: task_id=%s",
+                    ctx.task_id,
+                )
+                continue
             confirm_id = "%s-%s" % (
                 Config.CONFIRM_ID_PREFIX,
                 uuid.uuid4().hex[: Config.CONFIRM_ID_LENGTH],
             )
             ctx.confirm.confirm_id = confirm_id
             ctx.confirm.pending_action = action
-            ctx.confirm.message_text = _extract_last_input_text(ctx.applied_steps)
+            ctx.confirm.message_text = message_text
             ctx.confirm.sent_ts = time.monotonic()
             ctx.confirm.reverted = False
             ctx.fsm.transition(TaskState.AWAITING_CONFIRM, reason=self.name)
