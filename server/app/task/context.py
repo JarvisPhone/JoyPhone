@@ -69,6 +69,9 @@ class TaskContext:
     loop_decision_sig: str = ""
     loop_repeats: int = 0
     loop_backs: int = 0
+    # LLM 反馈通道(一次性):上一条指令的执行失败/策略拦截/expect 判定结果,
+    # 随下一帧 decide 的 payload 送达 LLM 后清空。沉默=成功。
+    llm_feedback: str = ""
     # 进入目标 app 的落地页分类(target_chat/unknown 等,由场景包 classify_entry)。
     # 每次进入 app 的落地页可能不同(冷启动在主页/热启动在上次聊天页),
     # 学习与回放都按入口状态分开进行。

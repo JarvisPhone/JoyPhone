@@ -43,6 +43,9 @@ class DecideInput:
     cache_context: str = ""
     # 回放熔断后本场禁用 cache(同一步连续 ack 失败)
     cache_disabled: bool = False
+    # LLM 反馈通道(一次性):上一条指令的执行失败/策略拦截/expect 判定结果;
+    # 非空才进 payload,空表示上一条成功
+    feedback: str = ""
 
 
 _SYSTEM_PROMPT = """你是一个 Android 手机操作代理的决策核心。给定当前屏幕的可交互元素列表(screen)、当前应用(pkg)、任务目标解析出的目标应用(target_pkg)、任务目标和历史操作，你要决定接下来执行的一批 UI 动作。
@@ -65,6 +68,13 @@ _SYSTEM_PROMPT = """你是一个 Android 手机操作代理的决策核心。给
                   一旦满足,只输出一行 done;禁止继续 tap 群设置、input 群名、swipe 探索;若继续,云端会强制 abort 并标记失败。
                   【草稿处理】进入会话时输入框可能已有上次残留的文本:内容与任务一致就直接 tap "发送";不一致就直接 input 新内容(会整体替换,无需先清空)。**输入框有文字≠已发送**——只有你亲自点过发送按钮且 ack ok 才能 done。
 - abort 原因      无法完成任务，放弃，并说明原因
+- expect ...     [核查指令·零副作用] 需要核查时用,**禁止用 tap 表达核查**。三种:
+                 `expect title "群名"` 核对当前页标题;`expect pkg "com.x"` 核对前台应用;
+                 `expect "文本"` 核对屏幕里是否存在某文本。云端机械判定后通过 feedback 字段告知结果。
+
+【feedback 字段】输入里若带 feedback 键,表示你上一条指令的结果:执行失败原因 /
+被云端策略拦截 / expect 判定结果。没有 feedback 键 = 上一条成功。看到拦截反馈时不要
+换个姿势重试同一意图(如被拦 done 后又去点标题),按反馈指出的缺失条件补齐(如先点发送)。
 
 批处理规则：你可以一次给出多行盲操作(如 home、swipe、back、wait)，最多以「一条 tap 或 input」收尾。系统只会执行到第一条 tap/input 为止，然后重新抓取屏幕再问你，所以 tap/input 之后不要再写别的指令。
 
@@ -240,6 +250,22 @@ def parse_actions(text: str) -> list[dict]:
                 specs.append({"op": "tap", "id": target})
             else:
                 specs.append({"op": "tap", "match_text": target})
+        elif verb == "expect":
+            # 断言指令:`expect title "X"` / `expect pkg "com.x"` / `expect "文本"`
+            # (首参数非 title/pkg 则整体为文本)。云端机械求值,不下发设备。
+            if rest[:1] in ('"', "'"):
+                quote = rest[0]
+                end = rest.find(quote, 1)
+                value = rest[1:end] if end > 0 else rest[1:]
+                specs.append({"op": "expect", "kind": "text", "value": value})
+            else:
+                head, _, tail = rest.partition(" ")
+                if head in ("title", "pkg"):
+                    specs.append({"op": "expect", "kind": head,
+                                  "value": tail.strip().strip('"\'')})
+                else:
+                    specs.append({"op": "expect", "kind": "text",
+                                  "value": rest.strip('"\'')})
         elif verb == "input":
             idx, _, txt = rest.partition(" ")
             specs.append({"op": "input", "id": idx.strip(), "text": txt.strip()})
@@ -252,6 +278,31 @@ def parse_actions(text: str) -> list[dict]:
         elif verb in _NOARG_OPS:
             specs.append({"op": _NOARG_OPS[verb]})
     return specs
+
+
+def _evaluate_expect(spec: dict, d: DecideInput) -> str:
+    """云端机械求值 expect 断言,返回单行中文判定(进 meta["feedback"])。
+
+    expect 从不下发设备:核查是认知操作,云端有帧有 detect_title,
+    零副作用给出确定性答案——LLM 不该用 tap 表达核查(真机五轮事故)。
+    """
+    kind = spec.get("kind", "text")
+    value = spec.get("value", "")
+    if kind == "title":
+        current = detect_title(d.frame.nodeTree, d.title_keywords)
+        if current is None:
+            return 'expect 判定 FAIL:当前页无法识别标题'
+        if match_title(value, current):
+            return 'expect 判定 PASS:title=="%s"' % current
+        return 'expect 判定 FAIL:标题实际是 "%s"' % current
+    if kind == "pkg":
+        if d.frame.pkg == value:
+            return 'expect 判定 PASS:pkg=="%s"' % value
+        return 'expect 判定 FAIL:当前 pkg=%s' % d.frame.pkg
+    hit = any(value in _encoded_label(n) for n in d.frame.nodeTree)
+    if hit:
+        return 'expect 判定 PASS:存在 "%s"' % value
+    return 'expect 判定 FAIL:不存在 "%s"' % value
 
 
 def _read_screen_action() -> Action:
@@ -363,6 +414,8 @@ class DecisionEngine:
             "target_pkg": d.target_pkg,
             "screen": _encode_nodes(nodes),
         }
+        if d.feedback:
+            payload["feedback"] = d.feedback
         raw = self._llm.complete(
             system=_SYSTEM_PROMPT,
             user=json.dumps(payload, ensure_ascii=False),
@@ -382,6 +435,11 @@ class DecisionEngine:
         actions: list[Action] = []
         for spec in specs:
             op = spec["op"]
+            if op == "expect":
+                # 断言求值并终止批次:结果经 meta 反馈,随下一帧 payload 送达 LLM
+                result = _evaluate_expect(spec, d)
+                return Decision(actions=[_read_screen_action()], source="llm",
+                                meta={"feedback": result})
             params = {k: str(v) for k, v in spec.items() if k != "op"}
             if op in ("tap", "input"):
                 target = _resolve_tap_node(params, nodes)

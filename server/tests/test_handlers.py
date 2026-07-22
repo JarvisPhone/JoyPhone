@@ -726,3 +726,128 @@ async def test_loop_guard_escalates_back_then_aborts(tmp_path):
     assert conn.sent[-1].type == "task.abort"
     assert conn.sent[-1].reason == "stuck_loop"
     assert store.current is None
+
+
+# ---- LLM 反馈通道(P1 Task 2):拦截/失败写入 ctx.llm_feedback ----
+
+
+async def test_ack_error_writes_llm_feedback(tmp_path):
+    store = TaskStore()
+    engine = SpyEngine()  # 恒定决策 read_screen... 改为 tap 才能产出失败 ack
+    engine.decision = Decision(
+        actions=[Action(actionId="a-tap", op="tap", params={"match_text": "X"})],
+        source="llm",
+    )
+    conn = FakeConn()
+    deps = _deps(engine, tmp_path=tmp_path)
+    await handle_uplink(_req(), store, conn, deps)
+    await handle_uplink(_perception(), store, conn, deps)
+    ctx = store.current
+    assert ctx.llm_feedback == ""
+    await handle_uplink(
+        ActionResult(actionId="a-tap", ok=False, error="anchor_not_found"),
+        store, conn, deps,
+    )
+    assert "anchor_not_found" in ctx.llm_feedback
+    assert "tap" in ctx.llm_feedback
+
+
+async def test_ack_ok_no_feedback(tmp_path):
+    store = TaskStore()
+    engine = SpyEngine()
+    engine.decision = Decision(
+        actions=[Action(actionId="a-tap", op="tap", params={"match_text": "X"})],
+        source="llm",
+    )
+    conn = FakeConn()
+    deps = _deps(engine, tmp_path=tmp_path)
+    await handle_uplink(_req(), store, conn, deps)
+    await handle_uplink(_perception(), store, conn, deps)
+    ctx = store.current
+    await handle_uplink(ActionResult(actionId="a-tap", ok=True), store, conn, deps)
+    assert ctx.llm_feedback == ""
+
+
+async def test_policy_interception_writes_llm_feedback(tmp_path):
+    # SendGuard 拦截幻觉 done -> feedback 含策略名
+    store = TaskStore()
+    engine = SpyEngine(
+        Decision(actions=[Action(actionId="d1", op="done", params={})], source="llm")
+    )
+    conn = FakeConn()
+    deps = _deps(engine, packs=[SendMessagePack()], tmp_path=tmp_path)
+    await handle_uplink(_req("给阿强发飞书消息"), store, conn, deps)
+    title = Node(id="t1", text="阿强", viewIdResourceName=f"{LARK}:id/tv_title")
+    send_btn = Node(id="b1", viewIdResourceName=f"{LARK}:id/btn_send", bounds=(0, 0, 100, 100))
+    await handle_uplink(
+        _perception(seq=1, pkg=LARK, nodes=[title, send_btn]), store, conn, deps,
+    )
+    ctx = store.current
+    assert "send_guard" in ctx.llm_feedback
+
+
+async def test_feedback_consumed_once_by_decide(tmp_path):
+    # feedback 一次性:decide 消费后清空,后续帧 payload 不再携带
+    store = TaskStore()
+    engine = SpyEngine()
+    engine.decision = Decision(
+        actions=[Action(actionId="a-tap", op="tap", params={"match_text": "X"})],
+        source="llm",
+    )
+    conn = FakeConn()
+    deps = _deps(engine, tmp_path=tmp_path)
+    await handle_uplink(_req(), store, conn, deps)
+    await handle_uplink(_perception(seq=1), store, conn, deps)
+    ctx = store.current
+    await handle_uplink(
+        ActionResult(actionId="a-tap", ok=False, error="anchor_not_found"),
+        store, conn, deps,
+    )
+    assert ctx.llm_feedback != ""
+    # ack 后自动补 read_screen;下一帧触发 decide,feedback 被消费
+    engine.decision = Decision(actions=[Action(actionId="r", op="read_screen", params={})], source="llm")
+    captured = {}
+
+    class _SpyInput:
+        def __init__(self, inner):
+            self._inner = inner
+
+        def decide(self, d):
+            captured["feedback"] = d.feedback
+            return self._inner.decide(d)
+
+    deps.engine = _SpyInput(engine)
+    await handle_uplink(_perception(seq=2), store, conn, deps)
+    assert captured["feedback"].startswith("上一条 tap 执行失败")
+    assert ctx.llm_feedback == ""
+
+
+async def test_end_to_end_expect_feedback_loop(tmp_path):
+    # 全链路:LLM 输出 expect title(判定 FAIL)-> read_screen -> 下一帧
+    # LLM-REQ payload 的 feedback 携带实际标题
+    import json as _json
+
+    from app.decision import DecisionEngine
+
+    class _RecLLM:
+        def __init__(self):
+            self.resps = iter(['expect title "阿强"', "read"])
+            self.calls: list[dict] = []
+
+        def complete(self, system, user, image_b64=None):
+            self.calls.append(_json.loads(user))
+            return next(self.resps, "read")
+
+    llm = _RecLLM()
+    engine = DecisionEngine(llm=llm, cache=None, replay_enabled=False)
+    store = TaskStore()
+    conn = FakeConn()
+    deps = _deps(engine, packs=[SendMessagePack()], tmp_path=tmp_path)
+    await handle_uplink(_req("给阿强发飞书消息"), store, conn, deps)
+    title = Node(id="t1", text="别的群", viewIdResourceName=f"{LARK}:id/tv_title")
+    await handle_uplink(_perception(seq=1, pkg=LARK, nodes=[title]), store, conn, deps)
+    # 第一次 decide 输出 expect -> 下发 read_screen;端侧重抓帧上行
+    await handle_uplink(_perception(seq=2, pkg=LARK, nodes=[title]), store, conn, deps)
+    assert len(llm.calls) >= 2
+    fb = llm.calls[1].get("feedback", "")
+    assert "FAIL" in fb and "别的群" in fb

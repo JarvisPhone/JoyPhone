@@ -188,3 +188,15 @@ def test_loop_guard_resets_on_frame_or_decision_change():
     ctx.decided_actions = [Action(actionId="t", op="tap", params={"match_text": "甲"})]
     p.inspect(_same_frame(), ctx)
     assert ctx.loop_repeats == 1
+
+
+def test_verdict_carries_policy_name():
+    class _P:
+        name = "my_guard"
+
+        def inspect(self, frame, ctx):
+            return terminate("r", "aborted")
+
+    ctx = TaskStore().new_task(goal="g", scenario=None)
+    v = run_pipeline([_P()], None, ctx)
+    assert v.policy == "my_guard"

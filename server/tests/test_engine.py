@@ -461,3 +461,109 @@ def test_tap_by_text_plain_label():
     nodes = [Node(id="a", text="发送", clickable=True)]
     action = _llm_decide(eng, nodes).actions[-1]
     assert action.params["match_text"] == "发送"
+
+
+# ---- expect 断言指令(P1)----
+
+
+def test_parse_expect_title():
+    assert parse_actions('expect title "Android AI 开发组"') == [
+        {"op": "expect", "kind": "title", "value": "Android AI 开发组"}
+    ]
+
+
+def test_parse_expect_pkg():
+    assert parse_actions('expect pkg "com.ss.android.lark"') == [
+        {"op": "expect", "kind": "pkg", "value": "com.ss.android.lark"}
+    ]
+
+
+def test_parse_expect_text_bare_and_quoted():
+    assert parse_actions('expect "发送"') == [
+        {"op": "expect", "kind": "text", "value": "发送"}
+    ]
+    assert parse_actions("expect 搜索") == [
+        {"op": "expect", "kind": "text", "value": "搜索"}
+    ]
+
+
+def _expect_decide(llm_text, nodes, pkg="com.ss.android.lark"):
+    eng = DecisionEngine(llm=FakeLLM([llm_text]), cache=None)
+    return eng._llm_decide(DecideInput(
+        goal="g", frame=Perception(pkg=pkg, nodeTree=nodes), target_pkg=pkg,
+        cursor=SkillCursor(), bound_skill=None, guard={},
+        title_keywords=("tv_title",), cache_context="",
+    ))
+
+
+def test_expect_title_pass():
+    nodes = [Node(id="t", text="测试群", viewIdResourceName="com.x:id/tv_title")]
+    d = _expect_decide('expect title "测试群"', nodes)
+    assert [a.op for a in d.actions] == ["read_screen"]
+    assert "PASS" in d.meta["feedback"]
+
+
+def test_expect_title_fail_reports_actual():
+    nodes = [Node(id="t", text="别的群", viewIdResourceName="com.x:id/tv_title")]
+    d = _expect_decide('expect title "测试群"', nodes)
+    assert "FAIL" in d.meta["feedback"]
+    assert "别的群" in d.meta["feedback"]
+
+
+def test_expect_title_unrecognizable_is_fail():
+    d = _expect_decide('expect title "测试群"', [Node(id="a")])
+    assert "FAIL" in d.meta["feedback"]
+
+
+def test_expect_text_substring():
+    nodes = [Node(id="a", text="发送给 测试群", clickable=True)]
+    assert "PASS" in _expect_decide('expect "发送"', nodes).meta["feedback"]
+    assert "FAIL" in _expect_decide('expect "撤回"', nodes).meta["feedback"]
+
+
+def test_expect_pkg():
+    assert "PASS" in _expect_decide('expect pkg "com.ss.android.lark"', []).meta["feedback"]
+    assert "FAIL" in _expect_decide('expect pkg "com.tencent.mm"', []).meta["feedback"]
+
+
+def test_expect_ends_batch():
+    # expect 与 tap 同为批次终点:后续指令被截断
+    nodes = [Node(id="t", text="测试群", viewIdResourceName="com.x:id/tv_title")]
+    d = _expect_decide('expect title "测试群"\ntap 0', nodes)
+    assert [a.op for a in d.actions] == ["read_screen"]
+
+
+# ---- feedback 通道(P1 Task 3)----
+
+
+class _RecordingLLM:
+    def __init__(self, resp="read"):
+        self.resp = resp
+        self.calls: list[dict] = []
+
+    def complete(self, system: str, user: str, image_b64=None) -> str:
+        import json as _json
+        self.calls.append(_json.loads(user))
+        return self.resp
+
+
+def test_llm_payload_includes_feedback_when_present():
+    llm = _RecordingLLM()
+    eng = DecisionEngine(llm=llm, cache=None)
+    eng._llm_decide(DecideInput(
+        goal="g", frame=Perception(pkg="com.x", nodeTree=[]), target_pkg="com.x",
+        cursor=SkillCursor(), bound_skill=None, guard={}, title_keywords=(),
+        cache_context="", feedback="上一条 tap 执行失败:anchor_not_found",
+    ))
+    assert llm.calls[0].get("feedback") == "上一条 tap 执行失败:anchor_not_found"
+
+
+def test_llm_payload_omits_feedback_when_empty():
+    llm = _RecordingLLM()
+    eng = DecisionEngine(llm=llm, cache=None)
+    eng._llm_decide(DecideInput(
+        goal="g", frame=Perception(pkg="com.x", nodeTree=[]), target_pkg="com.x",
+        cursor=SkillCursor(), bound_skill=None, guard={}, title_keywords=(),
+        cache_context="",
+    ))
+    assert "feedback" not in llm.calls[0]

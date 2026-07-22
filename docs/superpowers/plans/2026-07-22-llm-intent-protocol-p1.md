@@ -31,14 +31,14 @@ expect pkg "com.ss.android.lark"   # 前台包名判定
 expect "发送"                       # 文本存在性(任一节点编码标签包含即 PASS)
 ```
 
-- [ ] **Step 1: 失败测试**
+- [x] **Step 1: 失败测试**
   - `test_parse_expect_title/pkg/text`:三种语法解析为 `{"op":"expect","kind":"title|pkg|text","value":...}`(引号含空格正确解析,复用 tap 的引号处理)
   - `test_expect_title_pass_returns_feedback_pass`:FakeLLM 输出 `expect title "测试群"`,帧含 tv_title 节点 → Decision 只有 read_screen,`meta["feedback"]` 含 `PASS`
   - `test_expect_title_fail_reports_actual`:标题不符 → feedback 含 `FAIL` 与实际标题
   - `test_expect_text_substring` / `test_expect_pkg_mismatch`
   - `test_expect_ends_batch`:`expect` 同一批后续指令被截断(与 tap 同规则)
 
-- [ ] **Step 2: 实现**
+- [x] **Step 2: 实现**
   - `parse_actions` 新增 `expect` 动词:首参数为 kind(title/pkg),否则整体为 text;引号剥除
   - `_evaluate_expect(spec, d: DecideInput) -> str`:返回单行中文判定(`expect 判定 PASS:title=="X"` / `expect 判定 FAIL:title 实际是 "Y"` / `FAIL:当前 pkg=com.x`)
   - `_llm_decide` 循环遇 expect spec:立即 `return Decision(actions=[_read_screen_action()], source="llm", meta={"feedback": result})`
@@ -51,13 +51,13 @@ expect "发送"                       # 文本存在性(任一节点编码标签
 - Modify: `server/app/task/context.py`(TaskContext 增 `llm_feedback: str = ""`)
 - Test: `server/tests/test_handlers.py` / `test_policies.py`
 
-- [ ] **Step 1: 失败测试**
+- [x] **Step 1: 失败测试**
   - `test_verdict_carries_policy_name`:run_pipeline 拦截时 verdict.policy == 策略名
   - `test_interception_writes_feedback`:SendGuard 拦截幻觉 done 后 `ctx.llm_feedback` 含「被策略 send_guard 拦截」
   - `test_ack_error_writes_feedback`:action.result ok=false error=anchor_not_found → `ctx.llm_feedback` 含 `anchor_not_found` 与 op
   - `test_ack_ok_no_feedback`:成功不产生反馈(沉默=成功)
 
-- [ ] **Step 2: 实现**
+- [x] **Step 2: 实现**
   - `Verdict` 增 `policy: str = ""`;`run_pipeline` 在 return 前 `v.policy = p.name`(continue 不必填)
   - `_on_perception` post 管道 intercept 且 `ctx.decided_actions` 非空:
     `ctx.llm_feedback = "上一条 {op} 被策略 {policy} 拦截"`(terminate 无需——任务已结束)
@@ -72,19 +72,19 @@ expect "发送"                       # 文本存在性(任一节点编码标签
 - Modify: `server/app/task/handlers.py`(_on_perception 构建 DecideInput 时传入并清空 ctx.llm_feedback)
 - Test: `server/tests/test_engine.py` / `test_handlers.py`
 
-- [ ] **Step 1: 失败测试**
+- [x] **Step 1: 失败测试**
   - `test_llm_payload_includes_feedback`:DecideInput(feedback="x") → 捕获 payload 含 `"feedback": "x"`
   - `test_feedback_consumed_once`:handlers 层 decide 后 ctx.llm_feedback 被清空,第二帧 payload 不再携带
   - `test_end_to_end_expect_feedback_loop`:handle_uplink 全链路——LLM 输出 expect title FAIL → 下一帧的 LLM-REQ payload feedback 含实际标题(用记录型 LLM 断言)
 
-- [ ] **Step 2: prompt 更新**
+- [x] **Step 2: prompt 更新**
   - 指令表新增:`expect title "X" / expect pkg "com.x" / expect "文本"` —— 核查类指令,云端判定后通过 feedback 告知结果,**零副作用,需要核准时用它,禁止用 tap 表达核查**
   - 说明 feedback 字段:「你上一条指令的结果(失败原因/被拦截原因/expect 判定);没有此字段表示上一条成功」
   - 保留「严禁点击标题栏」与 TitleTapGuardPolicy(纵深防御)
 
 ### Task 4: 门禁 + 真机验证
 
-- [ ] `uv run pytest tests/ -q` 全绿;`uv run pyright app/` 零错误
+- [x] `uv run pytest tests/ -q` 全绿;`uv run pyright app/` 零错误
 - [ ] commit(单 commit,信息含「真机六轮」)
 - [ ] 真机验证清单:
   - 进群后 LLM 用 `expect title` 核查(看 llm.log 是否出现)

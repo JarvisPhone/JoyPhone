@@ -4,7 +4,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Literal, Protocol, Sequence
 
@@ -20,12 +20,17 @@ VerdictKind = Literal["continue", "terminate", "intercept"]
 
 @dataclass(frozen=True)
 class Verdict:
-    """策略裁决结果:continue 放行 / terminate 终止任务 / intercept 下发动作。"""
+    """策略裁决结果:continue 放行 / terminate 终止任务 / intercept 下发动作。
+
+    policy 由 run_pipeline 在短路返回时填充(裁决来源策略名),
+    供 LLM 反馈通道说明「被谁拦截」。
+    """
 
     kind: VerdictKind
     reason: str = ""
     status: str = ""
     actions: list[Action] | None = None
+    policy: str = ""
 
 
 def continue_() -> Verdict:
@@ -175,5 +180,5 @@ def run_pipeline(
                 verdict.kind,
                 verdict.reason,
             )
-            return verdict
+            return replace(verdict, policy=policy.name)
     return continue_()

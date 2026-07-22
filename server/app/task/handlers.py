@@ -177,6 +177,8 @@ async def _on_perception(
 
     profile = scenario.ui_profile(ctx.target_pkg) if scenario is not None else None
     _maybe_classify_entry(uplink, ctx, scenario)
+    # feedback 一次性消费:随本次 decide 送达 LLM 后清空
+    feedback, ctx.llm_feedback = ctx.llm_feedback, ""
     decision = deps.engine.decide(
         DecideInput(
             goal=ctx.goal,
@@ -189,8 +191,12 @@ async def _on_perception(
             bindings=ctx.bindings,
             cache_context=ctx.cache_context if uplink.pkg == ctx.target_pkg else "",
             cache_disabled=ctx.cache_disabled,
+            feedback=feedback,
         )
     )
+    # expect 判定结果经 meta 返回,存回 feedback 通道随下一帧送达
+    if decision.meta.get("feedback"):
+        ctx.llm_feedback = str(decision.meta["feedback"])
     ctx.steps += 1
     source = decision.meta.get("source", decision.source)
     _record_decision_metrics(deps, ctx, source)
@@ -206,6 +212,11 @@ async def _on_perception(
         return
     if post_verdict.kind == "intercept":
         actions = post_verdict.actions or []
+        if ctx.decided_actions:
+            # LLM 反馈通道:决策被策略拦截(幻觉 done/标题栏点击等),告知原因
+            ctx.llm_feedback = "上一条 %s 被策略 %s 拦截" % (
+                ctx.decided_actions[0].op, post_verdict.policy,
+            )
         if not actions and ctx.confirm.confirm_id:
             await conn.send(
                 TaskConfirm(
@@ -298,10 +309,15 @@ async def _on_action_result(
     was_mutating = uplink.actionId in ctx.pending_mutating
     ctx.pending_mutating.discard(uplink.actionId)
     # 动作↔步骤对账:ack 结果回写到 applied_steps,供 learn 时过滤失败步骤
+    failed_op = ""
     for step in reversed(ctx.applied_steps):
         if step.get("actionId") == uplink.actionId:
             step["ok"] = uplink.ok
+            failed_op = str(step.get("op", ""))
             break
+    if not uplink.ok and uplink.error and failed_op:
+        # LLM 反馈通道:执行失败须让 LLM 知道原因(否则它只能从屏幕猜)
+        ctx.llm_feedback = "上一条 %s 执行失败:%s" % (failed_op, uplink.error)
     if uplink.ok:
         deps.metrics.record_step(ctx.task_id)
         if source in ("cache", "skill"):
