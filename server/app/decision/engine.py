@@ -122,10 +122,22 @@ def _node_type(node: Node) -> str:
     return "text"
 
 
+def _rid_label(rid: str | None) -> str:
+    """rid 末段转可读标签。
+
+    com.ss.android.lark:id/iv_download_image -> "iv download image"
+    大量节点(图片查看器/图标按钮)text/desc 全空但 rid 自带语义,
+    丢掉等于把 LLM 的眼睛蒙上。
+    """
+    if not rid:
+        return ""
+    return rid.rsplit("/", 1)[-1].replace("_", " ").strip()
+
+
 def _encode_nodes(nodes: list[Node]) -> str:
     lines = []
     for i, n in enumerate(nodes):
-        label = (n.text or n.desc or "").strip()
+        label = (n.text or n.desc or "").strip() or _rid_label(n.viewIdResourceName)
         lines.append(f'[{i}] {_node_type(n)} "{label}"')
     return "\n".join(lines)
 
@@ -199,10 +211,12 @@ class DecisionEngine:
     MAX_LLM_NODES = 80
 
     def __init__(self, llm: LLM, cache: SkillCache | None = None,
-                 escape_llm: LLM | None = None):
+                 escape_llm: LLM | None = None, replay_enabled: bool = True):
         self._llm = llm
         self._cache = cache
         self._escape_llm = escape_llm if escape_llm is not None else llm
+        # 记忆回放(cache/skill)总开关:LLM 链路未稳定前由 Config.REPLAY_ENABLED 关闭
+        self._replay_enabled = replay_enabled
 
     @property
     def cache(self) -> SkillCache | None:
@@ -210,15 +224,16 @@ class DecisionEngine:
         return self._cache
 
     def decide(self, d: DecideInput) -> Decision:
-        cached = self._cache_step(d)
-        if cached is not None:
-            return Decision(actions=[cached], source="cache")
+        if self._replay_enabled:
+            cached = self._cache_step(d)
+            if cached is not None:
+                return Decision(actions=[cached], source="cache")
 
-        if d.bound_skill is not None and d.cursor.state != "failed" \
-                and d.cursor.misses < Config.SKILL_MAX_MISSES:
-            skilled = self._skill_step(d)
-            if skilled is not None:
-                return skilled
+            if d.bound_skill is not None and d.cursor.state != "failed" \
+                    and d.cursor.misses < Config.SKILL_MAX_MISSES:
+                skilled = self._skill_step(d)
+                if skilled is not None:
+                    return skilled
 
         guarded = pkg_guard_action(d.frame, d.target_pkg, d.guard, self._escape_llm)
         if guarded is not None:

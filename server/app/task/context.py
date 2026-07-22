@@ -62,6 +62,13 @@ class TaskContext:
     wrong_chat_input_count: int = 0
     # SEND_GUARD 计数:未真实发送的幻觉 done 被拦截次数,配合 Config.SEND_GUARD_MAX。
     send_guard_count: int = 0
+    # LOOP_GUARD 状态:最近一次的(帧签名,决策签名)与重复次数/已 back 次数。
+    # 同一(帧,决策)重复达 Config.LOOP_GUARD_TRIGGER 判定停滞,机械 back 脱困;
+    # 任一变化即重置。
+    loop_frame_sig: str = ""
+    loop_decision_sig: str = ""
+    loop_repeats: int = 0
+    loop_backs: int = 0
     # 进入目标 app 的落地页分类(target_chat/unknown 等,由场景包 classify_entry)。
     # 每次进入 app 的落地页可能不同(冷启动在主页/热启动在上次聊天页),
     # 学习与回放都按入口状态分开进行。

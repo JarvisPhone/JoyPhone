@@ -49,6 +49,7 @@ from app.task.fsm import TaskState
 from app.task.policies import (
     BudgetPolicy,
     ConfirmTimeoutPolicy,
+    LoopGuardPolicy,
     Verdict,
     run_pipeline,
 )
@@ -196,6 +197,9 @@ async def _on_perception(
     ctx.decided_actions = decision.actions or []
 
     post = list(scenario.post_policies()) if scenario is not None else []
+    # 内核循环守卫排在场景策略之后:场景的语义守卫(确认/错群/done 门槛)
+    # 先按自己的语义处置,兜不住的停滞才轮到机械 back。
+    post.append(LoopGuardPolicy())
     post_verdict = run_pipeline(post, uplink, ctx)
     if post_verdict.kind == "terminate":
         await _terminate(ctx, post_verdict, conn, deps, store)

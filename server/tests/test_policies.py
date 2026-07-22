@@ -104,3 +104,87 @@ def test_pipeline_all_continue():
     ctx = _ctx_with_steps(0)
     v = run_pipeline([Noop(), Noop()], None, ctx)
     assert v.kind == "continue"
+
+
+# ---- LoopGuardPolicy(停滞/循环守卫)----
+
+from app.protocol import Action, Node, Perception
+from app.task.policies import LoopGuardPolicy, decision_signature, frame_signature
+
+
+def _loop_ctx():
+    return TaskStore().new_task(goal="g", scenario=None)
+
+
+def _same_frame():
+    return Perception(pkg="com.x", nodeTree=[Node(id="n1", text="甲")])
+
+
+def _read_action():
+    return [Action(actionId="r1", op="read_screen", params={})]
+
+
+def test_frame_signature_changes_with_content():
+    f1 = _same_frame()
+    f2 = Perception(pkg="com.x", nodeTree=[Node(id="n1", text="乙")])
+    f3 = Perception(pkg="com.y", nodeTree=[Node(id="n1", text="甲")])
+    assert frame_signature(f1) != frame_signature(f2)
+    assert frame_signature(f1) != frame_signature(f3)
+    assert frame_signature(f1) == frame_signature(_same_frame())
+
+
+def test_decision_signature_prefers_semantic_anchor():
+    a1 = [Action(actionId="1", op="tap", params={"match_text": "发送", "x": "1", "y": "2"})]
+    a2 = [Action(actionId="2", op="tap", params={"match_text": "发送", "x": "9", "y": "9"})]
+    a3 = [Action(actionId="3", op="tap", params={"x": "1", "y": "2"})]
+    assert decision_signature(a1) == decision_signature(a2)  # 锚点相同即同决策
+    assert decision_signature(a1) != decision_signature(a3)
+
+
+def test_loop_guard_continues_before_threshold():
+    ctx = _loop_ctx()
+    p = LoopGuardPolicy()
+    for _ in range(Config.LOOP_GUARD_TRIGGER - 1):
+        ctx.decided_actions = _read_action()
+        assert p.inspect(_same_frame(), ctx).kind == "continue"
+
+
+def test_loop_guard_intercepts_with_back_at_threshold():
+    ctx = _loop_ctx()
+    p = LoopGuardPolicy()
+    v = None
+    for _ in range(Config.LOOP_GUARD_TRIGGER):
+        ctx.decided_actions = _read_action()
+        v = p.inspect(_same_frame(), ctx)
+    assert v.kind == "intercept"
+    assert v.actions[0].op == "back"
+    assert ctx.loop_backs == 1
+
+
+def test_loop_guard_aborts_after_max_backs():
+    ctx = _loop_ctx()
+    p = LoopGuardPolicy()
+    v = None
+    # back 后帧/决策不变(查看器吞掉 back),repeats 持续增长直至上限
+    for _ in range(Config.LOOP_GUARD_TRIGGER + Config.LOOP_GUARD_MAX_BACKS):
+        ctx.decided_actions = _read_action()
+        v = p.inspect(_same_frame(), ctx)
+    assert v.kind == "terminate"
+    assert v.reason == "stuck_loop"
+    assert ctx.fsm.state == TaskState.ABORT
+
+
+def test_loop_guard_resets_on_frame_or_decision_change():
+    ctx = _loop_ctx()
+    p = LoopGuardPolicy()
+    for _ in range(Config.LOOP_GUARD_TRIGGER - 1):
+        ctx.decided_actions = _read_action()
+        p.inspect(_same_frame(), ctx)
+    # 帧变了 -> 计数重置
+    ctx.decided_actions = _read_action()
+    p.inspect(Perception(pkg="com.x", nodeTree=[Node(id="n1", text="新页面")]), ctx)
+    assert ctx.loop_repeats == 1
+    # 决策变了 -> 计数重置
+    ctx.decided_actions = [Action(actionId="t", op="tap", params={"match_text": "甲"})]
+    p.inspect(_same_frame(), ctx)
+    assert ctx.loop_repeats == 1

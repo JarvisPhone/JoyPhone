@@ -44,6 +44,7 @@ def create_app() -> FastAPI:
     engine = DecisionEngine(
         llm=_build_llm(),
         cache=SkillCache(Path(os.getenv("SKILL_CACHE_PATH", "data/skill_cache.json"))),
+        replay_enabled=Config.REPLAY_ENABLED,
     )
     deps = HandlerDeps(
         engine=engine,

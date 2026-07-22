@@ -374,3 +374,33 @@ def test_llm_tap_injects_match_text_anchor():
     nodes = [Node(id="a", text="飞书", clickable=True, bounds=(0, 0, 100, 100))]
     d = _llm_decide(eng, nodes)
     assert d.actions[0].params["match_text"] == "飞书"
+
+
+# ---- 感知编码:rid 语义兜底 ----
+
+
+def test_encode_nodes_falls_back_to_rid_label():
+    nodes = [
+        Node(id="a", text=None, desc=None,
+             viewIdResourceName="com.ss.android.lark:id/iv_download_image", clickable=True),
+        Node(id="b", text="有文本", clickable=True),
+    ]
+    out = _encode_nodes(nodes)
+    assert '"iv download image"' in out
+    assert '"有文本"' in out
+
+
+# ---- 记忆回放总开关 ----
+
+
+def test_replay_disabled_bypasses_cache_and_skill(tmp_path):
+    cache = _active_cache(tmp_path)
+    skill = BoundSkill.bind(TPL, {"contact": "张三"})
+    eng = DecisionEngine(llm=FakeLLM(["read"]), cache=cache, replay_enabled=False)
+    frame = Perception(pkg="com.x", nodeTree=[Node(id="n", text="发送")])
+    d = eng.decide(DecideInput(
+        goal="g", frame=frame, target_pkg="com.x", cursor=SkillCursor(),
+        bound_skill=skill, guard={}, title_keywords=(),
+        cache_context="com.x|unknown",
+    ))
+    assert d.source != "cache" and d.source != "skill"
