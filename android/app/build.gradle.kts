@@ -12,6 +12,15 @@ android {
         version = release(36)
     }
 
+    // WS_URL 来自 local.properties(已 gitignore); 命令行可用 -PwsUrl=... 覆盖。
+    // 默认 emulator loopback(10.0.2.2 指向宿主机),真机请在 local.properties 里改:
+    //   wsUrl=ws://192.168.x.x:8000
+    // 见 android/local.properties.example。
+    val wsUrl: String = providers
+        .gradleProperty("wsUrl")
+        .orElse("ws://10.0.2.2:8000")
+        .get()
+
     defaultConfig {
         applicationId = "com.example.phoneagent"
         minSdk = 26
@@ -19,16 +28,13 @@ android {
         versionCode = 1
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        // 默认 emulator loopback(10.0.2.2 指向宿主机)
-        buildConfigField("String", "WS_URL", "\"ws://10.0.2.2:8000\"")
+        buildConfigField("String", "WS_URL", "\"$wsUrl\"")
     }
 
     buildTypes {
         debug {
-            // 真机经 WiFi 同网段直连服务端(改 IP 时同步)
-            // 历史: adb reverse + localhost 已弃用,改走同网段直连
-            // 当前本机 en0 IP: 10.253.61.158
-            buildConfigField("String", "WS_URL", "\"ws://10.253.61.158:8000\"")
+            // 真机经 WiFi 同网段直连服务端 —— IP 走 local.properties 的 wsUrl
+            buildConfigField("String", "WS_URL", "\"$wsUrl\"")
         }
         release {
             isMinifyEnabled = false
@@ -36,9 +42,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            // 部署时改为实际服务端地址
-            buildConfigField("String", "WS_URL", "\"ws://localhost:8000\"")
-     }
+            // 部署时改 local.properties 的 wsUrl 即可,不必再改 build.gradle.kts
+            buildConfigField("String", "WS_URL", "\"$wsUrl\"")
+        }
     }
 
     compileOptions {

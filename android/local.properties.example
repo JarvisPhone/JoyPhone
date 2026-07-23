@@ -1,0 +1,12 @@
+# 本机覆盖文件(已 gitignore),按本机环境改;sdk.dir 必须保留,其他可选。
+#
+# wsUrl: 安卓 app 连服务端 WebSocket 的地址。
+#   - 模拟器:保持默认 ws://10.0.2.2:8000(10.0.2.2 是 Android 模拟器指向宿主机的 loopback)
+#   - 真机:与开发机同 WiFi 段,填开发机实际 IP,例如 ws://192.168.1.100:8000
+#   - 端口:与服务端 SERVER_PORT 保持一致(默认 8000)
+#
+# 覆盖方式:命令行 -PwsUrl=ws://... 永远比这里的值优先。
+#
+# 注意:此文件不要提交到 git,里面可能含你不想公开的 IP/路径。
+sdk.dir=/Users/conv/Library/Android/sdk
+wsUrl=ws://192.168.1.100:8000
