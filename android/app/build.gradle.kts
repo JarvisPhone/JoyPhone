@@ -12,14 +12,28 @@ android {
         version = release(36)
     }
 
-    // WS_URL 来自 local.properties(已 gitignore); 命令行可用 -PwsUrl=... 覆盖。
-    // 默认 emulator loopback(10.0.2.2 指向宿主机),真机请在 local.properties 里改:
-    //   wsUrl=ws://192.168.x.x:8000
-    // 见 android/local.properties.example。
-    val wsUrl: String = providers
-        .gradleProperty("wsUrl")
-        .orElse("ws://10.0.2.2:8000")
-        .get()
+    // WS_URL 解析优先级(从高到低):
+    //   1. 命令行 -PwsUrl=...(最高,临时用)
+    //   2. android/local.properties(已 gitignore,本机用户级,真机改这里)
+    //   3. android/gradle.properties(项目级默认 ws://10.0.2.2:8000)
+    // 注意:providers.gradleProperty() 会自动读 gradle.properties,不会读 local.properties,
+    // 所以 local.properties 必须自己 file() 解析,才能压在 gradle.properties 之上。
+    val wsUrl: String = run {
+        // 1) 命令行 -P
+        providers.gradleProperty("wsUrl").orNull
+            // 2) local.properties 的 wsUrl= 行(Gradle 不会自动读它)
+            ?: run {
+                val local = rootProject.file("local.properties")
+                if (local.exists()) {
+                    local.readLines()
+                        .firstOrNull { it.trim().startsWith("wsUrl=") }
+                        ?.substringAfter("=")?.trim()
+                        ?.takeIf { it.isNotEmpty() }
+                } else null
+            }
+            // 3) gradle.properties(项目默认值)— 已经在 gradleProperty() 里自动加载
+            ?: "ws://10.0.2.2:8000"
+    }
 
     defaultConfig {
         applicationId = "com.example.phoneagent"

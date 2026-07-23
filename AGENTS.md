@@ -49,3 +49,12 @@ server/app/
 - 端侧 WS_URL 来自 BuildConfig(build.gradle.kts),禁止硬编码
 - 协议双端契约测试样本:shared/protocol/v2/*.json
 - WS 握手:连接 URL 须带 `?v=2`(PROTOCOL_VERSION),缺失或不符直接 close(code=4402)
+- 真机联调分工:**AI 不碰真机操作**;AI 负责 `adb install -r` + `adb shell monkey` 启动 app,用户手动授予无障碍权限 + 点击触发场景,用户口述现象,AI 看 `server/logs/*` 分析(`tail -F` 三件套 uvicorn.log / comm.log / llm.log)
+
+## 闭环优先级(2026-07-23 真机复盘后立)
+
+1. **基础闭环先行**:LLM 链路在成功率未稳定前,**禁止**讨论 cache 沉淀 / skill 复用。cache 是优化,不是根基,基础不过 cache 上层没意义。
+2. **LLM 必收结构化上下文**(规划中):Screen 序列化(`engine._encode_nodes`)+ pkg_guard `Scene` 状态机(`detect_scene`)结果一并塞进 prompt,
+   让 LLM 看到 `[i] type "label"(clickable=true|false|editable=true|false)(scene=HOME|MINUS_ONE|...)` 等结构化字段;不要把 workspace bounds 写成文字描述让 LLM 自己推理。
+3. **LoopGuard 兜底要扩**(规划中):在 `policies.py` 增加 `swipe left/right` 出口(若 frame 持续不变 + current scene 在 launcher / 负一屏,允许触发一次方向性 swipe),而不是死磕 `back/home`。
+4. **clickable=false 显式标记**(规划中):`_encode_nodes` 输出 `type` 时,把不可点击纯文本与 `clickable=false` 装饰元素区分(例如新引入 `disabled` 标签);LLM 不该被"飞书 有2条通知"这种 clickable=false 通知磁贴误导为可点。
