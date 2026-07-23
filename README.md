@@ -4,297 +4,290 @@
 
 ### Say it, the phone does it.
 
-An open-source, cloud–device co-piloted AI phone agent · cloud as the brain, the phone as the hands & eyes
+An open-source AI phone assistant · Cloud as the brain, the phone as the hands & eyes
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-%E2%89%A53.14-3776AB.svg)](https://www.python.org/)
 [![Kotlin](https://img.shields.io/badge/kotlin-2.x-7F52FF.svg)](https://kotlinlang.org/)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#-contributing)
 
-**English** | [中文](README.zh-CN.md)
+[**English** | [中文](README.zh-CN.md)]
 
 </div>
 
 ---
 
-JoyPhone is an **open-source, cloud–device co-piloted AI phone agent**: a cloud-hosted large model acts as the "brain" for decision-making, while a real Android device — using the `AccessibilityService` permission — acts as the "hands and eyes" to drive any app. No vendor SDK, no root, no vendor cooperation required. It looks at the screen, taps buttons, fills inputs, and scrolls just like a human would. You say one sentence; it does the rest.
+## What is JoyPhone?
 
-It is inspired by products like Doubao Phone that promise "control the whole phone with one voice command", but takes a **fully open, cloud–device co-piloted, model-replaceable** route: it is not tied to any vendor's LLM, not locked to any phone brand, and turns "let AI use a phone like a human" into an **open project anyone can join, reproduce, and iterate on**.
+JoyPhone is an **AI assistant that controls your phone for you**. You tell it what to do in plain language, and it autonomously opens apps, types messages, taps buttons, and completes tasks on a real Android phone—just like a human would.
 
-> Long-term vision: a user says one sentence to the phone — "send Mom a WeChat message that I'm coming home for dinner tonight", "open Douyin and search for recent cat videos", "forward the last meeting notes to the work group" — and the phone listens, opens the apps, types, and confirms by itself. No more drilling through menus layer by layer, no more cross-app data moving, no more trapping people on small screens doing repetitive labor.
+Imagine saying:
+- "Send a WeChat message to Mom saying I'm coming home for dinner"
+- "Open Douyin and search for cute cat videos"
+- "Forward the last meeting notes to the work group"
 
-## Highlights
+JoyPhone listens, understands, and does it all. No more digging through menus, no more repetitive taps, no more struggling with tiny screens.
 
-1. **Zero-SDK dependency**: drives any real-app UI via the Android AccessibilityService, sidestepping vendor bans and rate limits. One approach covers Feishu / WeCom / WeChat / SMS / Douyin and all social channels — anti-detection and brand-agnostic.
-2. **Cloud–device "hands-eyes-brain" separation**: the phone only perceives (node tree + screenshot) and acts (tap / input / swipe); the cloud runs the multimodal large model for decisions — decisions can be hot-swapped, models replaced, and compute is unbounded, so iteration cost is far lower than on-device-integrated solutions.
-3. **Skill library self-sedimentation moat**: every successful step sequence is automatically solidified into a reusable "skill"; on hit it replays as a script, on miss it falls back to the LLM. The more you use it, the faster and more accurate it gets; a community-built skill library forms a long-term flywheel.
-4. **Voice one-shot driven** (roadmap): evolve from a pure-text goal to "voice command → cloud ASR → decision → negotiation", aiming to complete complex multi-step cross-app operations with one sentence, like Doubao Phone — but fully open and with a model of your choice.
+**JoyPhone is inspired by products like Doubao Phone that promise "control the whole phone with one voice command," but takes a fully open, customizable route**: it's not tied to any specific AI model, any phone brand, or any company. This is an open project anyone can use, learn from, and contribute to.
 
-## Architecture Overview
+## Key Features
+
+### 1. Works with Any App — No Developer APIs Needed
+
+JoyPhone uses Android's built-in accessibility features to interact with apps directly, just like a human user would. This means it works with **WeChat, Feishu, DingTalk, Douyin, SMS**, and virtually any other app—without needing special permissions from app developers.
+
+### 2. Cloud-Powered Intelligence
+
+The heavy thinking happens in the cloud: JoyPhone uses a large language model (LLM) to understand your goals, analyze screen content, and decide what to do next. This means:
+- **Fast responses** — no phone hardware limitations
+- **Easy updates** — change AI models without reinstalling anything
+- **Works on any Android phone** — the phone just follows instructions
+
+### 3. Gets Smarter Over Time
+
+Every successful task creates a "skill" that JoyPhone remembers. The next time you ask for something similar, it completes it instantly without hesitation. The more you use it, the faster and more reliable it becomes.
+
+### 4. Your Privacy, Your Control
+
+JoyPhone processes your screen content through cloud AI, but all decisions happen on YOUR configured server. No data goes to third parties you don't trust.
+
+## How It Works
 
 ```
-┌──────────────────────── Cloud (FastAPI + Python) ─────────────────────────┐
-│  Task mgmt │ WS gateway + session FSM │ Decision engine │ Negotiation bot │
-│  LLM abstraction │ Skill library │ Scene FSM │ Metrics │ Comm log          │
-└────────────▲──────────────────────────────┬───────────────────────────────┘
-             │ WebSocket (perception ↑ / action ↓)
-             │  bidirectional real-time long-lived connection
-┌────────────┴──────────────────────────────▼───────────────────────────────┐
-│                    Android (Kotlin / AccessibilityService)                 │
-│   Perception (node tree + screenshot) │ Execution (tap / input / swipe)     │
-│   Event listening (new message upload) │ Connection mgmt (auto-reconnect)   │
-└─────────────────────────────────────────────────────────────────────────────┘
-                          ↑ drives real apps (Feishu / WeCom / WeChat / Douyin …)
+┌─────────────────────────────────────────────────────────────────┐
+│                           Cloud (Your Server)                   │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐ │
+│  │ Task Master │  │ AI Brain    │  │ Skills Library          │ │
+│  │ (manages    │  │ (understands│  │ (learned from past      │ │
+│  │  your tasks)│  │  goals &    │  │  successful tasks)       │ │
+│  │             │  │  screens)   │  │                          │ │
+│  └─────────────┘  └─────────────┘  └─────────────────────────┘ │
+└────────────────────────────┬────────────────────────────────────┘
+                             │ Internet (WebSocket)
+┌────────────────────────────▼────────────────────────────────────┐
+│                     Your Android Phone                          │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐ │
+│  │ Eyes        │  │ Hands       │  │ Connection Manager      │ │
+│  │ (reads      │  │ (taps,      │  │ (stays connected,       │ │
+│  │  screens)   │  │  types)     │  │  auto-reconnects)       │ │
+│  └─────────────┘  └─────────────┘  └─────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────┘
+                             ↑
+              JoyPhone controls apps like a human user
+              (Feishu, WeChat, Douyin, SMS, etc.)
 ```
 
-The two ends communicate over a bidirectional real-time WebSocket channel:
+**The flow is simple:**
+1. You give JoyPhone a goal (e.g., "send a message to Zhang San")
+2. Your phone shows JoyPhone what's on screen
+3. The cloud AI decides the next action
+4. Your phone executes it (tap, type, scroll)
+5. Repeat until the task is done
 
-- **Uplink** (App → Cloud): `perception` (node tree + screenshot), `action.result`, `event.newMessage`, `heartbeat`, `task.request`
-- **Downlink** (Cloud → App): `task.start`, `action`, `task.done`, `task.abort`
+## What Can JoyPhone Do?
 
-The cloud side is split into layered packages under `server/app/`:
-
-- **`protocol`** — uplink/downlink message models (Pydantic), the single source of truth for the wire format.
-- **`gateway`** — WebSocket connection wrapper (`Connection`, comm/LLM logging) + `route_loop` dispatcher.
-- **`task`** — task runtime: `TaskStore`/`TaskContext`, `TaskFSM` (`IDLE → RUNNING → AWAITING_CONFIRM / WAITING_EVENT → DONE / ABORT` with legal-transition enforcement and a step budget to prevent runaway), uplink handlers, and policies.
-- **`scenario`** — L1 scenario packs (e.g. `SendMessagePack` for "send X a message") + L2 `AppProfile` data (per-app UI recognition features in `scenario/profiles/`); unknown goals fall back to the generic LLM mode.
-- **`decision`** — the L0 kernel decision engine (cache → skill → pkg-guard scene FSM → LLM tiered fallback), LLM abstraction, skill library/cache, and parameterized UI-inspection helpers.
-- **`infra`** — `Config` constants and the per-task metrics collector.
+| Category | Examples |
+|----------|----------|
+| **Messaging** | Send WeChat/Feishu messages, reply to groups, forward content |
+| **Search & Browse** | Open Douyin and search, browse Weibo, find content |
+| **Information Entry** | Fill forms, complete registrations, input data |
+| **Social Media** | Post updates, comment, share content |
+| **Daily Tasks** | Set reminders, check notifications, navigate apps |
 
 ## Roadmap
 
-JoyPhone is a long-running open-source project that advances by milestone:
+We're building JoyPhone step by step:
 
 | Phase | Goal | Status |
-|------|------|------|
-| M1 Cloud–device minimal loop | Text goal → real-device accessibility control → decision + act + report | ✅ Working |
-| M2 Skill self-sedimentation | Successful paths auto-solidify to "skills", replay-on-hit | ✅ MVP |
-| M2.5 Screen-scene FSM | Cloud frame-by-frame driven generic return-home + dual stall/oscillation escape (LLM semantic escape → mechanical fallback three-tier ladder) | 🚧 In progress |
-| M3 Multi-app onboarding | WeChat / WeCom / Douyin node adaptation and skill library | 🚧 In progress |
-| M4 Voice one-shot driven | Cloud ASR → intent parsing → decision, ready out-of-the-mouth like Doubao Phone | 🔜 Planned |
-| M5 Multi-device scheduling | One cloud manages many phones, ops backend and task queue | 🔜 Planned |
-| M6 WS gateway high-perf | Rewrite gateway in Rust to shoulder more device concurrency | 🔬 Research |
-| M7 Voice outbound / call center | Plug into a call center, AI actively dials out and multi-round voice negotiation | 🔬 Research |
-
-## Repository Structure
-
-```
-JoyPhone/
-├── server/                 # Cloud: FastAPI + Python ≥3.14 (uv-managed)
-│   ├── app/
-│   │   ├── main.py              # create_app: wires engine/scenario_packs/metrics, mounts /ws/{device_id}
-│   │   ├── protocol/            # Uplink/downlink message protocol (Pydantic models)
-│   │   ├── gateway/             # connection.py (WS wrapper + comm/LLM log) / router.py (dispatch loop)
-│   │   ├── task/                # context.py (TaskStore) / fsm.py (TaskFSM) / handlers.py / policies.py
-│   │   ├── scenario/            # base.py (ScenarioPack protocol + AppProfile) / send_message.py /
-│   │   │                        #   ui.py (goal→pkg resolution, send-button/input heuristics) /
-│   │   │                        #   profiles/ (L2 per-app UI feature data: feishu / wechat / misc)
-│   │   ├── decision/            # engine.py (cache→skill→pkg_guard→LLM) / cache.py / skills.py /
-│   │   │                        #   llm.py (FakeLLM / RealLLM) / pkg_guard.py (screen-scene FSM) /
-│   │   │                        #   ui_inspect.py (title detection, keyword-parameterized) / types.py
-│   │   ├── infra/               # config.py (budgets/timeouts) / metrics.py (per-task metrics)
-│   │   └── negotiation.py       # Negotiation bot
-│   ├── tests/                   # pytest unit/integration tests + replay fixtures
-│   ├── scripts/e2e_feishu.sh   # Real-device end-to-end debug script
-│   ├── pyproject.toml
-│   └── .env.example             # LLM config template (OpenAI-compatible)
-│
-├── android/                # Android: Kotlin + Compose + Hilt
-│   └── app/src/main/java/com/example/phoneagent/
-│       ├── accessibility/      # PhoneAgentService / Executor / Perception / NodeFlattener / GestureGeometry …
-│       ├── net/                 # WsClient / WsDispatcher (long connect + auto-reconnect)
-│       ├── protocol/            # Messages.kt — serialization models aligned with cloud
-│       ├── domain/              # AgentModels / SampleRequest / TaskState / TraceEvent / ActionLog
-│       ├── data/                # AgentStateRepository (debug-panel state)
-│       ├── ui/                  # AgentScreen / DebugPanel / MainViewModel (Jetpack Compose)
-│       ├── di/                  # AppModule — Hilt DI graph
-│       ├── AccessibilityStatus.kt
-│       ├── AgentApplication.kt  # Hilt-enabled Application
-│       └── MainActivity.kt
-│
-└── docs/
-    ├── superpowers/            # Design and implementation plans (specs / plans, archived by date)
-    ├── competition/            # Competitive analysis notes
-    └── CODE_REVIEW_REPORT.md
-```
-
-## Cloud Design Highlights
-
-### Decision engine tiered fallback (`server/app/decision/engine.py`)
-
-For every perception frame, the next action is produced by priority:
-
-1. **Skill cache hit**: look up `SkillCache` by `(goal, pkg)`; on hit, replay the sediment-ed step sequence. If a step can't be re-located on the current node tree, fall back to the next tier.
-2. **Static skill library**: look up `SkillLibrary` by `skill_name`; locate the node by `match_text` on the current node tree and replay.
-3. **LLM reasoning**: feed the goal + structured screen state (`[idx] type "text"`, interactive nodes first, up to `MAX_LLM_NODES=80`) + action history to the LLM, asking it to output exactly one JSON action object.
-
-A `tap` decided by the LLM is resolved on the cloud side to the exact coordinate center using the node `id` / `match_text` before being sent down — avoiding on-device full-screen substring match false hits (e.g. minus-one-screen tiles). The system prompt bakes in common-sense constraints like "minus-one-screen detection" and "swipe on home to find the app".
-
-### Screen-scene FSM (`server/app/decision/pkg_guard.py`)
-
-Frame by frame on the cloud side, the current perception is classified into a finite scene: `HOME` (any desktop page) / `MINUS_ONE` (the -1 screen) / `RECENT_APPS` / `LOCK_SCREEN` / `NOTIFICATION` / `CONTROL_CENTER` / `IN_APP` / `UNKNOWN`. Resource-id matching is suffix-based (`endswith` / `contains`) so it is cross-device without hardcoding any vendor package prefix. The FSM replaces `decision.py`'s pkg-only guard and roots out the endless loop circling between launcher states. It also provides a convergence guard that combines stall (`STALL_THRESHOLD=3` consecutive same-scene same-op) and oscillation (non-target scene repeating `CYCLE_THRESHOLD=2` times inside a `WINDOW=6` window), escalating to an LLM semantic-escape (`LLM_ESCALATION_TRIES=1`) then a mechanical-fallback three-tier ladder (`FALLBACK_TRIES=2`).
-
-### Goal → application boundary (`server/app/scenario/ui.py`)
-
-Parses a natural-language goal into a target Android `package` with pure keyword matching over the L2 `AppProfile` aliases (`scenario/profiles/`) — fast, zero-cost, unit-testable. The resolved `pkg` becomes an app-boundary hard constraint: once the perceived `pkg != target pkg`, the cloud first returns to home, then `home` + finds the icon to re-open the target app — it will never tap a notification / tile to jump to another app. Aliases are built in for Feishu / WeChat / QQ / DingTalk / Taobao / JD / Meituan / Xiaohongshu / Douyin / Zhihu / Amap / Baidu Map / Tencent Map / Dialer / Contacts, etc.
-
-### LLM abstraction (`server/app/decision/llm.py`)
-
-- `FakeLLM`: replays a preset response sequence — for offline / CI tests.
-- `RealLLM`: OpenAI-compatible SDK based; defaults to MiniMax-M2.x (with `extra_body={"thinking":{"type":"disabled"}}` to disable reasoning); auto-strips `` reasoning segments and extracts the first balanced JSON so downstream `json.loads` is always usable. **Any OpenAI-compatible model (Doubao / DeepSeek / Qwen / self-hosted vLLM, etc.) plugs in with one config line.**
-- Without `LLM_API_KEY` it gracefully degrades to `FakeLLM` — runs out of the box, no external network service required.
-
-### Skill self-sedimentation (`server/app/decision/cache.py`)
-
-When a task ends normally (`done`), the current `applied_steps` are written back to cache keyed by `(goal, pkg)`. The next time the same goal + app appears it replays directly as a script with zero LLM-quota use. If a step can't be re-located the whole entry is invalidated and waits for re-learning — an MVP policy that is simple and reliable, and the primitive underlying the community skill-library flywheel.
-
-### Observability (`server/app/gateway/connection.py` / `server/app/infra/metrics.py`)
-
-- `comm_log`: a rotating file logger for the bidirectional comm log (`comm.log`) and raw LLM traffic (`llm.log`), capped at 10 MB × 5 files. The log dir is overridable via the `PHONEAGENT_LOG_DIR` env var.
-- `metrics`: a per-task metrics collector (`TaskMetrics`) tracking `steps`, `llm_calls`, `skill_hits`, `cache_hits`, `status`, `error`, and duration, so any task run can be replayed/compared offline.
-
-### Chat-title helpers (`server/app/decision/ui_inspect.py`)
-
-Pure heuristics for chat-page anchoring — whether the current page is the target chat title, whether a node is a message-input box, and whether a node is a send button — keeps the cloud side anchored to a specific conversation inside IM apps with very few tokens.
-
-## Android Design Highlights
-
-### `PhoneAgentService` (`accessibility/PhoneAgentService.kt`)
-
-Extends `AccessibilityService`; the accessibility-service core:
-
-- On `onServiceConnected` it starts the WebSocket, registers callbacks, and reports an `ANDROID_ID`-based device id.
-- After receiving `task.start` it reports the first perception frame; subsequent window changes are debounced by `DEBOUNCE_MS=400` before reporting to avoid jitter.
-- `onAccessibilityEvent` only reacts when `taskActive`; `action` supports a read-only debug mode (triggered by a `[DEBUG-ONESHOT]` goal prefix): report one frame, do not execute the returned action — convenient for manually navigating to a target page and then single-frame-verifying the cloud decision.
-- The default connect address lives in `BuildConfig.WS_URL` (defined in `android/app/build.gradle.kts`) — modify for your environment.
-
-### `Executor` (`accessibility/Executor.kt`)
-
-Translates cloud action commands into Accessibility API calls:
-
-- `tap`: prefer `dispatchGesture` click using the cloud-sent `x/y` coordinates; when missing, fall back to a center click on the node matched by `match_text` substring.
-- `input`: find the first editable node and perform `ACTION_SET_TEXT`.
-- `swipe` / `back` / `home`: standard gestures and global actions.
-- Desktop paging/scrolling and return-home are driven by the **cloud scene FSM** frame by frame (`server/app/decision/pkg_guard.py`): `detect_scene` identifies the current scene → `next_action` looks up the transition table and sends a single atomic action → the cloud guard detects stall and oscillation and applies three-tier escape. The phone side acts as a dumb executor. Coordinate geometry is still extracted into a unit-testable `GestureGeometry`.
-
-### Perception & node pruning (`accessibility/NodeFlattener.kt` / `Perception.kt`)
-
-Reads the `rootInActiveWindow` node tree, keeps only visible nodes that carry text or are interactive, and serializes them into `Node` lists aligned with the cloud protocol, drastically cutting link load and LLM token cost.
-
-### Tech stack
-
-Jetpack Compose (single Activity + Compose UI) + Hilt (`@AndroidEntryPoint` injects `WsClient` / `AgentStateRepository`) + OkHttp WebSocket + kotlinx.serialization. `minSdk=26 / targetSdk=36 / JVM 17`.
+|-------|------|--------|
+| Core Loop | Text goal → phone action → done | ✅ Working |
+| Skill Learning | Remember successful paths, replay instantly | ✅ MVP |
+| Smart Navigation | Handle app switching, stuck detection, auto-recovery | 🚧 In progress |
+| More Apps | Support WeChat, Douyin, and more | 🚧 In progress |
+| Voice Control | Talk to your phone instead of typing | 🔜 Planned |
+| Multi-Phone Control | One server managing multiple phones | 🔜 Planned |
 
 ## Quick Start
 
-### Cloud
+### Prerequisites
+
+- **A computer** (Windows, macOS, or Linux) to run the cloud server
+- **An Android phone** (Android 8.0 / API 26 or higher)
+- **USB cable** to connect phone to computer (for initial setup)
+- **Python 3.14+** on your computer
+- **An OpenAI-compatible AI model** (optional, but recommended for best results)
+
+### Step 1: Set Up the Cloud Server
+
+#### For macOS / Linux
 
 ```bash
+# 1. Navigate to the server folder
 cd server
-cp .env.example .env            # fill in LLM_API_KEY (any OpenAI-compatible endpoint)
-uv sync                         # install deps (uv manages the venv)
+
+# 2. Copy the environment template
+cp .env.example .env
+
+# 3. Open .env in a text editor and fill in your AI API key
+# Look for LLM_API_KEY= and add your key
+# Any OpenAI-compatible API works (OpenAI, DeepSeek, Doubao, etc.)
+
+# 4. Install dependencies (using uv package manager)
+uv sync
+
+# 5. Start the server
 uv run uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000
 ```
 
-Without `LLM_API_KEY` it auto-uses `FakeLLM`, so the protocol chain can be exercised offline.
+#### For Windows (PowerShell)
 
-### Android
-
-1. Connect a real device via USB (`minSdk≥26`), confirm it shows up in `adb devices`.
-2. Configure the SDK path in `android/local.properties` (gitignored).
-3. Open the `android/` project in Android Studio and Run `app`.
-4. System settings → Accessibility → enable the "PhoneAgent" service.
-5. Set `WS_URL` in `android/app/build.gradle.kts` to point at your cloud address.
-
-### Real-device end-to-end debug
-
-```bash
-server/scripts/e2e_feishu.sh
-# re-bind the accessibility service to trigger WS connect → return to home → open Feishu →
-# watch the perception / decided op output in the uvicorn log
-```
-
-The "Task goal" input box at the top of the App ships a natural-language goal (e.g. "send Zhang San a message on Feishu: meeting tomorrow morning"); it goes up via `task.request` and the cloud kicks off the decision loop.
-
-## Testing
-
-```bash
+```powershell
+# 1. Navigate to the server folder
 cd server
-uv run pytest                          # full suite
-uv run pytest tests/test_engine.py    # decision engine unit tests
-uv run pyright app/                   # static type check (basic mode, zero errors enforced)
-PHONEAGENT_FAKE_LLM='[...]' uv run pytest tests/test_gateway_integration.py  # inject FakeLLM and run the gateway main loop
+
+# 2. Copy the environment template
+Copy-Item .env.example .env
+
+# 3. Open .env in Notepad and fill in your AI API key
+# Look for LLM_API_KEY= and add your key
+
+# 4. Install dependencies (using uv package manager)
+uv sync
+
+# 5. Start the server
+uv run uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000
 ```
 
-CI (`.github/workflows/ci.yml`) enforces all three gates on every push/PR: `uv run pytest tests/ -q`, `uv run pyright app/`, and `./gradlew :app:testDebugUnitTest`.
+> **Note:** If you don't have `uv` installed, install it first:
+> - macOS/Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+> - Windows: `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`
 
-Android unit tests live in `android/app/src/test/`, covering the pure-logic parts of `GestureGeometry`, `NodeFlattener`, `Messages` (protocol models), `WsDispatcher`, `AgentStateRepository`, `MainViewModel`, and `AccessibilityStatus`.
+> **Without an API key?** The server will run in demo mode with simulated responses—perfect for testing the interface.
 
-## Key Testability Design
+### Step 2: Find Your Computer's IP Address
 
-A perception sequence captured on a real device is stored as a "replay fixture" (e.g. `server/tests/fixtures/feishu_happy_path.json`); the cloud can replay a complete decision loop offline from it — **no real device required, the AI decision logic can be re-verified in CI over and over**. This is the project's quality base and TDD landing point — the "device side is uncontrollable, cloud side is reproducible" engineering discipline.
+The phone needs to know where to find your server.
 
-## 🤝 Contributing
+#### For macOS
 
-JoyPhone is a **fully open-source** project. Any contribution — a line of code, a skill, a new app's node adaptation, a bug report, a doc polish — moves the project one step closer to "say it, the phone does it".
+```bash
+# Run this in Terminal
+ifconfig | grep "inet " | grep -v 127.0.0.1
+```
 
-### What you can contribute
+#### For Linux
 
-- **Cloud side**: decision engine, negotiation bot, skill library for new apps, LLM adapters, WS gateway performance, tests and replay fixtures.
-- **Android side**: node-pruning algorithms, accessibility adaptation for new apps, gesture execution, auto-reconnect, UI debug panel.
-- **Skill library**: sediment a successful "goal → success step sequence" of yours into a reusable skill for everyone — the core of the community flywheel.
-- **Docs**: README polish, architecture diagrams, usage tutorials, new-app onboarding guides.
-- **Tests**: add unit/integration tests and edge-case replay fixtures.
+```bash
+# Run this in terminal
+ip addr show | grep "inet "
+```
 
-### How to submit a PR
+#### For Windows
 
-1. **Fork** this repo to your GitHub account.
-2. Branch off `main`:
+```powershell
+# Run this in PowerShell
+ipconfig | Select-String "IPv4"
+```
+
+Look for an address like `192.168.x.x` — this is your local IP.
+
+### Step 3: Set Up the Android App
+
+1. **Connect your Android phone to your computer via USB**
+
+2. **Enable USB debugging on your phone:**
+   - Go to Settings → About Phone
+   - Tap "Build Number" 7 times to enable Developer Options
+   - Go to Settings → Developer Options
+   - Enable "USB Debugging"
+
+3. **Configure the server address on your phone:**
+   
+   Open the file `android/app/build.gradle.kts` and find the `WS_URL` setting. Change it to your computer's IP address:
+   
+   ```kotlin
+   // Example: if your computer's IP is 192.168.1.100
+   WS_URL = "ws://192.168.1.100:8000/ws"
+   ```
+
+4. **Build and install the app:**
+   
+   Open the `android/` folder in Android Studio and run the app on your phone, or use command line:
 
    ```bash
-   git checkout -b feat/your-feature
+   cd android
+   ./gradlew installDebug
    ```
 
-3. Make changes; keep each commit focused on one thing and follow the [Conventional Commits](https://www.conventionalcommits.org/) style, e.g.:
+5. **Enable JoyPhone's accessibility service:**
+   - Go to Settings → Accessibility → Installed Apps
+   - Find "JoyPhone" or "PhoneAgent"
+   - Enable it and grant all permissions
 
-   ```text
-   feat(decision): support WeChat chat-page node pruning
-   fix(android): fix auto-reconnect intermittent NPE
-   test(server): add Feishu happy-path replay fixture
-   docs: add a new-app onboarding guide
-   ```
+### Step 4: Test It!
 
-4. Before submitting, ensure local checks pass:
+1. Make sure your computer and phone are on the same WiFi network
+2. Open the JoyPhone app on your phone
+3. You should see a "Connected" status
+4. Type a goal like "Open Feishu and send a message to Zhang San: Hello!"
+5. Watch JoyPhone work!
 
-   ```bash
-   # Cloud
-   cd server && uv run pytest
-   # Android
-   cd android && ./gradlew test
-   ```
+## Using JoyPhone
 
-5. Push to your fork and open a **Pull Request** against `main`:
+### Basic Commands
 
-   - Use Conventional Commits for the **title** (e.g. `feat(android): support WeChat send-message skill`).
-   - The **description** should explain: what problem / why / how tested. If the change touches decision logic, attaching a replay fixture or log is even better.
-   - If the PR corresponds to an issue, link it (`Closes #123`).
+Just type what you want to accomplish:
 
-6. Wait for review. Small changes usually land the same day; changes touching the decision main loop or the protocol will go through several rounds of discussion.
+| What You Type | What JoyPhone Does |
+|---------------|-------------------|
+| "Send a WeChat message to Mom: I'll be home at 6" | Opens WeChat, finds Mom, sends the message |
+| "Open Douyin and search for cooking videos" | Opens Douyin, uses search, shows results |
+| "Forward this message to the work group" | Opens the relevant app, finds the group, forwards |
+| "Open Settings and check my storage" | Opens Settings, navigates to storage info |
 
-### PR conventions
+### Tips for Best Results
 
-- **One PR, one thing**: split a PR mixing unrelated changes into several.
-- **Stay testable**: pair new logic with unit tests; for real-device changes attach logs or a replay fixture.
-- **Don't break the protocol format**: when extending the up/down message protocol, open an issue to discuss a backward-compatible plan first.
-- **No sneaky heavy dependencies**: the cloud follows `pyproject.toml`, Android follows `libs.versions.toml`; do not bloat dependencies on your own.
-- **Security**: never commit secrets, `.env`, or `local.properties`; never introduce code that could leak device information.
+1. **Be specific**: Instead of "message John," try "send a WeChat message to John saying the meeting is at 3pm"
 
-Feel free to open an [Issue](../../issues) for discussion first — far more efficient than charging ahead silently. In the early stage we keep the direction open; "talk first, then act" beats "do a lot, then talk".
+2. **Include context**: "Open Feishu, go to the Project Alpha group, and send: The report is ready"
 
-## Design & Plan Documents
+3. **Check connectivity**: Make sure your phone stays connected to the same WiFi as your server
 
-Historical design and implementation plans are archived by date in `docs/superpowers/` (`specs/` design drafts / `plans/` implementation plans), so the evolution is traceable. Competitive analysis notes live in `docs/competition/`, and `docs/CODE_REVIEW_REPORT.md` records the latest code-review pass.
+## Privacy & Security
+
+- **Your phone, your server**: All AI processing happens on YOUR configured server
+- **No third-party access**: Your data doesn't go to JoyPhone's developers
+- **Local processing**: Screen content is analyzed by your own AI model
+- **You control everything**: Stop the server anytime, and nothing leaves your network
+
+## Architecture (For Developers)
+
+JoyPhone has two main parts:
+
+### Cloud Server (`server/`)
+- **Python + FastAPI** — handles AI decisions and task management
+- **WebSocket** — real-time communication with the phone
+- **Decision Engine** — analyzes screens and decides actions
+- **Skill Library** — remembers successful task patterns
+
+### Android App (`android/`)
+- **Kotlin + Jetpack Compose** — modern Android UI
+- **Accessibility Service** — reads screens and performs actions
+- **WebSocket Client** — stays connected to the cloud
+
+## Contributing
+
+JoyPhone is fully open-source. We welcome contributions of all kinds:
+
+- Report bugs or suggest features via GitHub Issues
+- Contribute code (see CONTRIBUTING section in docs)
+- Share your successful "skills" with the community
+- Improve documentation
 
 ## License
 
-This project is open-sourced under the **MIT License**. Community contributions are MIT-licensed by default; you are free to use, modify, and redistribute it.
+This project is open-source under the **MIT License**. You are free to use, modify, and distribute it.
+
+---
+
+**JoyPhone — Let AI use your phone like a human. The more you use it, the smarter it gets.**

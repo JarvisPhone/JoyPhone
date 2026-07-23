@@ -11,7 +11,7 @@ cmd = [
     "uv", "run", "uvicorn", "app.main:create_app",
     "--host", "0.0.0.0", "--port", "8000", "--factory",
 ]
-log = "/Users/conv/myspace/JoyPhone/server/logs/uvicorn.log"
+log = "/Users/leijiabin.1/myspace/JoyPhone/server/logs/uvicorn.log"
 
 # First fork: parent exits, child becomes orphan adopted by init (pid 1)
 pid = os.fork()
@@ -35,7 +35,7 @@ os.dup2(log_fh.fileno(), sys.stdout.fileno())
 os.dup2(log_fh.fileno(), sys.stderr.fileno())
 log_fh.close()
 
-os.chdir("/Users/conv/myspace/JoyPhone/server")
+os.chdir("/Users/leijiabin.1/myspace/JoyPhone/server")
 
 # Replace process image with uvicorn
 os.execvp(cmd[0], cmd)

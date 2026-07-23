@@ -27,8 +27,8 @@ android {
         debug {
             // 真机经 WiFi 同网段直连服务端(改 IP 时同步)
             // 历史: adb reverse + localhost 已弃用,改走同网段直连
-            // 当前本机 en0 IP: 192.168.123.204
-            buildConfigField("String", "WS_URL", "\"ws://192.168.123.204:8000\"")
+            // 当前本机 en0 IP: 10.253.61.158
+            buildConfigField("String", "WS_URL", "\"ws://10.253.61.158:8000\"")
         }
         release {
             isMinifyEnabled = false

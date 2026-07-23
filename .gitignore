@@ -1,5 +1,6 @@
 .superpowers/
 .vscode/
+.joycode
 android/.gradle/
 android/build/
 android/app/build/

@@ -4,296 +4,289 @@
 
 ### 说一句话，手机自己干。
 
-一个端云协同的开源 AI 手机代理 · 云端当大脑，手机当手眼
+一个开源的 AI 手机助手 · 云端当大脑，手机当手眼
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/python-≥3.14-3776AB.svg)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/python-%E2%89%A53.14-3776AB.svg)](https://www.python.org/)
 [![Kotlin](https://img.shields.io/badge/kotlin-2.x-7F52FF.svg)](https://kotlinlang.org/)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#-贡献)
 
-[English](README.md) | **中文**
+[**English**](README.md) | **中文**
 
 </div>
 
 ---
 
-JoyPhone 是一个**端云协同的开源 AI 手机代理**：云端大模型作「大脑」决策，安卓真机以无障碍权限（`AccessibilityService`）作「手眼」操控任意 APP。无需任何厂商 SDK，无需 root，无需厂商配合——像人一样看屏幕、点按钮、敲输入框、翻页滚动。你只需一句话，剩下的交给它。
+## JoyPhone 是什么？
 
-灵感来自豆包手机这类「语音一句话操控整机」的设想，但走的是**完全开源、端云协同、模型可替换**的路线：不绑定任何一家厂商的大模型，不锁定任何一款手机品牌，把「让 AI 像人一样用手机」这件事变成一个**人人可参与、可复现、可迭代**的开放项目。
+JoyPhone 是一个**帮你操控手机的 AI 助手**。你用自然语言告诉它要做什么，它就会像真人一样在真实的安卓手机上打开应用、输入文字、点击按钮、完成各种任务。
 
-> 长期愿景：用户对着手机说一句话——「给妈妈发微信说我今晚回家吃晚饭」「打开抖音搜一下最近的猫咪视频」「把上次会议的纪要转发到工作群」——手机自己听懂、自己点开、自己输入、自己确认。不再一层层翻菜单，不再跨应用搬数据，不再把人困在小屏幕上做重复劳动。
+比如说：
+- "给妈妈发微信说我今晚回家吃晚饭"
+- "打开抖音搜一下最近的猫咪视频"
+- "把上次会议的纪要转发到工作群"
 
-## 核心亮点
+JoyPhone 听懂你的意思，自己去操作。不用一层层翻菜单，不用反复点击，不用被小屏幕困住做重复的事。
 
-1. **零 SDK 依赖**：基于安卓无障碍权限操控任意真实 APP UI，绕开厂商封禁与限流，一套方案覆盖飞书 / 企微 / 微信 / 短信 / 抖音等全社交通道，抗风控、不挑品牌。
-2. **端云协同「手眼脑」分离架构**：手机只负责感知（节点树 + 截图）与执行（点击 / 输入 / 滑动），云端负责多模态大模型决策——决策可热更、模型可替换、算力无上限，迭代成本远低于端侧集成方案。
-3. **技能库自沉淀护城河**：每次成功操控的步骤序列被自动固化为可复用「技能」，命中即脚本执行、未命中回退大模型探索；越用越快、越用越准，社区共建技能库形成长期飞轮。
-4. **语音一句话驱动**（路线图）：从纯文本目标向「语音指令 → 云端 ASR → 决策 → 协商」演进，目标是像豆包手机一样一句话搞定复杂多步跨应用操作，但完全开源、模型自选。
+**JoyPhone 的灵感来自豆包手机这类「语音一句话操控整机」的设想，但走的是完全开源、自定义路线**：不绑定任何一家 AI 模型，不锁定任何手机品牌，不依赖任何公司。这是一个人人可用、人人能学、人人能参与的开源项目。
 
-## 架构总览
+## 核心功能
+
+### 1. 支持任意 APP — 无需开发者接口
+
+JoyPhone 利用安卓系统的无障碍功能，直接像真人用户一样操控 APP。这意味着它可以操作**微信、飞书、钉钉、抖音、短信**以及几乎任何其他应用——不需要应用开发者提供任何特殊权限。
+
+### 2. 云端智能决策
+
+复杂的思考发生在云端：JoyPhone 使用大语言模型（LLM）来理解你的目标、分析屏幕内容、决定下一步操作。这意味着：
+- **响应快速** — 不受手机硬件限制
+- **易于更新** — 更换 AI 模型无需重装任何东西
+- **兼容任意安卓手机** — 手机只需执行指令
+
+### 3. 越用越聪明
+
+每次成功完成任务都会创建一个"技能"，JoyPhone 会记住。下次你要求类似的事，它会立刻执行，无需犹豫。用得越多，它就越快、越可靠。
+
+### 4. 你的隐私，你做主
+
+JoyPhone 通过云端 AI 处理屏幕内容，但所有决策都发生在你自己配置的服务器上。数据不会发送给任何你不信任的第三方。
+
+## 工作原理
 
 ```
-┌──────────────────────── 云端 (FastAPI + Python) ─────────────────────────┐
-│  任务管理 │ WS网关+会话状态机 │ 决策引擎 │ 协商机器人 │ LLM抽象层 │ 技能库 │
-│  屏幕场景状态机 │ 指标采集 │ 通信日志                                           │
-└────────────▲──────────────────────────────┬──────────────────────────────┘
-             │ WebSocket（感知↑ / 动作↓）   │
-             │  双向实时长连接              │
-┌────────────┴──────────────────────────────▼──────────────────────────────┐
-│                    安卓端 (Kotlin / AccessibilityService)                 │
-│      感知模块（节点树+截图）   │   执行模块（点击/输入/滑动）            │
-│      事件监听（新消息上报）     │   连接管理（断线重连）                  │
-└───────────────────────────────────────────────────────────────────────────┘
-                         ↑ 操控真实 APP（飞书/企微/微信/抖音…）
+┌─────────────────────────────────────────────────────────────────┐
+│                          云端（你的服务器）                        │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐ │
+│  │ 任务管理    │  │ AI 大脑    │  │ 技能库                  │ │
+│  │（管理你的   │  │（理解目标   │  │（从过去成功任务中       │ │
+│  │  任务）    │  │  和屏幕）   │  │  学习到的模式）          │ │
+│  └─────────────┘  └─────────────┘  └─────────────────────────┘ │
+└────────────────────────────┬────────────────────────────────────┘
+                             │ 网络（WebSocket 双向通信）
+┌────────────────────────────▼────────────────────────────────────┐
+│                        你的安卓手机                               │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐ │
+│  │ 眼睛        │  │ 双手        │  │ 连接管理                  │ │
+│  │（读取屏幕） │  │（点击、     │  │（保持连接、              │ │
+│  │             │  │  输入）     │  │  自动重连）              │ │
+│  └─────────────┘  └─────────────┘  └─────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────┘
+                             ↑
+              JoyPhone 像真人用户一样操控各种应用
+              （飞书、微信、抖音、短信等）
 ```
 
-两端通过 WebSocket 双向实时通信：
+**流程很简单：**
+1. 你给 JoyPhone 一个目标（例如："给张三发消息"）
+2. 你的手机向 JoyPhone 展示屏幕上的内容
+3. 云端 AI 决定下一步操作
+4. 你的手机执行（点击、输入、滑动）
+5. 重复直到任务完成
 
-- **上行**（App → 云端）：`perception`（节点树 + 截图）、`action.result`、`event.newMessage`、`heartbeat`、`task.request`
-- **下行**（云端 → App）：`task.start`、`action`、`task.done`、`task.abort`
+## JoyPhone 能做什么？
 
-云端按分层包组织在 `server/app/` 下：
+| 场景 | 示例 |
+|------|------|
+| **消息发送** | 发微信/飞书消息、回复群聊、转发内容 |
+| **搜索浏览** | 打开抖音搜索、刷微博、查找内容 |
+| **信息录入** | 填表单、完成注册、输入数据 |
+| **社交互动** | 发动态、评论、分享内容 |
+| **日常任务** | 设提醒、查通知、导航应用 |
 
-- **`protocol`** —— 上下行消息模型（Pydantic)，协议格式的唯一事实源。
-- **`gateway`** —— WebSocket 连接封装（`Connection`，通信/LLM 日志）+ `route_loop` 分发主循环。
-- **`task`** —— 任务运行时：`TaskStore`/`TaskContext`、`TaskFSM`(`IDLE → RUNNING → AWAITING_CONFIRM / WAITING_EVENT → DONE / ABORT`，约束合法转移并设步数预算防失控）、上行 handlers 与策略。
-- **`scenario`** —— L1 场景包（如 `SendMessagePack`「给 X 发消息」)+ L2 `AppProfile` 数据（各 app UI 识别特征，`scenario/profiles/`)；未命中场景的目标回落纯 LLM 通用模式。
-- **`decision`** —— L0 内核决策引擎（缓存 → 技能 → pkg_guard 场景状态机 → LLM 分级回退）、LLM 抽象、技能库/缓存、参数化 UI 识别 helpers。
-- **`infra`** —— `Config` 常量与单任务指标采集。
+## 发展路线图
 
-## 路线图
-
-JoyPhone 是一个长期演进的开源项目，按里程碑推进：
+我们正在一步步建设 JoyPhone：
 
 | 阶段 | 目标 | 状态 |
 |------|------|------|
-| M1 端云协同最小闭环 | 文本目标 → 真机无障碍操控 → 决策 + 执行 + 回报 | ✅ 已跑通 |
-| M2 技能自沉淀 | 成功路径自动固化「技能」，命中即脚本回放 | ✅ 雏形 |
-| M2.5 屏幕场景状态机 | 云端逐帧驱动的通用归位 + 停滞/振荡双重卡死脱困（LLM 语义脱困 → 机械降级三级阶梯） | 🚧 进行中 |
-| M3 多 APP 接入 | 微信 / 企微 / 抖音等节点适配与技能库 | 🚧 进行中 |
-| M4 语音一句话驱动 | 云端 ASR → 意图解析 → 决策，像豆包手机一样开口即用 | 🔜 规划 |
-| M5 多设备并发调度 | 一台云端管多台手机，运营后台与任务队列 | 🔜 规划 |
-| M6 WS 网关高性能化 | Rust 重写网关，承压更多设备并发 | 🔬 研究 |
-| M7 语音外呼 / 呼叫中心 | 接入呼叫中心，AI 主动呼出与对方多轮语音协商 | 🔬 研究 |
-
-## 仓库结构
-
-```
-JoyPhone/
-├── server/                 # 云端：FastAPI + Python ≥3.14（uv 管理）
-│   ├── app/
-│   │   ├── main.py              # create_app：装配 engine/scenario_packs/metrics,挂载 /ws/{device_id}
-│   │   ├── protocol/            # 上下行消息协议（Pydantic 模型）
-│   │   ├── gateway/             # connection.py（WS 封装 + 通信/LLM 日志）/ router.py（分发主循环）
-│   │   ├── task/                # context.py（TaskStore）/ fsm.py（TaskFSM）/ handlers.py / policies.py
-│   │   ├── scenario/            # base.py（ScenarioPack 协议 + AppProfile）/ send_message.py /
-│   │   │                        #   ui.py（goal→pkg 解析、发送按钮/输入框启发式）/
-│   │   │                        #   profiles/（L2 各 app UI 特征数据：feishu / wechat / misc）
-│   │   ├── decision/            # engine.py（缓存→技能→pkg_guard→LLM 分级回退）/ cache.py / skills.py /
-│   │   │                        #   llm.py（FakeLLM / RealLLM）/ pkg_guard.py（屏幕场景状态机）/
-│   │   │                        #   ui_inspect.py（标题识别,关键词参数化）/ types.py
-│   │   ├── infra/               # config.py（预算/超时常量）/ metrics.py（单任务指标采集）
-│   │   └── negotiation.py       # 协商机器人
-│   ├── tests/                   # pytest 单元/集成测试 + 回放夹具
-│   ├── scripts/e2e_feishu.sh   # 真机端到端联调脚本
-│   ├── pyproject.toml
-│   └── .env.example             # LLM 配置模板（OpenAI 兼容接口）
-│
-├── android/                # 安卓端：Kotlin + Compose + Hilt
-│   └── app/src/main/java/com/example/phoneagent/
-│       ├── accessibility/      # PhoneAgentService / Executor / Perception / NodeFlattener / GestureGeometry …
-│       ├── net/                 # WsClient / WsDispatcher（长连 + 断线重连）
-│       ├── protocol/            # Messages.kt — 与云端对齐的序列化模型
-│       ├── domain/              # AgentModels / SampleRequest / TaskState / TraceEvent / ActionLog
-│       ├── data/                # AgentStateRepository（调试面板状态）
-│       ├── ui/                  # AgentScreen / DebugPanel / MainViewModel（Jetpack Compose）
-│       ├── di/                  # AppModule — Hilt 依赖图
-│       ├── AccessibilityStatus.kt
-│       ├── AgentApplication.kt  # 启用 Hilt 的 Application
-│       └── MainActivity.kt
-│
-└── docs/
-    ├── superpowers/            # 设计与实施计划（specs / plans，按日期归档）
-    ├── competition/            # 竞品分析资料
-    └── CODE_REVIEW_REPORT.md
-```
-
-## 云端设计要点
-
-### 决策引擎分级回退（`server/app/decision/engine.py`）
-
-每收到一帧感知，按以下优先级产出下一步动作：
-
-1. **技能缓存命中**：按 `(goal, pkg)` 查 `SkillCache`，命中则按已沉淀步骤序列回放；若某步无法在当前节点树重定位则回退下一级。
-2. **静态技能库**：按 `skill_name` 查 `SkillLibrary`，按 `match_text` 在当前节点树定位节点回放。
-3. **大模型推理**：把任务目标 + 结构化屏幕状态（`[序号] 类型 "文本"`，可交互节点优先，最多 `MAX_LLM_NODES=80`）+ 动作历史交给 LLM，要求其只输出一个 JSON 动作对象。
-
-LLM 决策的 `tap` 会在云端先用节点 `id` / `match_text` 解析为精确坐标中心再下发，避免端侧全屏子串匹配误命中（如负一屏磁贴）。System prompt 内置「负一屏识别」「桌面翻屏找应用」等常识约束。
-
-### 屏幕场景状态机（`server/app/decision/pkg_guard.py`）
-
-云端逐帧把当前感知归类到有限的屏幕场景：`HOME`（桌面，任意屏）/ `MINUS_ONE`（负一屏）/ `RECENT_APPS`（最近任务）/ `LOCK_SCREEN`（锁屏）/ `NOTIFICATION`（下拉通知）/ `CONTROL_CENTER`（控制中心）/ `IN_APP`（在目标 App 内）/ `UNKNOWN`。resource-id 用后缀匹配（`endswith` / `contains`），不硬编码任何厂商包名前缀，跨设备普适。该状态机替代了旧决策模块里只看 pkg 的裸 guard，根治了 launcher 各态之间兜圈的死循环。同时提供收敛守卫：兼顾停滞（连续 `STALL_THRESHOLD=3` 同 scene 同 op）与振荡（非目标 scene 在 `WINDOW=6` 窗口内重复 `CYCLE_THRESHOLD=2` 次），先升级到 LLM 语义脱困（`LLM_ESCALATION_TRIES=1`），再走机械降级三级阶梯（`FALLBACK_TRIES=2`）。
-
-### 目标 → 应用边界（`server/app/scenario/ui.py`）
-
-用纯关键字匹配把自然语言目标解析成目标 Android `package`——快、零成本、可单测。解析出的 `pkg` 作为 app 边界硬约束：一旦感知到 `pkg != 目标 pkg`，云端先回桌面、再 home + 找图标重开目标 app，绝不会顺通知/磁贴跳到别的 app。内置飞书 / 微信 / QQ / 钉钉 / 淘宝 / 京东 / 美团 / 小红书 / 抖音 / 知乎 / 高德 / 百度地图 / 腾讯地图 / 电话 / 通讯录等别名。
-
-### LLM 抽象层（`server/app/decision/llm.py`）
-
-- `FakeLLM`：按预设响应序列回放，供离线 / CI 测试。
-- `RealLLM`：基于 OpenAI 兼容 SDK，默认对接 MiniMax-M2.x（`extra_body={"thinking":{"type":"disabled"}}` 关闭推理）；自动剥离 `` 推理段、提取首个平衡 JSON，保证下游 `json.loads` 可用。**任何 OpenAI 兼容的模型（豆包 / DeepSeek / Qwen / 自部署 vLLM 等）改一行配置即可接入。**
-- 无 `LLM_API_KEY` 时自动退化为 `FakeLLM`，开箱即跑，不依赖任何外网服务。
-
-### 技能自沉淀（`server/app/decision/cache.py`）
-
-任务以 `done` 正常结束时，把本轮 `applied_steps` 以 `(goal, pkg)` 为键写回缓存；下次同目标同应用直接脚本回放，不耗 LLM 配额。某步无法重定位则整条失效等待重新学习——MVP 策略简洁可靠，也是社区共建技能库的底层原语。
-
-### 可观测性（`server/app/gateway/connection.py` / `server/app/infra/metrics.py`）
-
-- `comm_log`：滚动文件日志，分别记录双向通信日志（`comm.log`）与原始 LLM 流量（`llm.log`），单文件 10 MB × 5 份轮转；日志目录可用环境变量 `PHONEAGENT_LOG_DIR` 覆盖。
-- `metrics`：单任务指标采集器（`TaskMetrics`）记录 `steps` / `llm_calls` / `skill_hits` / `cache_hits` / `status` / `error` 与耗时，方便离线回放与对比。
-
-### 聊天标题辅助（`server/app/decision/ui_inspect.py`）
-
-纯启发式判断用于聊天页锚定——当前页是否为目标聊天标题、某节点是否为消息输入框、某节点是否为发送按钮，让云端在 IM 应用里以极低 token 成本锚定到指定会话。
-
-## 安卓端设计要点
-
-### `PhoneAgentService`（`accessibility/PhoneAgentService.kt`）
-
-继承 `AccessibilityService`，是无障碍服务核心：
-
-- `onServiceConnected` 时启动 WebSocket、注册回调，按 `ANDROID_ID` 作设备号上报。
-- 收到 `task.start` 后首帧感知上报；后续窗口变化经 `DEBOUNCE_MS=400` 去抖再上报，避免抖动。
-- `onAccessibilityEvent` 仅在 `taskActive` 时响应；`action` 带只读调试模式（目标以 `[DEBUG-ONESHOT]` 前缀触发）：只上报一帧、不执行返回动作，便于人工导航到目标页面后单帧验证云侧决策。
-- 默认连接地址由 `BuildConfig.WS_URL` 提供（见 `android/app/build.gradle.kts`），按你的环境修改。
-
-### `Executor`（`accessibility/Executor.kt`）
-
-把云端动作指令翻译为无障碍 API 调用：
-
-- `tap`：优先按云端下发的 `x/y` 坐标 `dispatchGesture` 点击，缺失时回退 `match_text` 子串匹配节点中心点击。
-- `input`：找到首个可编辑节点执行 `ACTION_SET_TEXT`。
-- `swipe` / `back` / `home`：标准手势与全局动作。
-- 桌面翻屏与归位交给**云端场景状态机**逐帧驱动（`server/app/decision/pkg_guard.py`）：`detect_scene` 识别当前场景 → `next_action` 查转移表下发单步原子动作 → 云端守卫检测停滞与振荡并三级脱困，端侧只做哑执行。坐标几何仍抽到可单测的 `GestureGeometry`。
-
-### 感知与节点裁剪（`accessibility/NodeFlattener.kt` / `Perception.kt`）
-
-读取 `rootInActiveWindow` 节点树，只保留可见且含文本 / 可交互的节点，序列化为与云端协议对齐的 `Node` 列表上传，显著降低链路负载与 LLM token 成本。
-
-### 技术栈
-
-Jetpack Compose（单 Activity + Compose UI）+ Hilt（`@AndroidEntryPoint` 注入 `WsClient` / `AgentStateRepository`）+ OkHttp WebSocket + kotlinx.serialization。`minSdk=26 / targetSdk=36 / JVM 17`。
+| 核心闭环 | 文本目标 → 手机操作 → 完成 | ✅ 已可用 |
+| 技能学习 | 记住成功路径、即时回放 | ✅ 雏形 |
+| 智能导航 | 处理应用切换、卡顿检测、自动恢复 | 🚧 进行中 |
+| 更多应用 | 支持微信、抖音等更多 APP | 🚧 进行中 |
+| 语音控制 | 对着手机说话而非打字 | 🔜 规划中 |
+| 多机管理 | 一台服务器管理多台手机 | 🔜 规划中 |
 
 ## 快速开始
 
-### 云端
+### 准备工作
+
+- **一台电脑**（Windows、macOS 或 Linux）用于运行云端服务器
+- **一部安卓手机**（Android 8.0 / API 26 或更高版本）
+- **USB 数据线**（用于初始设置）
+- **Python 3.14+** 安装在电脑上
+- **一个 OpenAI 兼容的 AI 模型**（可选，但推荐使用以获得最佳效果）
+
+### 第一步：搭建云端服务器
+
+#### 对于 macOS / Linux
 
 ```bash
+# 1. 进入 server 文件夹
 cd server
-cp .env.example .env            # 填入 LLM_API_KEY（任何 OpenAI 兼容接口）
-uv sync                         # 安装依赖（uv 管理虚拟环境）
+
+# 2. 复制环境变量模板
+cp .env.example .env
+
+# 3. 用文本编辑器打开 .env 文件，填写你的 AI API 密钥
+# 找到 LLM_API_KEY= 并填入你的密钥
+# 任何 OpenAI 兼容的 API 都可以用（OpenAI、DeepSeek、豆包等）
+
+# 4. 安装依赖（使用 uv 包管理器）
+uv sync
+
+# 5. 启动服务器
 uv run uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000
 ```
 
-无 `LLM_API_KEY` 时自动用 `FakeLLM`，可离线跑通协议链路。
+#### 对于 Windows (PowerShell)
 
-### 安卓端
-
-1. USB 连接真机（`minSdk≥26`），`adb devices` 确认可见。
-2. 在 `android/local.properties` 配置 SDK 路径（已 gitignore）。
-3. Android Studio 打开 `android/` 工程，Run `app`。
-4. 系统设置 → 无障碍 → 启用「PhoneAgent」服务。
-5. 在 `android/app/build.gradle.kts` 中设置 `WS_URL` 指向你的云端地址。
-
-### 真机端到端联调
-
-```bash
-server/scripts/e2e_feishu.sh
-# 重绑无障碍服务触发 WS 连接 → 回桌面 → 打开飞书 → 观察 uvicorn 日志的 perception / decided op 输出
-```
-
-App 内顶部「任务目标」输入框下发自然语言目标（如「在飞书给张三发消息：明天上午开会」），`task.request` 上行后云端开始决策循环。
-
-## 测试
-
-```bash
+```powershell
+# 1. 进入 server 文件夹
 cd server
-uv run pytest                          # 全量
-uv run pytest tests/test_engine.py    # 决策引擎单测
-uv run pyright app/                   # 静态类型检查（basic 模式，零错误红线）
-PHONEAGENT_FAKE_LLM='[...]' uv run pytest tests/test_gateway_integration.py  # 注入假 LLM 跑网关主循环
+
+# 2. 复制环境变量模板
+Copy-Item .env.example .env
+
+# 3. 用记事本打开 .env 文件，填写你的 AI API 密钥
+# 找到 LLM_API_KEY= 并填入你的密钥
+
+# 4. 安装依赖（使用 uv 包管理器）
+uv sync
+
+# 5. 启动服务器
+uv run uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000
 ```
 
-CI(`.github/workflows/ci.yml`）在每次 push/PR 强制三道门槛：`uv run pytest tests/ -q`、`uv run pyright app/`、`./gradlew :app:testDebugUnitTest`。
+> **提示：** 如果你还没有安装 `uv`，先安装它：
+> - macOS/Linux：运行 `curl -LsSf https://astral.sh/uv/install.sh | sh`
+> - Windows：运行 `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`
 
-安卓单元测试位于 `android/app/src/test/`，覆盖 `GestureGeometry` / `NodeFlattener` / `Messages`（协议模型） / `WsDispatcher` / `AgentStateRepository` / `MainViewModel` / `AccessibilityStatus` 等可纯逻辑验证的部分。
+> **没有 API 密钥？** 服务器会以演示模式运行，使用模拟响应——非常适合测试界面。
 
-## 关键可测性设计
+### 第二步：找到你电脑的 IP 地址
 
-真机采集的感知序列存为「回放夹具」（如 `server/tests/fixtures/feishu_happy_path.json`），云端可离线回放完整决策闭环——**不依赖真机即可在 CI 中反复验证 AI 决策逻辑**。这是项目的质量底座与 TDD 落点，也是「端侧不可控、云侧可复现」的关键工程自律。
+手机需要知道去哪里找你的服务器。
 
-## 🤝 贡献
+#### 对于 macOS
 
-JoyPhone 是一个**完全开源**的项目，欢迎任何形式的贡献——一行代码、一个技能、一个新 APP 的节点适配、一个 bug 报告、一段文档优化，都会让这个项目离「说一句话，手机自己干」更近一步。
+```bash
+# 在终端运行
+ifconfig | grep "inet " | grep -v 127.0.0.1
+```
 
-### 我能贡献什么
+#### 对于 Linux
 
-- **云端**：决策引擎、协商机器人、新 APP 的技能库、LLM 适配、WS 网关性能优化、测试与回放夹具。
-- **安卓端**：节点裁剪算法、新 APP 的无障碍适配、手势执行、断线重连、UI 调试面板。
-- **技能库**：把你跑通的某条「目标 → 成功步骤序列」沉淀下来，成为人人可复用的技能。这是社区共建飞轮的核心。
-- **文档**：README 优化、架构图、使用教程、新 APP 接入指南。
-- **测试**：补充单测 / 集成测试、增加边界场景回放夹具。
+```bash
+# 在终端运行
+ip addr show | grep "inet "
+```
 
-### 如何提 PR
+#### 对于 Windows
 
-1. **Fork** 本仓库到你的 GitHub 账号。
-2. 从 `main` 拉一条特性分支：
+```powershell
+# 在 PowerShell 运行
+ipconfig | Select-String "IPv4"
+```
+
+找一个像 `192.168.x.x` 这样的地址——这就是你的局域网 IP。
+
+### 第三步：设置安卓应用
+
+1. **用 USB 数据线将安卓手机连接到电脑**
+
+2. **在手机上开启 USB 调试：**
+   - 进入 设置 → 关于手机
+   - 连续点击"版本号"7次以启用开发者选项
+   - 进入 设置 → 开发者选项
+   - 开启"USB 调试"
+
+3. **配置服务器地址：**
+   
+   打开文件 `android/app/build.gradle.kts`，找到 `WS_URL` 设置，改为你的电脑 IP 地址：
+   
+   ```kotlin
+   // 例如：你的电脑 IP 是 192.168.1.100
+   WS_URL = "ws://192.168.1.100:8000/ws"
+   ```
+
+4. **构建并安装应用：**
+   
+   用 Android Studio 打开 `android/` 文件夹，在手机上运行 app，或者用命令行：
 
    ```bash
-   git checkout -b feat/your-feature
+   cd android
+   ./gradlew installDebug
    ```
 
-3. 做改动，保持每个 commit 聚焦一件事，遵循 [Conventional Commits](https://www.conventionalcommits.org/) 风格，例如：
+5. **启用 JoyPhone 的无障碍服务：**
+   - 进入 设置 → 无障碍 → 已安装的应用
+   - 找到"JoyPhone"或"PhoneAgent"
+   - 启用它并授予所有权限
 
-   ```text
-   feat(decision): 支持微信聊天页节点裁剪
-   fix(android): 修复断线重连偶发 NPE
-   test(server): 增加飞书 happy path 回放夹具
-   docs: 补充新 APP 接入指南
-   ```
+### 第四步：开始测试！
 
-4. 提交前确保本地通过校验：
+1. 确保你的电脑和手机在同一个 WiFi 网络下
+2. 在手机上打开 JoyPhone 应用
+3. 你应该会看到"已连接"状态
+4. 输入一个目标，比如"打开飞书给张三发消息：你好！"
+5. 看 JoyPhone 工作！
 
-   ```bash
-   # 云端
-   cd server && uv run pytest
-   # 安卓端
-   cd android && ./gradlew test
-   ```
+## 使用方法
 
-5. Push 到你的 fork，向 `main` 提交 **Pull Request**：
+### 基础命令
 
-   - **标题**用 Conventional Commits 格式（如 `feat(android): 支持微信发消息技能`）。
-   - **描述**说明：解决了什么问题 / 为什么这么做 / 怎么测试的。如果改动决策逻辑，附一段回放夹具或日志更佳。
-   - 如果 PR 对应某个 issue，请关联（`Closes #123`）。
+直接输入你想完成的事：
 
-6. 等待 review。小改动通常当天合入；涉及决策主循环或协议变更的会多轮讨论。
+| 你输入的内容 | JoyPhone 会做的操作 |
+|-------------|---------------------|
+| "给妈妈发微信：我6点到家" | 打开微信、找到妈妈、发送消息 |
+| "打开抖音搜索做饭视频" | 打开抖音、使用搜索、展示结果 |
+| "把这条消息转发到工作群" | 打开相关应用、找到群聊、转发 |
+| "打开设置查看存储空间" | 打开设置、导航到存储信息 |
 
-### PR 约定
+### 获得最佳效果的技巧
 
-- **一个 PR 一件事**：混合多个无关改动的 PR 拆成多个。
-- **保持可测**：新逻辑尽量配单测；真机相关改动附日志或回放夹具。
-- **不改协议格式**：需要扩展上下行消息协议时，先开 issue 讨论向后兼容方案。
-- **不引入强依赖**：云端遵循 `pyproject.toml`，安卓端遵循 `libs.versions.toml`，不擅自加大依赖体积。
-- **安全**：不 commit 任何密钥、`.env`、`local.properties`，不引入可能外泄设备信息的代码。
+1. **要具体**：与其说"给 John 发消息"，不如试试"给 John 发微信说会议下午3点"
 
-有任何想法也欢迎先开 [Issue](../../issues) 讨论，避免重复工作或方向跑偏。早期阶段我们对方向保持开放，「先沟通，再动手」远比闷头改一通更高效。
+2. **提供背景**："打开飞书，去项目 Alpha 群，发消息：报告已准备好"
 
-## 设计与计划文档
+3. **检查网络**：确保手机和服务器在同一个 WiFi 网络下
 
-历史的设计与实施计划按日期归档在 `docs/superpowers/`（`specs/` 设计稿 / `plans/` 实施计划），便于追溯演进脉络。竞品分析资料在 `docs/competition/`，`docs/CODE_REVIEW_REPORT.md` 记录最近一次代码评审。
+## 隐私与安全
 
-## License
+- **你的手机，你的服务器**：所有 AI 处理都发生在你自己配置的服务器上
+- **无第三方访问**：你的数据不会发送给 JoyPhone 的开发者
+- **本地处理**：屏幕内容由你自己的 AI 模型分析
+- **完全可控**：随时停止服务器，没有任何数据离开你的网络
 
-本项目基于 **MIT License** 开源，欢迎自由使用、修改、分发。社区贡献默认遵循 MIT 授权。
+## 技术架构（面向开发者）
+
+JoyPhone 有两个主要部分：
+
+### 云端服务器（`server/`）
+- **Python + FastAPI** — 处理 AI 决策和任务管理
+- **WebSocket** — 与手机的实时通信
+- **决策引擎** — 分析屏幕并决定操作
+- **技能库** — 记住成功的任务模式
+
+### 安卓应用（`android/`）
+- **Kotlin + Jetpack Compose** — 现代安卓 UI
+- **无障碍服务** — 读取屏幕并执行操作
+- **WebSocket 客户端** — 保持与云端的连接
+
+## 贡献
+
+JoyPhone 是完全开源的。我们欢迎各种形式的贡献：
+
+- 通过 GitHub Issues 报告问题或提出建议
+- 贡献代码（参见 docs 中的 CONTRIBUTING 部分）
+- 与社区分享你成功的"技能"
+- 改进文档
+
+## 开源协议
+
+本项目基于 **MIT 协议** 开源。你可以自由使用、修改和分发。
+
+---
+
+**JoyPhone — 让 AI 像人一样用手机。用得越多，它就越聪明。**
