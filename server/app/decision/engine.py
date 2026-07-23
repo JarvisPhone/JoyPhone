@@ -22,6 +22,7 @@ from app.decision.skills import BoundSkill, SkillCursor
 from app.decision.types import Decision
 from app.decision.ui_inspect import detect_title, match_title
 from app.infra.config import Config
+from app.decision.pkg_guard import Scene, detect_scene
 from app.protocol import Action, Node, Perception
 
 _logger = logging.getLogger("phoneagent.decision")
@@ -78,11 +79,18 @@ _SYSTEM_PROMPT = """你是一个 Android 手机操作代理的决策核心。给
 
 批处理规则：你可以一次给出多行盲操作(如 home、swipe、back、wait)，最多以「一条 tap 或 input」收尾。系统只会执行到第一条 tap/input 为止，然后重新抓取屏幕再问你，所以 tap/input 之后不要再写别的指令。
 
-输入里的 screen 是当前屏可交互元素列表，每行格式为 `[序号] 类型 "文本"`，类型为 input(输入框)/button(可点击)/text(纯文本)。tap/input 用行号 n 定位元素。
+输入里的 screen 是当前屏可交互元素列表，每行格式为 `[序号] 类型 "文本"`，类型共四种:
+- input  可编辑文本框,可用 `input n 文本` 在它里面输入
+- button 可点击元素,可用 `tap n` 点击
+- label  clickable=false 的装饰元素(通知磁贴、icon 旁文字等),**不可点击**,禁止 tap
+- text   text/desc 都空但 rid 有语义的展示节点(图片视图、容器等),**不可点击**,禁止 tap
+
+除 input/button 外的所有节点都不应被 tap;想点应用图标时,按 name 找匹配的行号,确认该行是 button 而不是 label 再点。
 
 【重要·app 边界硬约束】
-- 输入里会有两个关键字段：pkg(当前正在前台的应用 package)和 target_pkg(任务目标对应的应用 package，可能为空字符串表示任务与具体 app 无关)。
-- 如果 target_pkg 非空 且 pkg != target_pkg：说明当前跑错了应用，你必须先输出 `back`(退出当前 app 的次级页)，然后 `home`，再 `read`，再 `tap` 目标 app 图标——禁止直接 tap 当前屏幕里的通知/磁贴/横幅跳到其他 app，那会把任务带偏。
+- 输入里会有三个关键字段:pkg(当前正在前台的应用 package)、target_pkg(任务目标对应的应用 package,可能为空字符串表示任务与具体 app 无关)、scene(系统按 UI 树算出的当前场景标签,形如 "launcher.home" / "launcher.minus_one" / "app" / "systemui.notification" 等)。
+- scene 已经过服务端状态机判定,**比你自己从 screen 文字推断更可靠**:看到 `launcher.minus_one` 就已知是 ColorOS 负一屏不要找图标,看到 `app` 就已知在某个 app 内。请以 scene 为准;只在 scene=unknown 时才自行从 screen 推理。
+- 如果 target_pkg 非空 且 pkg != target_pkg:说明当前跑错了应用,你必须先输出 `back`(退出当前 app 的次级页),然后 `home`,再 `read`,再 `tap` 目标 app 图标——禁止直接 tap 当前屏幕里的通知/磁贴/横幅跳到其他 app,那会把任务带偏。
 - 如果 target_pkg 非空 且 pkg == target_pkg：你**已经在目标 app 内**，绝不要输出 `home`，也不要用 `back`+`home` 退出当前 app。此时只需在 app 内推进任务：找不到目标会话/页面时，用搜索框输入名称搜索，或用 `swipe up`/`swipe down` 在列表内滚动查找；进错了子页（如进错群聊）用**单个 `back`** 回上一级列表继续找，禁止一路 back+home 退回桌面重来。
 - 如果 target_pkg 为空：无 app 约束，可以自由 tap。
 - 出现「XX 有 N 条新消息」「XX 推荐」「XX 回复了你」类通知横幅/磁贴时，即使 clickable 也一律忽略，除非这条通知就是任务目标本身(如「去通知中心打开微信」)。
@@ -125,12 +133,56 @@ read
 """
 
 
-def _node_type(node: Node) -> str:
+_NOTIF_SUBTILE_RE = __import__("re").compile(r"有\s*\d+\s*条\s*(?:通知|消息|推荐|新动态|未读)")
+
+
+def _node_type(node: Node, ancestor_clickable: bool = False) -> str:
+    """返回 LLM 视角的节点类型(4 态)。
+
+    - input: 可编辑输入框
+    - button: 可点击
+    - label: clickable=false 的非编辑装饰元素(通知磁贴/icon 旁文字等),
+      LLM 不应 tap 这些节点
+    - text: 不可交互的纯展示文本(text/desc 都空但 rid 有语义)
+
+    例外(launcher widget 子入口判别):
+    ColorOS 的小布建议/负一屏卡片常把"飞书/微信/淘宝"等子项做成
+    clickable=false 的 ViewGroup(ViewGroup className、含 "XX 有 N 条通知" 文案),
+    但祖先是 clickable=true 的卡片容器,点坐标落到卡片内即可触发子项入口。
+    原生规则会把它标成 label,LLM 因名字含"飞书"误以为是图标去 tap;
+    显式标 button 让 LLM 知道「这是可点的,放心 tap」。
+    """
     if node.editable:
         return "input"
     if node.clickable:
         return "button"
+    text = (node.text or node.desc or "").strip()
+    if text and ancestor_clickable and _NOTIF_SUBTILE_RE.search(text):
+        return "button"
+    if text:
+        return "label"
     return "text"
+
+
+_SCENE_LABELS: dict[Scene, str] = {
+    Scene.HOME: "launcher.home",
+    Scene.MINUS_ONE: "launcher.minus_one",
+    Scene.NOTIFICATION: "systemui.notification",
+    Scene.CONTROL_CENTER: "systemui.control_center",
+    Scene.IN_APP: "app",
+    Scene.LOCK_SCREEN: "lock_screen",
+    Scene.RECENT_APPS: "recent_apps",
+    Scene.UNKNOWN: "unknown",
+}
+
+
+def _scene_label(frame: Perception) -> str:
+    """Scene 枚举 → LLM 可读标签。
+
+    标签形如 "主类.子类":主类指明这是哪一类系统界面(launcher/systemui/app),
+    子类说明它的状态。LLM 据此直接判断当前位置,不用从节点文字反推。
+    """
+    return _SCENE_LABELS.get(detect_scene(frame), "unknown")
 
 
 def _rid_tail(rid: str | None) -> str:
@@ -152,11 +204,61 @@ def _rid_label(rid: str | None) -> str:
     return rid.rsplit("/", 1)[-1].replace("_", " ").strip()
 
 
-def _encode_nodes(nodes: list[Node]) -> str:
+def _build_ancestor_clickable(nodes: list[Node]) -> dict[int, bool]:
+    """返回 {节点索引 -> 其祖先链(含自身)中是否有 clickable=true}。
+
+    用于 launcher widget 子入口判别("XX 有 N 条通知" 且祖先有可点容器
+    ⇒ 改标 button,否则 LLM 误以为「fly book 是 label 不可 tap」)。
+    按 bounds 父子关系构建(Android dumpsys 含完整唯一 id,bounds 嵌套天然
+    形成树)。
+    """
+    if not nodes:
+        return {}
+
+    def area(b: tuple[int, int, int, int] | None) -> int:
+        if not b or len(b) != 4:
+            return -1
+        _, _, r, bot = b
+        return max(0, r) * max(0, bot)
+
+    ordered = sorted(range(len(nodes)), key=lambda i: area(nodes[i].bounds), reverse=True)
+    parent: dict[int, int] = {}
+    for i in ordered:
+        b = nodes[i].bounds
+        if not b or len(b) != 4:
+            continue
+        l, t, r, bot = b
+        for j in ordered:
+            if i == j:
+                continue
+            pb = nodes[j].bounds
+            if not pb or len(pb) != 4:
+                continue
+            pl, pt, pr, pbot = pb
+            if pl <= l and pt <= t and pr >= r and pbot >= bot and (pr - pl) * (pbot - pt) > (r - l) * (bot - t):
+                parent[i] = j
+                break
+    anc: dict[int, bool] = {}
+    for i in range(len(nodes)):
+        seen = {i}
+        cur = i
+        val = nodes[i].clickable
+        while parent.get(cur) is not None and parent[cur] not in seen:
+            cur = parent[cur]
+            seen.add(cur)
+            if nodes[cur].clickable:
+                val = True
+                break
+        anc[i] = val
+    return anc
+
+
+def _encode_nodes(nodes: list[Node], ancestor_clickable: list[bool] | None = None) -> str:
     lines = []
+    anc = ancestor_clickable if ancestor_clickable is not None else [False] * len(nodes)
     for i, n in enumerate(nodes):
         label = (n.text or n.desc or "").strip() or _rid_label(n.viewIdResourceName)
-        lines.append(f'[{i}] {_node_type(n)} "{label}"')
+        lines.append(f'[{i}] {_node_type(n, anc[i] if i < len(anc) else False)} "{label}"')
     return "\n".join(lines)
 
 
@@ -410,11 +512,14 @@ class DecisionEngine:
 
     def _llm_decide(self, d: DecideInput) -> Decision:
         nodes = self._cap_nodes(d.frame.nodeTree)
+        anc_map = _build_ancestor_clickable(d.frame.nodeTree)
+        ancestor = [anc_map.get(id(n), False) for n in nodes]
         payload = {
             "goal": d.goal,
             "pkg": d.frame.pkg,
             "target_pkg": d.target_pkg,
-            "screen": _encode_nodes(nodes),
+            "scene": _scene_label(d.frame),
+            "screen": _encode_nodes(nodes, ancestor),
         }
         if d.feedback:
             payload["feedback"] = d.feedback

@@ -1,4 +1,10 @@
-from app.decision.engine import DecideInput, DecisionEngine, _encode_nodes, parse_actions
+from app.decision.engine import (
+    DecideInput,
+    DecisionEngine,
+    _build_ancestor_clickable,
+    _encode_nodes,
+    parse_actions,
+)
 from app.decision.llm import FakeLLM
 from app.decision.pkg_guard import SceneConfig
 from app.decision.skills import BoundSkill, SkillCursor, SkillStep, SkillTemplate
@@ -125,8 +131,75 @@ def test_encode_nodes_type_annotation():
         Node(id="d", text="正文"),
     ]
     assert _encode_nodes(nodes) == (
-        '[0] button "首页"\n[1] input "搜索"\n[2] button "微博"\n[3] text "正文"'
+        '[0] button "首页"\n[1] input "搜索"\n[2] button "微博"\n[3] label "正文"'
     )
+
+
+def test_encode_nodes_label_is_clickable_false_decoration():
+    """clickable=false + 非 editable + text/desc 非空 → label(LLM 不要 tap)。"""
+    nodes = [
+        Node(id="n1", text="飞书 有2条通知", clickable=False),
+        Node(id="n2", desc="京东 提醒", clickable=False),
+        Node(id="n3", text="真图标", clickable=True),
+    ]
+    out = _encode_nodes(nodes)
+    assert out == '[0] label "飞书 有2条通知"\n[1] label "京东 提醒"\n[2] button "真图标"'
+
+
+def test_encode_nodes_widget_subtile_inside_clickable_card():
+    """ColorOS 小布建议卡片("JoyPhoneAgent+飞书+淘奔")里的「XX 有 N 条通知」
+    子项本被视为 label(导致 LLM 看到名字含"飞书"误以为是图标去 tap)。
+    现在规则:祖先链含 clickable=true 且文案含「有 N 条通知/消息/推荐」
+    → 改标 button,让 LLM 知道这是可点的 widget 子入口。
+    """
+    # 重建今日真机 dump 的最小子树:
+    #   0: 小布建议 FrameLayout (卡片容器,可点)
+    #   1: JoyPhoneAgent+飞书+... 卡片 (可点)
+    #   2: 飞书 有2条通知 (不可点的 ViewGroup,文案指纹)
+    #   3: 哔哩哔哩 有98条通知 (同上)
+    #   4: 淘宝 (不可点但不含 "有 N 条通知",不变)
+    nodes = [
+        Node(id="card", text="小布建议", clickable=True, bounds=(48, 735, 1032, 1275)),
+        Node(id="row", text="JoyPhoneAgent",
+             clickable=True, bounds=(567, 763, 1005, 1201)),
+        Node(id="feishu", text="飞书 有2条通知",
+             clickable=False, className="android.view.ViewGroup",
+             bounds=(802, 778, 991, 967)),
+        Node(id="bili", text="哔哩哔哩 有98条通知",
+             clickable=False, className="android.view.ViewGroup",
+             bounds=(603, 977, 792, 1166)),
+        Node(id="taobao", text="淘宝",
+             clickable=False, className="android.view.ViewGroup",
+             bounds=(802, 977, 991, 1166)),
+    ]
+    anc = [_build_ancestor_clickable(nodes).get(i, False)
+           for i in range(len(nodes))]
+    out = _encode_nodes(nodes, anc)
+    assert '[0] button "小布建议"' in out
+    assert '[1] button "JoyPhoneAgent"' in out
+    assert '[2] button "飞书 有2条通知"' in out   # 关键:不再是 label
+    assert '[3] button "哔哩哔哩 有98条通知"' in out
+    assert '[4] label "淘宝"' in out           # 文案不含 "有 N 条通知",保持 label
+
+
+def test_encode_nodes_widget_subtile_without_clickable_ancestor():
+    """文案指纹命中但祖先全 clickable=false → 仍是 label,不误伤普通装饰文本。
+
+    防护点:不能让一条孤立的"XX 有 N 条通知"被误升为 button。
+    """
+    nodes = [
+        Node(id="standalone", text="飞书 有2条通知",
+             clickable=False, bounds=(0, 0, 200, 200)),
+    ]
+    assert _encode_nodes(nodes) == '[0] label "飞书 有2条通知"'
+
+
+def test_encode_nodes_text_only_when_no_text_and_no_desc():
+    """text/desc 都空但 rid 有语义 → text(label 不可重叠)。"""
+    nodes = [
+        Node(id="x", viewIdResourceName="com.x:id/iv_image", clickable=False),
+    ]
+    assert _encode_nodes(nodes) == '[0] text "iv image"'
 
 
 def test_encode_nodes_empty_and_blank_label():
@@ -567,3 +640,58 @@ def test_llm_payload_omits_feedback_when_empty():
         cache_context="",
     ))
     assert "feedback" not in llm.calls[0]
+
+
+# ---- payload.scene 字段透传 ----
+
+def _launcher_minus_one_tree():
+    """ColorOS 负一屏:workspace 节点内缩(left>0,top>0),含「小布建议」节点。"""
+    return [
+        Node(id="ws", viewIdResourceName="com.android.launcher:id/workspace",
+             bounds=(39, 85, 1041, 2289), clickable=False),
+        Node(id="sub", text="小布建议", clickable=False),
+    ]
+
+
+def test_llm_payload_scene_minus_one_when_workspace_indented():
+    llm = _RecordingLLM()
+    eng = DecisionEngine(llm=llm, cache=None)
+    frame = Perception(pkg="com.android.launcher", nodeTree=_launcher_minus_one_tree())
+    eng._llm_decide(DecideInput(
+        goal="g", frame=frame, target_pkg="com.ss.android.lark",
+        cursor=SkillCursor(), bound_skill=None, guard={}, title_keywords=(),
+    ))
+    assert llm.calls[0]["scene"] == "launcher.minus_one"
+
+
+def test_llm_payload_scene_home_when_workspace_fullscreen():
+    llm = _RecordingLLM()
+    eng = DecisionEngine(llm=llm, cache=None)
+    tree = [
+        Node(id="ws", viewIdResourceName="com.android.launcher:id/workspace",
+             bounds=(0, 0, 1080, 2374), clickable=False),
+        Node(id="icon", text="飞书", clickable=True),
+    ]
+    frame = Perception(pkg="com.android.launcher", nodeTree=tree)
+    eng._llm_decide(DecideInput(
+        goal="g", frame=frame, target_pkg="com.ss.android.lark",
+        cursor=SkillCursor(), bound_skill=None, guard={}, title_keywords=(),
+    ))
+    assert llm.calls[0]["scene"] == "launcher.home"
+
+
+def test_llm_payload_scene_in_app_for_third_party_pkg():
+    llm = _RecordingLLM()
+    eng = DecisionEngine(llm=llm, cache=None)
+    frame = Perception(pkg="com.ss.android.lark", nodeTree=[Node(id="x", text="消息")])
+    eng._llm_decide(DecideInput(
+        goal="g", frame=frame, target_pkg="com.ss.android.lark",
+        cursor=SkillCursor(), bound_skill=None, guard={}, title_keywords=(),
+    ))
+    assert llm.calls[0]["scene"] == "app"
+
+
+def test_scene_label_table_covers_all_scenes():
+    from app.decision.pkg_guard import Scene
+    from app.decision.engine import _SCENE_LABELS
+    assert set(_SCENE_LABELS.keys()) == set(Scene.__members__.values())
