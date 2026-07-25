@@ -229,12 +229,42 @@ def test_cap_nodes_under_threshold_returns_all():
 
 def test_cap_nodes_over_threshold_prefers_interactive():
     eng = DecisionEngine(llm=FakeLLM(["back"]), cache=None)
-    nodes = [Node(id=f"t{i}", text=f"text{i}") for i in range(300)]
+    nodes = [Node(id=f"n{i}", text=f"t{i}") for i in range(300)]
     target = Node(id="target", text="飞书", clickable=True)
     nodes.append(target)
     capped = eng._cap_nodes(nodes)
     assert len(capped) == eng.MAX_LLM_NODES
-    assert target in capped
+    assert target in capped  # score=3(交互+有文字)优先于 score=0(纯装饰)
+
+
+def test_cap_nodes_scores_noninteractive_text_nodes_above_decorators():
+    """有文字的不可交互节点(如 section header)分数高于无文字的装饰节点。"""
+    eng = DecisionEngine(llm=FakeLLM(["back"]), cache=None)
+    plain = [Node(id=f"plain{i}", text="") for i in range(100)]
+    titled = [Node(id=f"title{i}", text=f"分区{i}") for i in range(10)]
+    fabs = [Node(id=f"fab{i}", clickable=True) for i in range(5)]
+    nodes = plain + titled + fabs
+    capped = eng._cap_nodes(nodes)
+    assert len(capped) == eng.MAX_LLM_NODES
+    for n in titled:
+        assert n in capped, f"{n.id} 应该有文字不可交互,应被保留"
+    for n in fabs:
+        assert n in capped, f"{n.id} 可交互无文字应优先于纯装饰"
+
+
+def test_cap_nodes_preserves_original_order():
+    """cap 后返回按原始索引升序排列,保持遍历顺序便于 LLM 理解。"""
+    eng = DecisionEngine(llm=FakeLLM(["back"]), cache=None)
+    nodes = [
+        Node(id="p0", text=""),
+        Node(id="c1", clickable=True),
+        Node(id="t2", text="标题"),
+        Node(id="i3", text="可点文字", clickable=True),
+        Node(id="p4", text=""),
+    ]
+    capped = eng._cap_nodes(nodes)
+    ids = [n.id for n in capped]
+    assert ids == ["p0", "c1", "t2", "i3", "p4"]  # 原树遍历顺序,不排序
 
 
 # ---- tap/input 语义锚点(不注入坐标,端侧实时定位) ----

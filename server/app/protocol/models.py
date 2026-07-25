@@ -21,7 +21,6 @@ class Node(BaseModel):
 class Perception(BaseModel):
     type: Literal["perception"] = "perception"
     nodeTree: list[Node] = Field(default_factory=list)
-    screenshot: Optional[str] = None
     pkg: str = ""
     activity: str = ""
     ts: int = 0
@@ -131,7 +130,6 @@ class TaskStart(_Downlink):
 Op = Literal[
     "tap", "tap_at", "input", "swipe", "back", "home", "wait", "read_screen",
     "longpress", "press_enter",
-    "request_screenshot",  # 端侧截图(下一帧 perception 携带 screenshot 字段)
     "done", "abort",
 ]
 

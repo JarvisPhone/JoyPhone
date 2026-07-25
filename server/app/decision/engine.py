@@ -626,6 +626,32 @@ class DecisionEngine:
         nav_map = _nav_map(nodes, ancestor)
         screen_text = _encode_nodes(nodes, ancestor)
 
+        # === [NODE_TREE] 节点树分布打点 ===
+        # 每帧决策时打一行,展示 cap 后节点的价值分布,供真机联调时对比:
+        # - total/original:cap 后/前节点数
+        # - score3/2/1/0: 各评分档节点数
+        # - capped: 原始超过上限则为 yes
+        # 联调时 grep "NODE_TREE" 快速评估过滤效果。
+        _diag = logging.getLogger("phoneagent.gateway")
+        total_orig = len(d.frame.nodeTree)
+        capped = total_orig > self.MAX_LLM_NODES
+        s3 = s2 = s1 = s0 = 0
+        for n in nodes:
+            has_text = bool((n.text or "").strip() or (n.desc or "").strip())
+            interactive = n.clickable or n.editable
+            if interactive and has_text:
+                s3 += 1
+            elif not interactive and has_text:
+                s2 += 1
+            elif interactive:
+                s1 += 1
+            else:
+                s0 += 1
+        _diag.info(
+            "[NODE_TREE] total=%d cap=%d capped=%s s3=%d(交互+文字) s2=%d(文字) s1=%d(交互) s0=%d(装饰)",
+            total_orig, len(nodes), capped, s3, s2, s1, s0,
+        )
+
         # 自然可读格式:去掉 JSON 包装层,让 LLM 看到与日志一致的纯文本
         user_parts = [
             f"goal: {d.goal}",
@@ -646,18 +672,13 @@ class DecisionEngine:
             user_parts.extend(["", f"[feedback]", d.feedback])
         user_text = "\n".join(user_parts)
 
-        raw = self._llm.complete(
-            system=_SYSTEM_PROMPT,
-            user=user_text,
-            image_b64=getattr(d.frame, "screenshot", None),
-        )
+        raw = self._llm.complete(system=_SYSTEM_PROMPT, user=user_text)
 
         # === LLM_DECIDE 结构化日志 ===
         # 一次性把决策链路所有关键维度打一行,真机联调「同一个意图重复多少帧」直接 grep 数。
         # 日志格式(非 JSON,字段顺序稳定便于脚本切片):
         #   [LLM_DECIDE] seq=X | pkg=Y | scene=Z | page=W | cursor=N/M |
         #     nodes=T(c=N,e=N) | llm_out=... | ...
-        _diag = logging.getLogger("phoneagent.gateway")
         clickable = sum(1 for n in nodes if n.clickable)
         editable = sum(1 for n in nodes if n.editable)
         cursor_step = getattr(d.cursor, "index", 0)
@@ -726,10 +747,44 @@ class DecisionEngine:
         return Decision(actions=actions, source="llm")
 
     def _cap_nodes(self, nodes: list[Node]) -> list[Node]:
+        """智能节点树裁剪:按「对 LLM 理解页面的价值」评分后选 top-N。
+
+        评分规则:
+          score=3: 可交互 + 有文字(clickable/editable 且 text/desc 非空)
+          score=2: 不可交互 + 有文字(标题、列表项文本、section header)
+          score=1: 可交互 + 无文字(FAB、icon 按钮等,仍可点击)
+          score=0: 不可交互 + 无文字(结构性容器、布局节点)
+
+        策略:保留所有 score=3;其余按分数从高到低填满 MAX_LLM_NODES 槽位;
+        同分节点按原始索引升序。最后返回按原始遍历索引升序排列的结果
+        (保持树遍历顺序,便于 LLM 按节点序号操作)。
+
+        这样即使有 200 个节点,所有带文字的按钮/输入框都保留;
+        纯装饰节点只在还有余量时才进入。
+        """
         if len(nodes) <= self.MAX_LLM_NODES:
             return nodes
-        interactive = [n for n in nodes if n.clickable or n.editable]
-        others = [n for n in nodes if not (n.clickable or n.editable)]
-        capped = (interactive + others)[: self.MAX_LLM_NODES]
-        keep = set(id(n) for n in capped)
-        return [n for n in nodes if id(n) in keep]
+
+        scored: list[tuple[int, int, Node]] = []
+        for i, n in enumerate(nodes):
+            has_text = bool((n.text or "").strip() or (n.desc or "").strip())
+            interactive = n.clickable or n.editable
+            if interactive and has_text:
+                score = 3
+            elif not interactive and has_text:
+                score = 2
+            elif interactive:
+                score = 1
+            else:
+                score = 0
+            scored.append((score, i, n))
+
+        # score 降序,original_index 升序(保持遍历顺序)
+        scored.sort(key=lambda x: (-x[0], x[1]))
+
+        # 选 top MAX_LLM_NODES
+        chosen_ids: set[int] = {id(s[2]) for s in scored[: self.MAX_LLM_NODES]}
+
+        # 按原始顺序返回
+        result = [n for n in nodes if id(n) in chosen_ids]
+        return result
