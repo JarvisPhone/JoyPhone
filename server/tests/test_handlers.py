@@ -855,7 +855,7 @@ async def test_end_to_end_expect_feedback_loop(tmp_path):
     await handle_uplink(_perception(seq=2, pkg=LARK, nodes=[title]), store, conn, deps)
     assert len(llm.calls) >= 2
     fb = llm.calls[1]
-    assert "[feedback]" in fb and "FAIL" in fb and "别的群" in fb
+    assert "[VERIFY]" in fb and "FAIL" in fb and "别的群" in fb
 
 
 async def test_pre_policy_intercept_dispatches_without_decide(tmp_path):

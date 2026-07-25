@@ -87,3 +87,66 @@ def test_user_payload_section_with_scene_brief_appears_after_observe():
     assert "负一屏磁贴" in payload
     # scene-brief 必须在 OBSERVE 后,VERIFY 前
     assert payload.index("[OBSERVE]") < payload.index("[SCENE-BRIEF") < payload.index("[VERIFY]")
+
+
+def test_engine_llm_decide_injects_scene_brief_for_minus_one():
+    """engine.decide 触发 LLM 时,场景为 launcher.minus_one 应自动注入 brief。"""
+    from app.decision.engine import DecisionEngine, DecideInput
+    from app.decision.llm import FakeLLM
+    from app.protocol import Node, Perception
+    from app.decision.skills import SkillCursor
+
+    captured = []
+
+    class CapturingFake(FakeLLM):
+        def complete(self, system, user, image_b64=None):
+            captured.append(user)
+            return "read"
+
+    nodes = [
+        Node(id="ws", viewIdResourceName="com.coloros.launcher:id/workspace",
+             bounds=[39, 85, 1041, 2289], clickable=False, editable=False),
+        Node(id="0", text="小布建议", viewIdResourceName="x:id/title",
+             bounds=[0, 0, 100, 100], clickable=False, editable=False),
+    ]
+    frame = Perception(pkg="com.coloros.launcher", nodeTree=nodes, activity="", ts=1)
+
+    eng = DecisionEngine(llm=CapturingFake(["read"]), cache=None)
+    eng._llm_decide(DecideInput(
+        goal="打开飞书", frame=frame, target_pkg="com.ss.android.lark",
+        cursor=SkillCursor(), bound_skill=None, guard={}, title_keywords=(),
+    ))
+
+    user = captured[0]
+    assert "[SCENE-BRIEF: launcher.minus_one]" in user
+    assert "负一屏" in user or "磁贴" in user
+
+
+def test_engine_llm_decide_no_brief_when_unknown_scene():
+    """scene=app/page=app.inbox_list 有 brief(已在字典里)。
+    但 UNKNOWN scene 时不该出现 [SCENE-BRIEF 段。"""
+    from app.decision.engine import DecisionEngine, DecideInput
+    from app.decision.llm import FakeLLM
+    from app.protocol import Node, Perception
+    from app.decision.skills import SkillCursor
+
+    captured = []
+
+    class CapturingFake(FakeLLM):
+        def complete(self, system, user, image_b64=None):
+            captured.append(user)
+            return "read"
+
+    nodes = [Node(id="0", text="x", viewIdResourceName="x:id/xx",
+                  bounds=[0, 0, 100, 100], clickable=False, editable=False)]
+    frame = Perception(pkg="com.x", nodeTree=nodes, activity="", ts=1)
+
+    eng = DecisionEngine(llm=CapturingFake(["read"]), cache=None)
+    eng._llm_decide(DecideInput(
+        goal="x", frame=frame, target_pkg="",
+        cursor=SkillCursor(), bound_skill=None, guard={}, title_keywords=(),
+    ))
+
+    user = captured[0]
+    # UNKNOWN scene 不应触发 SCENE-BRIEF 段
+    assert "[SCENE-BRIEF:" not in user

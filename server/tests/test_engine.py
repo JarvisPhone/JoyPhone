@@ -718,7 +718,7 @@ def test_llm_payload_includes_feedback_when_present():
         cursor=SkillCursor(), bound_skill=None, guard={}, title_keywords=(),
         cache_context="", feedback="上一条 tap 执行失败:anchor_not_found",
     ))
-    assert "[feedback]" in llm.calls[0]
+    assert "[VERIFY]" in llm.calls[0]
     assert "上一条 tap 执行失败:anchor_not_found" in llm.calls[0]
 
 
@@ -730,7 +730,8 @@ def test_llm_payload_omits_feedback_when_empty():
         cursor=SkillCursor(), bound_skill=None, guard={}, title_keywords=(),
         cache_context="",
     ))
-    assert "[feedback]" not in llm.calls[0]
+    assert "[VERIFY]" in llm.calls[0]
+    assert "(no previous action — assume success)" in llm.calls[0]
 
 
 # ---- payload.scene 字段透传 ----

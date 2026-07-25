@@ -18,7 +18,7 @@ from app.decision.cache import SkillCache, bind_params
 from app.decision.exit_hint import exit_hint
 from app.decision.app_page import AppPage, detect_app_page
 from app.decision.llm import LLM
-from app.decision.payload import build_system_prompt
+from app.decision.payload import build_system_prompt, build_user_payload, encode_visible_nodes
 from app.decision.pkg_guard import pkg_guard_action
 from app.decision.skills import BoundSkill, SkillCursor
 from app.decision.types import Decision
@@ -554,25 +554,32 @@ class DecisionEngine:
             total_orig, len(nodes), capped, s3, s2, s1, s0,
         )
 
-        # 自然可读格式:去掉 JSON 包装层,让 LLM 看到与日志一致的纯文本
-        user_parts = [
-            f"goal: {d.goal}",
-            f"pkg: {d.frame.pkg}",
-            f"target_pkg: {d.target_pkg}",
-            f"scene: {scene_label}",
-            f"page: {page_label}",
-            f"exit_hint: {hint}",
-        ]
-        if nav_map:
-            user_parts.append(f"nav_map: {nav_map}")
-        user_parts.extend([
-            "",
-            "[screen]",
-            screen_text,
-        ])
-        if d.feedback:
-            user_parts.extend(["", f"[feedback]", d.feedback])
-        user_text = "\n".join(user_parts)
+        # 6 段 payload:[OBSERVE] [SCENE-BRIEF*] [GROUND] [PHASE] [ACT] [VERIFY]
+        # scene_brief 按 (scene, page) 注入,AppProfile.llm_brief 由 Task 5 注入。
+        from app.decision.scene_briefs import brief_for as _generic_brief
+        generic_brief = _generic_brief(scene, page_enum)
+        scene_brief = generic_brief  # app-specific 注入下个 task 加
+        screen_text = encode_visible_nodes(nodes, ancestor)
+
+        # last_1_action 由 handlers 层写入(暂用空)
+        last_action = getattr(d, "last_action", None)
+
+        user_text = build_user_payload(
+            goal=d.goal,
+            frame=d.frame,
+            scene_label=scene_label,
+            page_label=page_label,
+            target_pkg=d.target_pkg,
+            exit_path=hint,
+            nav_map=nav_map,
+            screen_text=screen_text,
+            feedback=d.feedback or "",
+            last_action=last_action,
+            scene_brief=scene_brief,
+            phase_label="(phase not yet wired)",
+            phase_current="",
+            phase_next_gate="",
+        )
 
         raw = self._llm.complete(system=build_system_prompt(), user=user_text)
 
