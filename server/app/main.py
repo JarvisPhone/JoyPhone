@@ -24,6 +24,7 @@ from app.decision.llm import FakeLLM, build_llm
 from app.gateway.connection import Connection
 from app.gateway.router import route_loop
 from app.infra.config import Config
+from app.infra.logging import setup_logging
 from app.infra.metrics import get_metrics_collector
 from app.protocol import PROTOCOL_VERSION
 from app.scenario.send_message import SendMessagePack
@@ -31,6 +32,11 @@ from app.task.context import TaskStore
 from app.task.handlers import HandlerDeps
 
 logger = logging.getLogger(__name__)
+
+# 模块加载即初始化:保证后续 import 触发的 logger.info 也能被接住。
+# 第三方库(uvicorn / sqlalchemy 等)此前已挂的 handler 会通过 root.addHandler 叠加,
+# 我们在 setup_logging 内部已清掉 root.handlers,不会泄漏到 uvicorn 自身。
+setup_logging()
 
 
 def _build_llm():

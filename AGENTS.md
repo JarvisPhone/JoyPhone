@@ -3,7 +3,7 @@
 ## 合并硬门槛(三命令全绿)
 
 ```bash
-cd server && uv run pytest tests/ -q      # 服务端测试(当前 252)
+cd server && uv run pytest tests/ -q      # 服务端测试(当前 340)
 cd server && uv run pyright app/          # 类型检查(basic,零错误)
 cd android && ./gradlew :app:testDebugUnitTest  # 端侧单测(当前 78)
 ```
@@ -24,7 +24,7 @@ server/app/
 ├── decision/    # 决策层:engine.py(cache→skill→pkg_guard→LLM,返回 Decision 永不 None)
 │                #            skills.py(SkillTemplate+BoundSkill 参数绑定,SkillCursor 步进)
 │                #            cache.py / pkg_guard.py / llm.py / types.py / ui_inspect.py
-└── infra/       # config.py(全部常量)/ metrics.py
+└── infra/       # config.py(全部常量)/ logging.py(双轨日志)/ metrics.py
 ```
 
 ## 关键约定
@@ -34,6 +34,11 @@ server/app/
   三条已拍板约定——①能力矩阵经握手首帧 `device.hello` 上报 ②动作空间由能力矩阵生成,
   无 SDK 设备 prompt 零变化 ③op 路由全在端侧,云端只感知能力不感知 Provider
 - 日志禁止 f-string,统一 `logger.info("msg %s", arg)`
+- 日志双轨(2026-07-25 新增):应用进程走 `app.infra.logging.setup_logging()` 同时挂两路 handler
+    * stdout:单行概要(`LEVEL | logger.name | message`),长消息自动截断 200 char,跑 dev 时人眼可读
+    * `logs/server.jsonl`:每行一个 JSON 对象,含 `ts/level/logger/msg/src:行号`,事后 `jq` 查 bug
+  comm 通信原始日志仍走文件独立 logger:`logs/comm.log`(WS 上下行原文 / 每行 `ts|UP/DOWN|type|内容`,不是 JSONL)+ `logs/llm.log`(LLM 请求/响应原文)。
+  新增人读摘要文件 `logs/comm.log.summary`,一行一条,格式 `ts UP/DOWN <msg_type> <关键字段>`,grep + tail 两不耽误。
 - decide() 返回 `Decision(actions, source, meta)`,永不返回 None
 - 记忆回放(cache/skill)由 `Config.REPLAY_ENABLED` 总开关控制,LLM 链路未稳定前=False,每帧 LLM 决策
 - cache 沉淀=多次验证+泛化:同 key 泛化轨迹连续成功 `SKILL_LEARN_THRESHOLD` 次才转正;
@@ -49,8 +54,7 @@ server/app/
 - 端侧 WS_URL 来自 BuildConfig(build.gradle.kts),禁止硬编码
 - 协议双端契约测试样本:shared/protocol/v2/*.json
 - WS 握手:连接 URL 须带 `?v=2`(PROTOCOL_VERSION),缺失或不符直接 close(code=4402)
-- 日志约定(2026-07-25):日志只记录**实际发送的原始内容**,不额外 JSON 序列化美化。comm.log 记 WS 上下行原文;llm.log 记发给 LLM 的 user prompt 原文和 LLM 回复原文;三者都不是 JSONL,不要误按 JSONL 解析。
-- 真机联调分工:**AI 不碰真机操作**;AI 负责 `adb install -r` + `adb shell monkey` 启动 app,用户手动授予无障碍权限 + 点击触发场景,用户口述现象,AI 看 `server/logs/*` 分析(`tail -F` 三件套 uvicorn.log / comm.log / llm.log)
+- 真机联调分工:**AI 不碰真机操作**;AI 负责 `adb install -r` + `adb shell monkey` 启动 app,用户手动授予无障碍权限 + 点击触发场景,用户口述现象,AI 看 `server/logs/*` 分析(`tail -F` 四件套 `uvicorn.log` / `comm.log` / `comm.log.summary` / `llm.log`,或 `jq` `server.jsonl`)
 
 ## 闭环优先级(2026-07-23 真机复盘后立)
 
