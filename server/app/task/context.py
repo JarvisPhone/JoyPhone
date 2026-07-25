@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from app.decision.skills import BoundSkill, SkillCursor
 from app.infra.config import Config
 from app.protocol import Action
+from app.scenario.phase import PhaseState
 from app.task.fsm import TaskFSM, TaskState
 
 logger = logging.getLogger(__name__)
@@ -114,6 +115,7 @@ class TaskContext:
     last_consumed_seq: int = 0
     max_steps: int = Config.MAX_STEPS_DEFAULT
     scenario: str | None = None
+    phase: PhaseState = field(default_factory=PhaseState)
 
 
 @dataclass

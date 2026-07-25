@@ -45,6 +45,7 @@ from app.protocol import (
     Uplink,
 )
 from app.scenario.base import ScenarioPack, select_scenario
+from app.scenario.phase import TaskPhase
 from app.task.context import TaskContext, TaskStore
 from app.task.fsm import TaskState
 from app.task.policies import (
@@ -183,6 +184,7 @@ async def _on_task_request(
         scenario=scenario.name if scenario is not None else None,
         max_steps=deps.max_steps,
     )
+    ctx.phase.phase = TaskPhase.SEARCH
     if scenario is not None:
         resolved = scenario.resolve_target(uplink.goal)
         ctx.target_pkg = getattr(resolved, "pkg", "") or ""

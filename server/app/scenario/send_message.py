@@ -24,6 +24,7 @@ from app.decision.ui_inspect import detect_title
 from app.infra.config import Config
 from app.protocol import Action, Node, Perception
 from app.scenario.base import AppProfile
+from app.scenario.phase import TaskPhase
 from app.scenario.profiles import ALL_PROFILES, FEISHU_PROFILE, WECHAT_PROFILE
 from app.scenario.ui import (
     extract_target,
@@ -475,6 +476,21 @@ class SendMessagePack:
         chat = extract_target(goal)
         bindings = {"contact": chat, "query": chat} if chat else {}
         return ResolvedTarget(pkg=pkg, chat=chat, bindings=bindings)
+
+    def phases(self) -> list[TaskPhase]:
+        """该场景的 phase 顺序。"""
+        return [
+            TaskPhase.SEARCH,
+            TaskPhase.ENTER_CHAT,
+            TaskPhase.INPUT_TEXT,
+            TaskPhase.SEND,
+            TaskPhase.VERIFY,
+            TaskPhase.DONE,
+        ]
+
+    def gate_for(self, phase: TaskPhase, frame) -> str | None:
+        """Task 6 stub:PhasePack.gate_for 接口,Task 9 完整化实现。"""
+        return None
 
     def skills(self) -> list[SkillTemplate]:
         return [
