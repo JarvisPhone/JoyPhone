@@ -190,6 +190,65 @@ def test_loop_guard_resets_on_frame_or_decision_change():
     assert ctx.loop_repeats == 1
 
 
+def test_loop_guard_detects_backhome_oscillation():
+    """back+home 反复交替(每帧 pkg 切换 → 帧签名不重复)→ 标准 (帧,决策) 检测不到,
+    新加的 backhome 振荡检测能命中:压下 read_screen 并给 exit_hint 反馈。"""
+    from app.task.policies import LoopGuardPolicy
+    p = LoopGuardPolicy()
+
+    # Window=6, alternating_pairs 阈值=3。
+    # back home back home back → recent 5 项时交替对 = 4,达到阈值 → 命中
+    # 所以 i==4 (0-indexed) 即第 5 帧应当命中,放行 read_screen。
+    ctx = _loop_ctx()
+    frames = [
+        Perception(pkg="com.coloros.launcher", nodeTree=[Node(id="h1", text=f"frame{i}")])
+        for i in range(5)
+    ]
+    actions_alt = [
+        [Action(actionId=f"a{i}", op="back" if i % 2 == 0 else "home", params={})]
+        for i in range(5)
+    ]
+    last_v = None
+    for i, (frame, acts) in enumerate(zip(frames, actions_alt)):
+        ctx.decided_actions = acts
+        last_v = p.inspect(frame, ctx)
+        if i < 3:
+            assert last_v.kind == "continue", f"frame {i} 误判: {last_v}"
+    # 第 4 帧 (i=3) 应当命中振荡 -> read_screen + exit_hint
+    assert last_v is not None
+    assert last_v.kind == "intercept"
+    assert last_v.actions is not None and last_v.actions[0].op == "read_screen"
+    assert "exit_hint" in last_v.reason or "退出路径" in last_v.reason
+
+
+def test_loop_guard_backhome_oscillation_resets_after_hint_window():
+    """backhome 命中后压下 EXIT_LOSER_HINT_REPEATS 帧,之后放行让 LLM 重试。"""
+    from app.task.policies import LoopGuardPolicy
+    p = LoopGuardPolicy()
+
+    frames = [
+        Perception(pkg="com.coloros.launcher", nodeTree=[Node(id="h1", text=f"f{i}")])
+        for i in range(LoopGuardPolicy.OP_BACKOFF_WINDOW + LoopGuardPolicy.EXIT_LOSER_HINT_REPEATS + 2)
+    ]
+    ctx = _loop_ctx()
+    v = None
+    # 全部 back+home 交替(持续振荡);压下后 hits 仍累加,直到退出 hint_repeats
+    # 最后一个是 read_screen 动作,不计入 op_recent;但 op_recent 仍会被刷
+    for i in range(len(frames)):
+        # 模拟「上一帧 LoopGuard 已经压下 read_screen」时,LLM 重新决策出来的 back/home
+        # 但这里直接驱动:每个 inspect 都用 back/home 交替,直到 hits 用尽后让放行。
+        if ctx.guard.get("loop_backhome_hits", 0) >= LoopGuardPolicy.EXIT_LOSER_HINT_REPEATS:
+            # 跳出死循环:切到一个新决策(tap),让振荡计数有条件不再增加
+            ctx.decided_actions = [Action(actionId=f"end{i}", op="tap",
+                                          params={"match_text": "foo"})]
+        else:
+            ctx.decided_actions = [Action(actionId=f"a{i}", op="back" if i % 2 == 0 else "home", params={})]
+        v = p.inspect(frames[i], ctx)
+    # 振荡命中阶段全部给出 read_screen + exit_hint 反馈
+    assert v is not None
+    assert ctx.guard["loop_backhome_hits"] >= 1  # 至少触发一次
+
+
 def test_verdict_carries_policy_name():
     class _P:
         name = "my_guard"

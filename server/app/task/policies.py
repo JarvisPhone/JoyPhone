@@ -138,13 +138,64 @@ class LoopGuardPolicy:
       第 3 次:两帧未变确认动作真未生效,放行真·重试;
       第 LOOP_GUARD_BACK(4) 次起:机械 back 脱困(≤LOOP_GUARD_MAX_BACKS 次),
       仍循环 terminate(stuck_loop)。帧或决策任一变化即重置。
+
+    额外检测「back+home 振荡」:LLM 进入「找不出路」的状态时,常表现
+    为 back→home→back→home 反复。该模式不触发帧签名重复(每帧 pkg
+    在切换),单凭(帧,决策)签名无法捕获。统计 guard["op_recent"] 最近
+    OP_BACKOFF_WINDOW 个 op,发现 back/home 交替 ≥ OP_BACKHOME_THRESHOLD 次
+    判定为「退出路径迷失」,给 LLM 一次明确的「当前 scene + exit_hint」
+    反馈,而不是放任它继续振荡。
     """
 
     name = "loop_guard"
 
+    OP_BACKOFF_WINDOW = 6      # 最近 op 滑窗长度
+    OP_BACKHOME_THRESHOLD = 3  # 窗内 back/home 交替达此阈值判定振荡
+    EXIT_LOSER_HINT_REPEATS = 2  # 振荡命中后压下 N 帧直接 read_screen
+
     def inspect(self, frame: Perception | None, ctx: TaskContext) -> Verdict:
         if frame is None or not ctx.decided_actions:
             return continue_()
+
+        # --- 记录最近 op 序列(供 back+home 振荡检测)---
+        gd = ctx.guard if isinstance(ctx.guard, dict) else {}
+        recent: list[str] = list(gd.get("op_recent") or [])
+        for a in ctx.decided_actions:
+            op = a.op
+            if op in ("back", "home", "swipe"):
+                recent.append(op)
+        if len(recent) > self.OP_BACKOFF_WINDOW:
+            recent = recent[-self.OP_BACKOFF_WINDOW:]
+        gd["op_recent"] = recent
+
+        # back+home 振荡模式:相邻项交替且次数达阈值
+        # 例: ["back","home","back","home","back","home"] → 5 个交替
+        alternating_pairs = 0
+        for i in range(1, len(recent)):
+            if {recent[i - 1], recent[i]} == {"back", "home"}:
+                alternating_pairs += 1
+        oscillating_backhome = (
+            alternating_pairs >= self.OP_BACKHOME_THRESHOLD
+            and any(o == "back" for o in recent)
+            and any(o == "home" for o in recent)
+        )
+
+        # 振荡命中后压下 N 帧直接 read_screen,并把当前 scene + exit_hint
+        # 反馈给 LLM,让它重读一下当前布局再决策
+        if oscillating_backhome:
+            gd["loop_backhome_hits"] = gd.get("loop_backhome_hits", 0) + 1
+            if gd["loop_backhome_hits"] <= self.EXIT_LOSER_HINT_REPEATS:
+                hint = self._build_exit_loser_hint(frame)
+                logger.warning(
+                    "[LOOP_BACKHOME] task_id=%s op_recent=%s hits=%d, 压下读帧+给 exit_hint",
+                    ctx.task_id, recent, gd["loop_backhome_hits"],
+                )
+                return intercept(
+                    [Action(actionId=str(uuid.uuid4()), op="read_screen", params={})],
+                    reason=hint,
+                )
+
+        # --- 标准 (帧,决策) 停滞检测 ---
         fsig = frame_signature(frame)
         dsig = decision_signature(ctx.decided_actions)
         if fsig == ctx.loop_frame_sig and dsig == ctx.loop_decision_sig:
@@ -181,6 +232,22 @@ class LoopGuardPolicy:
         )
         return intercept([Action(actionId=str(uuid.uuid4()), op="back", params={})],
                          reason="动作重复未生效,执行 back 脱困")
+
+    @staticmethod
+    def _build_exit_loser_hint(frame: Perception) -> str:
+        """构造「退出路径迷失」反馈文本,让 LLM 重读 exit_hint 再决策。"""
+        from app.decision.app_page import AppPage, detect_app_page
+        from app.decision.exit_hint import exit_hint
+        from app.decision.pkg_guard import Scene, detect_scene
+        scene = detect_scene(frame)
+        page = detect_app_page(frame) if scene == Scene.IN_APP else AppPage.UNKNOWN
+        hint = exit_hint(scene, page)
+        return (
+            f"检测到 back+home 振荡({LoopGuardPolicy.OP_BACKHOME_THRESHOLD}+ 次交替),"
+            f"说明你在「找出去的路」时反复横跳。当前 scene={scene.value} "
+            f"page={page.value},标准退出路径:{hint}。"
+            f"请停止 back+home,严格按 exit_hint 单步退出后再 read 看新画面。"
+        )
 
 
 def run_pipeline(

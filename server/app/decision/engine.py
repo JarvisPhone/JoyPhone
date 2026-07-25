@@ -15,6 +15,8 @@ import uuid
 from dataclasses import dataclass
 
 from app.decision.cache import SkillCache, bind_params
+from app.decision.exit_hint import exit_hint
+from app.decision.app_page import AppPage, detect_app_page
 from app.decision.llm import LLM
 from app.decision.pkg_guard import pkg_guard_action
 from app.decision.skills import BoundSkill, SkillCursor
@@ -87,10 +89,13 @@ _SYSTEM_PROMPT = """你是一个 Android 手机操作代理的决策核心。给
 除 input/button 外的所有节点都不应被 tap;想点应用图标时,按 name 找匹配的行号,确认该行是 button 而不是 label 再点。
 
 【重要·app 边界硬约束】
-- 输入里会有三个关键字段:pkg(当前正在前台的应用 package)、target_pkg(任务目标对应的应用 package,可能为空字符串表示任务与具体 app 无关)、scene(系统按 UI 树算出的当前场景标签,形如 "launcher.home" / "launcher.minus_one" / "app" / "systemui.notification" 等)。
+- 输入里会有四个关键字段:pkg(当前正在前台的应用 package)、target_pkg(任务目标对应的应用 package,可能为空字符串表示任务与具体 app 无关)、scene(系统按 UI 树算出的顶层场景,形如 "launcher.home" / "launcher.minus_one" / "app" / "systemui.notification" 等)、page(scene=app 时才有值,描述 app 内页型:app.inbox_list / app.chat / app.contact_info / app.group_info / app.settings / app.search)。
 - scene 已经过服务端状态机判定,**比你自己从 screen 文字推断更可靠**:看到 `launcher.minus_one` 就已知是 ColorOS 负一屏不要找图标,看到 `app` 就已知在某个 app 内。请以 scene 为准;只在 scene=unknown 时才自行从 screen 推理。
+- page 进一步告诉你「app 内是哪一页」—— page=app.chat 时你在聊天会话页,**单 back 回列表**,不要按 home 退 app;page=app.settings 时你在设置页,**单 back 回上一级**,不要 home 退。禁止靠「连按 back+home」猜退出路径。
+- 输入里的 `exit_hint` 是当前场景的标准退出路径文字,直接照做;不要自己推理退出路径。
+- `nav_map` 给出屏布局摘要(`top=(...) mid=(...) bottom=(...)`),看一眼就知道顶部/中部/底部各是什么,不必从节点序号反推。
 - 如果 target_pkg 非空 且 pkg != target_pkg:说明当前跑错了应用,你必须先输出 `back`(退出当前 app 的次级页),然后 `home`,再 `read`,再 `tap` 目标 app 图标——禁止直接 tap 当前屏幕里的通知/磁贴/横幅跳到其他 app,那会把任务带偏。
-- 如果 target_pkg 非空 且 pkg == target_pkg：你**已经在目标 app 内**，绝不要输出 `home`，也不要用 `back`+`home` 退出当前 app。此时只需在 app 内推进任务：找不到目标会话/页面时，用搜索框输入名称搜索，或用 `swipe up`/`swipe down` 在列表内滚动查找；进错了子页（如进错群聊）用**单个 `back`** 回上一级列表继续找，禁止一路 back+home 退回桌面重来。
+- 如果 target_pkg 非空 且 pkg == target_pkg：你**已经在目标 app 内**，绝不要输出 `home`，也不要用 `back`+`home` 退出当前 app。此时只需在 app 内推进任务：找不到目标会话/页面时，用搜索框输入名称搜索，或用 `swipe up`/`swipe down` 在列表内滚动查找；进错了子页（如进错群聊）用**单个 `back`** 回上一级列表继续找,严格按 exit_hint 提示退出,禁止一路 back+home 退回桌面重来。
 - 如果 target_pkg 为空：无 app 约束，可以自由 tap。
 - 出现「XX 有 N 条新消息」「XX 推荐」「XX 回复了你」类通知横幅/磁贴时，即使 clickable 也一律忽略，除非这条通知就是任务目标本身(如「去通知中心打开微信」)。
 
@@ -174,6 +179,16 @@ _SCENE_LABELS: dict[Scene, str] = {
     Scene.UNKNOWN: "unknown",
 }
 
+_APP_PAGE_LABELS: dict[AppPage, str] = {
+    AppPage.INBOX_LIST: "app.inbox_list",
+    AppPage.CHAT: "app.chat",
+    AppPage.CONTACT_INFO: "app.contact_info",
+    AppPage.GROUP_INFO: "app.group_info",
+    AppPage.SETTINGS: "app.settings",
+    AppPage.SEARCH: "app.search",
+    AppPage.UNKNOWN: "app.unknown",
+}
+
 
 def _scene_label(frame: Perception) -> str:
     """Scene 枚举 → LLM 可读标签。
@@ -182,6 +197,80 @@ def _scene_label(frame: Perception) -> str:
     子类说明它的状态。LLM 据此直接判断当前位置,不用从节点文字反推。
     """
     return _SCENE_LABELS.get(detect_scene(frame), "unknown")
+
+
+def _app_page_label(frame: Perception) -> str:
+    """App 内页型标签(scene=app 时才有值,其它场景返回 "n/a")。
+
+    配合 _scene_label 一起给 LLM:scene 回答「顶层在哪」,page 回答「app 内是
+    列表/聊天/设置等」。这是「进了二级页面出不来」的根因修补——
+    LLM 拿到 page=app.chat 就知道现在在聊天页,需要 back 回列表,
+    而不是 back+home 退回桌面。
+    """
+    scene = detect_scene(frame)
+    if scene != Scene.IN_APP:
+        return "n/a"
+    return _APP_PAGE_LABELS.get(detect_app_page(frame), _APP_PAGE_LABELS[AppPage.UNKNOWN])
+
+
+def _nav_map(nodes: list[Node], ancestor: list[bool]) -> str:
+    """screen 顶部 / 中部 / 底部布局摘要。
+
+    返回形如 "top=[0,1] list=[3..7] bottom=[8,9]";让 LLM 一眼看到「顶部是
+    标题/搜索,中间是列表,底部是 tab/fab」,不必从节点序号反推。
+    """
+    if not nodes:
+        return ""
+    # 把节点按 bounds.top 分桶: top/upper/middle/lower
+    HEIGHT_BUCKETS = 4  # 屏高按 4 等分
+    n = len(nodes)
+    # 取 bounds 的纵向区间
+    tops: list[int] = []
+    bots: list[int] = []
+    for i, nd in enumerate(nodes):
+        b = nd.bounds
+        if b and len(b) == 4:
+            tops.append(b[1])
+            bots.append(b[3])
+    if not tops:
+        return ""
+    screen_top = min(tops)
+    screen_bot = max(bots)
+    span = max(1, screen_bot - screen_top)
+    bucket_size = span / HEIGHT_BUCKETS
+
+    def bucket_of(i: int) -> int:
+        b = nodes[i].bounds
+        if not b or len(b) != 4:
+            return -1
+        return min(HEIGHT_BUCKETS - 1, max(0, int((b[1] - screen_top) / bucket_size)))
+
+    # 只标记 button / input(可交互元素),不标记 label/text(降低噪声)
+    def interactive_label(i: int) -> str | None:
+        nd = nodes[i]
+        if not (nd.clickable or nd.editable):
+            return None
+        if nd.editable:
+            return "input"
+        anc = ancestor[i] if i < len(ancestor) else False
+        return _node_type(nd, anc)
+
+    # 顶部节点索引范围(bucket 0)
+    top_idx = [i for i in range(n) if bucket_of(i) == 0]
+    bot_idx = [i for i in range(n) if bucket_of(i) == HEIGHT_BUCKETS - 1]
+    mid_idx = [i for i in range(n) if bucket_of(i) in (1, 2)]
+
+    def summarize(indices: list[int]) -> str:
+        labels = [interactive_label(i) for i in indices]
+        labels = [l for l in labels if l]
+        if not labels:
+            return f"{len(indices)} plain"
+        # 截断防止太长
+        if len(labels) > 6:
+            labels = labels[:3] + ["..."] + labels[-2:]
+        return f"{len(indices)}:" + ",".join(labels)
+
+    return f"top=({summarize(top_idx)}) mid=({summarize(mid_idx)}) bottom=({summarize(bot_idx)})"
 
 
 def _rid_tail(rid: str | None) -> str:
@@ -514,6 +603,12 @@ class DecisionEngine:
         anc_map = _build_ancestor_clickable(d.frame.nodeTree)
         ancestor = [anc_map.get(id(n), False) for n in nodes]
 
+        scene = detect_scene(d.frame)
+        scene_label = _scene_label(d.frame)
+        page_label = _app_page_label(d.frame)  # "n/a" outside IN_APP
+        page_enum = detect_app_page(d.frame) if scene == Scene.IN_APP else AppPage.UNKNOWN
+        hint = exit_hint(scene, page_enum)
+        nav_map = _nav_map(nodes, ancestor)
         screen_text = _encode_nodes(nodes, ancestor)
 
         # 自然可读格式:去掉 JSON 包装层,让 LLM 看到与日志一致的纯文本
@@ -521,11 +616,17 @@ class DecisionEngine:
             f"goal: {d.goal}",
             f"pkg: {d.frame.pkg}",
             f"target_pkg: {d.target_pkg}",
-            f"scene: {_scene_label(d.frame)}",
+            f"scene: {scene_label}",
+            f"page: {page_label}",
+            f"exit_hint: {hint}",
+        ]
+        if nav_map:
+            user_parts.append(f"nav_map: {nav_map}")
+        user_parts.extend([
             "",
             "[screen]",
             screen_text,
-        ]
+        ])
         if d.feedback:
             user_parts.extend(["", f"[feedback]", d.feedback])
         user_text = "\n".join(user_parts)

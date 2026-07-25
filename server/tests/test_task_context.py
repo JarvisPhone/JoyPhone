@@ -47,6 +47,8 @@ def test_new_task_defaults():
         "stall_count": 0,
         "last_op": "",
         "escalation_level": 0,
+        "op_recent": [],
+        "loop_backhome_hits": 0,
     }
     assert ctx.negotiation == []
     assert ctx.last_consumed_seq == 0

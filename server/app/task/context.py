@@ -103,6 +103,11 @@ class TaskContext:
             "stall_count": 0,
             "last_op": "",
             "escalation_level": 0,
+            # 最近 N 个 op 序列(只记 back/home/swipe,用于 back+home 振荡检测)
+            "op_recent": [],
+            # 退出路径迷失检测(back+home 振荡):达到压下阈值后置 0
+            # 防止永久死循环;由 LoopGuardPolicy 维护
+            "loop_backhome_hits": 0,
         }
     )
     negotiation: list[dict] = field(default_factory=list)

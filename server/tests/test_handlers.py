@@ -110,6 +110,8 @@ async def test_second_task_on_same_connection_starts_clean(tmp_path):
         "stall_count": 0,
         "last_op": "",
         "escalation_level": 0,
+        "op_recent": [],
+        "loop_backhome_hits": 0,
     }
     assert ctx2.history == []
     assert ctx2.applied_steps == []
