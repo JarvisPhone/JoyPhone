@@ -10,7 +10,6 @@ cursor 语义: cache/skill 命中下发的动作经端侧 ack ok 后由 handler 
 """
 from __future__ import annotations
 
-import json
 import logging
 import uuid
 from dataclasses import dataclass
@@ -514,19 +513,24 @@ class DecisionEngine:
         nodes = self._cap_nodes(d.frame.nodeTree)
         anc_map = _build_ancestor_clickable(d.frame.nodeTree)
         ancestor = [anc_map.get(id(n), False) for n in nodes]
-        payload = {
-            "goal": d.goal,
-            "pkg": d.frame.pkg,
-            "target_pkg": d.target_pkg,
-            "scene": _scene_label(d.frame),
-            "screen": _encode_nodes(nodes, ancestor),
-        }
+
+        screen_text = _encode_nodes(nodes, ancestor)
+
+        # 自然可读格式:去掉 JSON 包装层,让 LLM 看到与日志一致的纯文本
+        user_parts = [
+            f"goal: {d.goal}",
+            f"pkg: {d.frame.pkg}",
+            f"target_pkg: {d.target_pkg}",
+            f"scene: {_scene_label(d.frame)}",
+            "",
+            "[screen]",
+            screen_text,
+        ]
         if d.feedback:
-            payload["feedback"] = d.feedback
-        raw = self._llm.complete(
-            system=_SYSTEM_PROMPT,
-            user=json.dumps(payload, ensure_ascii=False),
-        )
+            user_parts.extend(["", f"[feedback]", d.feedback])
+        user_text = "\n".join(user_parts)
+
+        raw = self._llm.complete(system=_SYSTEM_PROMPT, user=user_text)
         _diag = logging.getLogger("phoneagent.gateway")
         _diag.info(
             "[FRAME] pkg=%s target_pkg=%s total_nodes=%d capped=%d cursor=%d goal=%s skill=%s",

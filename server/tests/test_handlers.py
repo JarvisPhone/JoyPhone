@@ -827,17 +827,15 @@ async def test_feedback_consumed_once_by_decide(tmp_path):
 async def test_end_to_end_expect_feedback_loop(tmp_path):
     # 全链路:LLM 输出 expect title(判定 FAIL)-> read_screen -> 下一帧
     # LLM-REQ payload 的 feedback 携带实际标题
-    import json as _json
-
     from app.decision import DecisionEngine
 
     class _RecLLM:
         def __init__(self):
             self.resps = iter(['expect title "阿强"', "read"])
-            self.calls: list[dict] = []
+            self.calls: list[str] = []
 
         def complete(self, system, user, image_b64=None):
-            self.calls.append(_json.loads(user))
+            self.calls.append(user)
             return next(self.resps, "read")
 
     llm = _RecLLM()
@@ -851,8 +849,8 @@ async def test_end_to_end_expect_feedback_loop(tmp_path):
     # 第一次 decide 输出 expect -> 下发 read_screen;端侧重抓帧上行
     await handle_uplink(_perception(seq=2, pkg=LARK, nodes=[title]), store, conn, deps)
     assert len(llm.calls) >= 2
-    fb = llm.calls[1].get("feedback", "")
-    assert "FAIL" in fb and "别的群" in fb
+    fb = llm.calls[1]
+    assert "[feedback]" in fb and "FAIL" in fb and "别的群" in fb
 
 
 async def test_pre_policy_intercept_dispatches_without_decide(tmp_path):

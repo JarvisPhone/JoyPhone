@@ -612,11 +612,10 @@ def test_expect_ends_batch():
 class _RecordingLLM:
     def __init__(self, resp="read"):
         self.resp = resp
-        self.calls: list[dict] = []
+        self.calls: list[str] = []
 
     def complete(self, system: str, user: str, image_b64=None) -> str:
-        import json as _json
-        self.calls.append(_json.loads(user))
+        self.calls.append(user)
         return self.resp
 
 
@@ -628,7 +627,8 @@ def test_llm_payload_includes_feedback_when_present():
         cursor=SkillCursor(), bound_skill=None, guard={}, title_keywords=(),
         cache_context="", feedback="上一条 tap 执行失败:anchor_not_found",
     ))
-    assert llm.calls[0].get("feedback") == "上一条 tap 执行失败:anchor_not_found"
+    assert "[feedback]" in llm.calls[0]
+    assert "上一条 tap 执行失败:anchor_not_found" in llm.calls[0]
 
 
 def test_llm_payload_omits_feedback_when_empty():
@@ -639,7 +639,7 @@ def test_llm_payload_omits_feedback_when_empty():
         cursor=SkillCursor(), bound_skill=None, guard={}, title_keywords=(),
         cache_context="",
     ))
-    assert "feedback" not in llm.calls[0]
+    assert "[feedback]" not in llm.calls[0]
 
 
 # ---- payload.scene 字段透传 ----
@@ -661,7 +661,7 @@ def test_llm_payload_scene_minus_one_when_workspace_indented():
         goal="g", frame=frame, target_pkg="com.ss.android.lark",
         cursor=SkillCursor(), bound_skill=None, guard={}, title_keywords=(),
     ))
-    assert llm.calls[0]["scene"] == "launcher.minus_one"
+    assert "scene: launcher.minus_one" in llm.calls[0]
 
 
 def test_llm_payload_scene_home_when_workspace_fullscreen():
@@ -677,7 +677,7 @@ def test_llm_payload_scene_home_when_workspace_fullscreen():
         goal="g", frame=frame, target_pkg="com.ss.android.lark",
         cursor=SkillCursor(), bound_skill=None, guard={}, title_keywords=(),
     ))
-    assert llm.calls[0]["scene"] == "launcher.home"
+    assert "scene: launcher.home" in llm.calls[0]
 
 
 def test_llm_payload_scene_in_app_for_third_party_pkg():
@@ -688,7 +688,7 @@ def test_llm_payload_scene_in_app_for_third_party_pkg():
         goal="g", frame=frame, target_pkg="com.ss.android.lark",
         cursor=SkillCursor(), bound_skill=None, guard={}, title_keywords=(),
     ))
-    assert llm.calls[0]["scene"] == "app"
+    assert "scene: app" in llm.calls[0]
 
 
 def test_scene_label_table_covers_all_scenes():
