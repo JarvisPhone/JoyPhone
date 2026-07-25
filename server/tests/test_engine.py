@@ -74,6 +74,18 @@ def test_parse_actions_tap():
     assert parse_actions("tap 3") == [{"op": "tap", "id": "3"}]
 
 
+def test_parse_actions_longpress_id():
+    assert parse_actions("longpress 5") == [{"op": "longpress", "id": "5"}]
+
+
+def test_parse_actions_longpress_match_text():
+    assert parse_actions('longpress "消息"') == [{"op": "longpress", "match_text": "消息"}]
+
+
+def test_parse_actions_press_enter_noarg():
+    assert parse_actions("press_enter") == [{"op": "press_enter"}]
+
+
 def test_parse_actions_input_keeps_inner_spaces():
     assert parse_actions("input 5 你好 世界 abc") == [
         {"op": "input", "id": "5", "text": "你好 世界 abc"}

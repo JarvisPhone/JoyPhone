@@ -822,7 +822,10 @@ async def test_feedback_consumed_once_by_decide(tmp_path):
 
     deps.engine = _SpyInput(engine)
     await handle_uplink(_perception(seq=2), store, conn, deps)
-    assert captured["feedback"].startswith("上一条 tap 执行失败")
+    assert captured["feedback"].startswith("[feedback]")
+    assert "last_action: tap" in captured["feedback"]
+    assert "result: fail" in captured["feedback"]
+    assert "anchor_not_found" in captured["feedback"]
     assert ctx.llm_feedback == ""
 
 

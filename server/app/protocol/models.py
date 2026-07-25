@@ -51,6 +51,18 @@ class Heartbeat(BaseModel):
     ts: int = 0
 
 
+class DeviceHello(BaseModel):
+    """设备能力握手:首帧上报告知云端 SDK 版本/能力矩阵/系统能力。
+
+    云端据此决定 action space(如设备不支持 long_press 则 LLM 不生成该指令)。
+    capabilities 字段是任意 dict(JSON 对象),便于扩展不破坏协议版本。
+    """
+    type: Literal["device.hello"] = "device.hello"
+    deviceId: str = ""
+    sdkVersion: str = ""
+    capabilities: dict[str, Any] = Field(default_factory=dict)
+
+
 class TaskRequest(BaseModel):
     type: Literal["task.request"] = "task.request"
     goal: str
@@ -75,7 +87,7 @@ class SampleCapture(BaseModel):
     device: str = ""
 
 
-Uplink = Union[Perception, ActionResult, NewMessage, Heartbeat, TaskRequest, ConfirmResponse, SampleCapture]
+Uplink = Union[Perception, ActionResult, NewMessage, Heartbeat, TaskRequest, ConfirmResponse, SampleCapture, DeviceHello]
 
 _UPLINK_MAP = {
     "perception": Perception,
@@ -85,6 +97,7 @@ _UPLINK_MAP = {
     "task.request": TaskRequest,
     "task.confirm_response": ConfirmResponse,
     "sample.capture": SampleCapture,
+    "device.hello": DeviceHello,
 }
 
 
@@ -115,7 +128,12 @@ class TaskStart(_Downlink):
     target: str
 
 
-Op = Literal["tap", "tap_at", "input", "swipe", "back", "home", "wait", "read_screen", "done", "abort"]
+Op = Literal[
+    "tap", "tap_at", "input", "swipe", "back", "home", "wait", "read_screen",
+    "longpress", "press_enter",
+    "request_screenshot",  # 端侧截图(下一帧 perception 携带 screenshot 字段)
+    "done", "abort",
+]
 
 
 class Action(_Downlink):

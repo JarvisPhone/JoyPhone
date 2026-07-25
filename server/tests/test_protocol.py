@@ -26,6 +26,31 @@ def test_heartbeat_ack_serializes():
     assert json.loads(ack.to_json())["type"] == "heartbeat.ack"
 
 
+def test_parse_uplink_device_hello():
+    raw = json.dumps({
+        "type": "device.hello",
+        "deviceId": "abc123",
+        "sdkVersion": "joyphone-android/0.1",
+        "capabilities": {"screenshot": False, "long_press": True},
+    })
+    up = parse_uplink(raw)
+    from app.protocol import DeviceHello
+    assert isinstance(up, DeviceHello)
+    assert up.deviceId == "abc123"
+    assert up.capabilities["long_press"] is True
+    assert up.capabilities["screenshot"] is False
+
+
+def test_device_hello_capabilities_default_empty():
+    raw = json.dumps({"type": "device.hello"})
+    up = parse_uplink(raw)
+    from app.protocol import DeviceHello
+    assert isinstance(up, DeviceHello)
+    assert up.capabilities == {}
+    assert up.deviceId == ""
+    assert up.sdkVersion == ""
+
+
 def test_action_params_coerced_to_str():
     a = Action(actionId="a1", op="input", params={"text": 123, "flag": True, "none": None})
     assert a.params == {"text": "123", "flag": "True", "none": "None"}

@@ -57,9 +57,11 @@ _SYSTEM_PROMPT = """你是一个 Android 手机操作代理的决策核心。给
 合法指令(每行一条)：
 - tap n          点击第 n 行元素(n 是 screen 里的行号)
 - input n 文本    在第 n 行输入框输入「文本」(文本可含空格，取本行剩余内容)
+- longpress n    长按第 n 行元素(800ms),触发上下文菜单
 - swipe up       滑动，方向可为 up|down|left|right
 - back           返回键
 - home           回到桌面
+- press_enter    在有输入框焦点时按回车(用于搜索框「输完即搜索」)
 - wait 500       等待若干毫秒
 - read           重新读取屏幕(信息不足以决策时用)
 - done           [硬性语义·必读] 任务目标已达成。
@@ -74,9 +76,19 @@ _SYSTEM_PROMPT = """你是一个 Android 手机操作代理的决策核心。给
                  `expect title "群名"` 核对当前页标题;`expect pkg "com.x"` 核对前台应用;
                  `expect "文本"` 核对屏幕里是否存在某文本。云端机械判定后通过 feedback 字段告知结果。
 
-【feedback 字段】输入里若带 feedback 键,表示你上一条指令的结果:执行失败原因 /
-被云端策略拦截 / expect 判定结果。没有 feedback 键 = 上一条成功。看到拦截反馈时不要
-换个姿势重试同一意图(如被拦 done 后又去点标题),按反馈指出的缺失条件补齐(如先点发送)。
+【feedback 字段】输入里若带 [feedback] 块,表示你上一条指令的执行结果。
+  块里是稳定的「字段: 值」格式(每行一个字段),按需读取:
+    last_action: 你上一条指令的 op
+    result:      ok | fail | intercepted
+    reason:      失败/拦截原因(可能为空)
+    policy:      哪个策略触发的拦截(confirm_guard / loop_guard / ...)
+    replaced_op: 策略改发的动作(常见 read_screen / back)
+    page:        触发时的 app 内页型(如 app.chat)
+    exit_hint:   当前场景的标准退出路径
+  收到后:看 result 决定下一步——
+    ok:          上一条成功,按当前 frame 继续决策
+    fail:        上一条失败,改换锚点/节点(不要重复同一坐标/同一 match_text)
+    intercepted: 策略已替你改发了 replaced_op,不要再发原意图,看新 frame 继续
 
 批处理规则：你可以一次给出多行盲操作(如 home、swipe、back、wait)，最多以「一条 tap 或 input」收尾。系统只会执行到第一条 tap/input 为止，然后重新抓取屏幕再问你，所以 tap/input 之后不要再写别的指令。
 
@@ -409,6 +421,7 @@ _NOARG_OPS = {
     "home": "home",
     "read": "read_screen",
     "done": "done",
+    "press_enter": "press_enter",
 }
 
 
@@ -419,6 +432,7 @@ def parse_actions(text: str) -> list[dict]:
     tap 支持两种定位:`tap 5`(行号)或 `tap "发送"`(文本锚点,引号可省——
     首参数非纯数字即视为文本)。文本锚点没有序号转录错误面(真机事故:
     LLM 把 tap 66 写成 tap 46 点进群设置),语义清晰的元素应优先用文本。
+    longpress 沿用 tap 的两种定位方式。
     空行 / 无法识别的动词 -> 跳过。返回的每个 dict 里所有值都是 str。
     """
     specs: list[dict] = []
@@ -428,7 +442,7 @@ def parse_actions(text: str) -> list[dict]:
             continue
         verb, _, rest = line.partition(" ")
         rest = rest.strip()
-        if verb == "tap":
+        if verb in ("tap", "longpress"):
             if rest[:1] in ('"', "'"):
                 quote = rest[0]
                 end = rest.find(quote, 1)
@@ -438,10 +452,11 @@ def parse_actions(text: str) -> list[dict]:
             target = target.strip()
             if not target:
                 continue
+            spec_op = verb  # "tap" 或 "longpress"
             if target.isdigit():
-                specs.append({"op": "tap", "id": target})
+                specs.append({"op": spec_op, "id": target})
             else:
-                specs.append({"op": "tap", "match_text": target})
+                specs.append({"op": spec_op, "match_text": target})
         elif verb == "expect":
             # 断言指令:`expect title "X"` / `expect pkg "com.x"` / `expect "文本"`
             # (首参数非 title/pkg 则整体为文本)。云端机械求值,不下发设备。
@@ -631,12 +646,36 @@ class DecisionEngine:
             user_parts.extend(["", f"[feedback]", d.feedback])
         user_text = "\n".join(user_parts)
 
-        raw = self._llm.complete(system=_SYSTEM_PROMPT, user=user_text)
+        raw = self._llm.complete(
+            system=_SYSTEM_PROMPT,
+            user=user_text,
+            image_b64=getattr(d.frame, "screenshot", None),
+        )
+
+        # === LLM_DECIDE 结构化日志 ===
+        # 一次性把决策链路所有关键维度打一行,真机联调「同一个意图重复多少帧」直接 grep 数。
+        # 日志格式(非 JSON,字段顺序稳定便于脚本切片):
+        #   [LLM_DECIDE] seq=X | pkg=Y | scene=Z | page=W | cursor=N/M |
+        #     nodes=T(c=N,e=N) | llm_out=... | ...
         _diag = logging.getLogger("phoneagent.gateway")
+        clickable = sum(1 for n in nodes if n.clickable)
+        editable = sum(1 for n in nodes if n.editable)
+        cursor_step = getattr(d.cursor, "index", 0)
+        llm_out = raw.replace("\n", " ⏎ ")[:200]
+        _diag.info(
+            "[LLM_DECIDE] pkg=%s scene=%s page=%s "
+            "nodes=%d(c=%d,e=%d) cursor=%d "
+            "feedback=%s llm_out=%s",
+            d.frame.pkg, scene_label, page_label,
+            len(nodes), clickable, editable,
+            cursor_step,
+            "yes" if d.feedback else "no",
+            llm_out,
+        )
         _diag.info(
             "[FRAME] pkg=%s target_pkg=%s total_nodes=%d capped=%d cursor=%d goal=%s skill=%s",
             d.frame.pkg, d.target_pkg, len(d.frame.nodeTree), len(nodes),
-            d.cursor.index, d.goal,
+            cursor_step, d.goal,
             d.bound_skill.name if d.bound_skill is not None else None,
         )
 
@@ -653,7 +692,7 @@ class DecisionEngine:
                 return Decision(actions=[_read_screen_action()], source="llm",
                                 meta={"feedback": result})
             params = {k: str(v) for k, v in spec.items() if k != "op"}
-            if op in ("tap", "input"):
+            if op in ("tap", "input", "longpress"):
                 target = _resolve_tap_node(params, nodes)
                 if target is None and params.get("match_text"):
                     target = _resolve_text_node(params["match_text"], nodes)

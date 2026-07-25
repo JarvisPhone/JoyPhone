@@ -31,6 +31,7 @@ from app.protocol import (
     Action,
     ActionResult,
     ConfirmResponse,
+    DeviceHello,
     Heartbeat,
     HeartbeatAck,
     NewMessage,
@@ -85,6 +86,53 @@ def persist_sample(sample: SampleCapture, base_dir: Path | None = None) -> Path:
     return path
 
 
+def _format_feedback(
+    *,
+    last_op: str,
+    result: str,
+    policy: str = "",
+    reason: str = "",
+    replaced_op: str = "",
+    page: str = "",
+    exit_hint: str = "",
+    extra: dict | None = None,
+) -> str:
+    """结构化 feedback:LLM 解析更稳定。
+
+    字段顺序稳定(便于 LLM 模式匹配):
+      [feedback]
+      last_action: tap
+      result: fail
+      reason: 节点 [5] 不存在
+      policy: confirm_guard
+      replaced_op: read_screen
+      page: app.chat
+      exit_hint: 按一次 back 返回上一级
+      extra: k=v,...
+
+    任一字段为空就省略该行。
+    """
+    lines = ["[feedback]"]
+    lines.append(f"last_action: {last_op}")
+    lines.append(f"result: {result}")
+    if policy:
+        lines.append(f"policy: {policy}")
+    if reason:
+        lines.append(f"reason: {reason}")
+    if replaced_op:
+        lines.append(f"replaced_op: {replaced_op}")
+    if page:
+        lines.append(f"page: {page}")
+    if exit_hint:
+        lines.append(f"exit_hint: {exit_hint}")
+    if extra:
+        for k, v in extra.items():
+            if v is None or v == "":
+                continue
+            lines.append(f"{k}: {v}")
+    return "\n".join(lines)
+
+
 async def handle_uplink(
     uplink: Uplink,
     store: TaskStore,
@@ -105,6 +153,22 @@ async def handle_uplink(
         await _on_new_message(uplink, store, conn, deps)
     elif isinstance(uplink, SampleCapture):
         _on_sample_capture(uplink)
+    elif isinstance(uplink, DeviceHello):
+        _on_device_hello(uplink, conn)
+
+
+def _on_device_hello(uplink: DeviceHello, conn: Conn) -> None:
+    """设备能力握手:仅记录日志,云端根据 capabilities 调整后续 action space。
+
+    当前未做精细化决策(longpress/press_enter 端侧都默认支持),保留扩展点。
+    端侧 SDK 在 WS 连接建立后第一帧发 device.hello,云端这里只 log。
+    """
+    device_id = uplink.deviceId or getattr(conn, "device_id", "")
+    logger.info(
+        "device.hello: device_id=%s sdk=%s caps=%s",
+        device_id, uplink.sdkVersion,
+        sorted(uplink.capabilities.keys()),
+    )
 
 
 # ---- task.request ----
@@ -219,19 +283,15 @@ async def _on_perception(
         actions = post_verdict.actions or []
         if ctx.decided_actions:
             # LLM 反馈通道:决策被策略拦截(幻觉 done/标题栏点击/loop_guard 等)。
-            # 优先用策略 verdict 自带的 reason(精确,能区分 SETTLE/BACK 等阶段),
-            # 退化到 "上一条 X 被策略 Y 拦截"。
+            # 结构化 feedback 替代自然语言字符串,LLM 解析更稳定。
             replaced_op = actions[0].op if actions else "policy"
-            if post_verdict.reason:
-                ctx.llm_feedback = (
-                    "上一条 %s 被策略 %s 拦截(%s,已改发 %s)"
-                    % (ctx.decided_actions[0].op, post_verdict.policy,
-                       post_verdict.reason, replaced_op)
-                )
-            else:
-                ctx.llm_feedback = "上一条 %s 被策略 %s 拦截" % (
-                    ctx.decided_actions[0].op, post_verdict.policy,
-                )
+            ctx.llm_feedback = _format_feedback(
+                last_op=ctx.decided_actions[0].op,
+                result="intercepted",
+                policy=post_verdict.policy,
+                reason=post_verdict.reason,
+                replaced_op=replaced_op,
+            )
         if not actions and ctx.confirm.confirm_id:
             await conn.send(
                 TaskConfirm(
@@ -332,7 +392,11 @@ async def _on_action_result(
             break
     if not uplink.ok and uplink.error and failed_op:
         # LLM 反馈通道:执行失败须让 LLM 知道原因(否则它只能从屏幕猜)
-        ctx.llm_feedback = "上一条 %s 执行失败:%s" % (failed_op, uplink.error)
+        ctx.llm_feedback = _format_feedback(
+            last_op=failed_op,
+            result="fail",
+            reason=uplink.error or "",
+        )
     if uplink.ok:
         deps.metrics.record_step(ctx.task_id)
         if source in ("cache", "skill"):
