@@ -100,12 +100,16 @@ class PhoneAgentService : AccessibilityService() {
                 repo.appendActionLog(ActionLog(System.currentTimeMillis(), action.op, result.ok))
                 if (action.op == "read_screen") reportScreen()
             },
-            onTaskEnd = { reason ->
+            onTaskEnd = { done, detail ->
                 taskActive = false
                 confirmManager.onTaskEnd()
-                Log.i(TAG, "↓ task.end reason=$reason → taskActive=false")
-                repo.appendTrace(TraceEvent(System.currentTimeMillis(), TraceDirection.DOWN, "task.end", reason))
-                repo.updateTask(TaskState.Idle)
+                val summary = if (done) detail else "失败: $detail"
+                Log.i(TAG, "↓ task.end done=$done detail=$detail → taskActive=false")
+                repo.appendTrace(TraceEvent(System.currentTimeMillis(), TraceDirection.DOWN, "task.end", summary))
+                repo.updateTask(
+                    if (done) TaskState.Done(detail)
+                    else TaskState.Failed(detail),
+                )
             },
             onTaskConfirm = { confirm ->
                 Log.i(TAG, "↓ task.confirm target=${confirm.target} msg=${confirm.message} timeoutMs=${confirm.timeoutMs}")

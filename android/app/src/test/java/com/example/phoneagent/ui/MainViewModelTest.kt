@@ -14,15 +14,16 @@ class MainViewModelTest {
     }
 
     @Test
-    fun onRunTestTask_sends_task_request() {
+    fun onSendGoal_sends_task_request() {
         val repo = AgentStateRepository()
         val vm = newViewModel(repo)
 
-        vm.onRunTestTask()
+        vm.onSendGoal("打开飞书发消息")
 
         val events = repo.debug.value.traceEvents
         assertEquals(1, events.size)
         val e = events.first()
         assertEquals("task.request", e.kind)
+        assertEquals("打开飞书发消息", e.summary)
     }
 }

@@ -34,7 +34,6 @@ class MainViewModel @Inject constructor(
 
     private companion object {
         const val UNLOCK_THRESHOLD = 7
-        const val TEST_GOAL = "打开飞书，给群「Android AI 开发组」发一条消息"
         const val SAMPLE_DELAY_SECONDS = 10
     }
 
@@ -72,15 +71,20 @@ class MainViewModel @Inject constructor(
         titleTapCount = 0
     }
 
-    /** 点击「运行测试任务」：通过 WS 上行 task.request 指定目标，触发云端下发 task.start。 */
-    fun onRunTestTask() {
-        wsClient.sendTaskRequest(TEST_GOAL)
+    /**
+     * 用户在输入框输入任务目标并点击发送。
+     * 通过 WS 上行 task.request，触发云端下发 task.start。
+     */
+    fun onSendGoal(goal: String) {
+        val trimmed = goal.trim()
+        if (trimmed.isEmpty()) return
+        wsClient.sendTaskRequest(trimmed)
         repo.appendTrace(
             TraceEvent(
                 ts = System.currentTimeMillis(),
                 direction = TraceDirection.UP,
                 kind = "task.request",
-                summary = TEST_GOAL,
+                summary = trimmed,
             )
         )
     }

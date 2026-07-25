@@ -90,7 +90,7 @@ class WsClient @Inject constructor(
         deviceId: String,
         onTaskStart: (goal: String, taskId: String) -> Unit,
         onAction: (DownAction) -> Unit,
-        onTaskEnd: (reason: String) -> Unit,
+        onTaskEnd: (done: Boolean, detail: String) -> Unit,
         onTaskConfirm: (DownTaskConfirm) -> Unit = {},
     ) {
         require(deviceId.isNotBlank()) { "deviceId cannot be blank" }

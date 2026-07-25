@@ -31,7 +31,7 @@ class MainActivity : ComponentActivity() {
                     uiState = uiState,
                     onTitleTap = viewModel::onTitleTap,
                     onOpenAccessibility = { openAccessibilitySettings() },
-                    onRunTestTask = viewModel::onRunTestTask,
+                    onSendGoal = viewModel::onSendGoal,
                     onCaptureSample = viewModel::onCaptureSample,
                     onHideDebug = viewModel::onHideDebug,
                 )

@@ -1,7 +1,7 @@
 package com.example.phoneagent.net
 
 import com.example.phoneagent.protocol.DownAction
-import com.example.phoneagent.protocol.DownHeartbeatAck
+import com.example.phoneagent.protocol.DownTaskAbort
 import com.example.phoneagent.protocol.DownTaskConfirm
 import com.example.phoneagent.protocol.DownTaskDone
 import com.example.phoneagent.protocol.DownTaskStart
@@ -16,7 +16,7 @@ import kotlinx.serialization.json.jsonPrimitive
 class WsDispatcher(
     private val onTaskStart: (goal: String, taskId: String) -> Unit,
     private val onAction: (DownAction) -> Unit,
-    private val onTaskEnd: (reason: String) -> Unit,
+    private val onTaskEnd: (done: Boolean, detail: String) -> Unit,
     private val onTaskConfirm: (DownTaskConfirm) -> Unit = {},
 ) {
     private val json = Json { ignoreUnknownKeys = true }
@@ -34,16 +34,18 @@ class WsDispatcher(
             "action" -> onAction(json.decodeFromString<DownAction>(text))
             "task.done" -> {
                 val m = json.decodeFromString<DownTaskDone>(text)
-                onTaskEnd(m.result)
+                onTaskEnd(true, m.result)
             }
-            "task.abort" -> onTaskEnd("abort")
+            "task.abort" -> {
+                val m = json.decodeFromString<DownTaskAbort>(text)
+                onTaskEnd(false, m.reason)
+            }
             "task.confirm" -> {
                 val m = json.decodeFromString<DownTaskConfirm>(text)
                 onTaskConfirm(m)
             }
             "heartbeat.ack" -> {
-                // 心跳应答:仅解析保持 JSON 容错,端侧无需处理
-                runCatching { json.decodeFromString<DownHeartbeatAck>(text) }
+                // 心跳应答:端侧无需处理,静默忽略
             }
             else -> Unit
         }

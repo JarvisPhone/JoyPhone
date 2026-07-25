@@ -13,7 +13,7 @@ class WsDispatchTest {
         val d = WsDispatcher(
             onTaskStart = { _, _ -> },
             onAction = { gotAction = it },
-            onTaskEnd = { _ -> },
+            onTaskEnd = { _, _ -> },
         )
         d.dispatch("""{"type":"action","actionId":"a1","op":"tap","params":{"match_text":"搜索"}}""")
 
@@ -27,22 +27,44 @@ class WsDispatchTest {
         val d = WsDispatcher(
             onTaskStart = { g, _ -> goal = g },
             onAction = { },
-            onTaskEnd = { },
+            onTaskEnd = { _, _ -> },
         )
         d.dispatch("""{"type":"task.start","taskId":"t1","goal":"发消息","target":"dev"}""")
         assertEquals("发消息", goal)
     }
 
     @Test
-    fun dispatch_task_done_invokes_end_callback() {
-        var reason: String? = null
+    fun dispatch_task_done_invokes_end_callback_with_done_true() {
+        var doneFlag: Boolean? = null
+        var detailParam: String? = null
         val d = WsDispatcher(
             onTaskStart = { _, _ -> },
             onAction = { },
-            onTaskEnd = { reason = it },
+            onTaskEnd = { done, detail ->
+                doneFlag = done
+                detailParam = detail
+            },
         )
         d.dispatch("""{"type":"task.done","taskId":"t1","result":"ok","summary":"done"}""")
-        assertEquals("ok", reason)
+        assertEquals(true, doneFlag)
+        assertEquals("ok", detailParam)
+    }
+
+    @Test
+    fun dispatch_task_abort_invokes_end_callback_with_done_false() {
+        var doneFlag: Boolean? = null
+        var detailParam: String? = null
+        val d = WsDispatcher(
+            onTaskStart = { _, _ -> },
+            onAction = { },
+            onTaskEnd = { done, detail ->
+                doneFlag = done
+                detailParam = detail
+            },
+        )
+        d.dispatch("""{"type":"task.abort","taskId":"t1","reason":"stuck_loop"}""")
+        assertEquals(false, doneFlag)
+        assertEquals("stuck_loop", detailParam)
     }
 
     @Test
@@ -51,7 +73,7 @@ class WsDispatchTest {
         val d = WsDispatcher(
             onTaskStart = { _, _ -> touched = true },
             onAction = { touched = true },
-            onTaskEnd = { touched = true },
+            onTaskEnd = { _, _ -> touched = true },
         )
         d.dispatch("""{"type":"event.unknown"}""")
         assertEquals(false, touched)

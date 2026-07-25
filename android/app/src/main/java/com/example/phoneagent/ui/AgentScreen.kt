@@ -1,77 +1,167 @@
 package com.example.phoneagent.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.phoneagent.domain.AgentStatus
 import com.example.phoneagent.domain.ConnectionState
-import com.example.phoneagent.domain.DebugInfo
 import com.example.phoneagent.domain.TaskState
 import com.example.phoneagent.ui.theme.JoyPhoneTheme
 import com.example.phoneagent.ui.theme.StatusColors
+
+private val DoneGreen = Color(0xFF16A34A)
+private val FailedRed = Color(0xFFDC2626)
+private val SendBlue = Color(0xFF2563EB)
+
+private const val DEFAULT_GOAL = "打开飞书，给群「Android AI 开发组」发一条消息"
 
 @Composable
 fun AgentScreen(
     uiState: AgentUiState,
     onTitleTap: () -> Unit,
     onOpenAccessibility: () -> Unit,
-    onRunTestTask: () -> Unit,
+    onSendGoal: (String) -> Unit,
     onCaptureSample: () -> Unit,
     onHideDebug: () -> Unit,
 ) {
+    val connected = uiState.status.connection == ConnectionState.CONNECTED
+
     Scaffold { inner ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(inner)
-                .padding(20.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+                .imePadding(),
         ) {
-            Text(
-                text = "JoyPhone Agent",
-                style = MaterialTheme.typography.headlineMedium,
-                modifier = Modifier.clickable { onTitleTap() },
-            )
+            // 顶部状态区(可滚动)
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp)
+                    .padding(top = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                HeaderTitle(
+                    onTap = onTitleTap,
+                    taskState = uiState.status.task,
+                )
 
-            AccessibilityCard(uiState.status.accessibilityGranted, onOpenAccessibility)
-            ConnectionCard(uiState.status.connection)
-            TestTaskCard(
-                enabled = uiState.status.connection == ConnectionState.CONNECTED,
-                onRunTestTask = onRunTestTask,
-            )
-            SampleCard(
-                enabled = uiState.status.connection == ConnectionState.CONNECTED,
-                countdown = uiState.sampleCountdown,
-                hint = uiState.sampleHint,
-                onCapture = onCaptureSample,
-            )
-            TaskCard(uiState.status.task)
+                AccessibilityCard(
+                    granted = uiState.status.accessibilityGranted,
+                    onOpen = onOpenAccessibility,
+                )
 
-            if (uiState.debugUnlocked) {
-                DebugPanel(debug = uiState.debug, onHide = onHideDebug)
+                ConnectionCard(state = uiState.status.connection)
+
+                TaskStatusCard(
+                    task = uiState.status.task,
+                    onClear = { /* TODO: cancel task */ },
+                )
+
+                SampleCard(
+                    enabled = connected,
+                    countdown = uiState.sampleCountdown,
+                    hint = uiState.sampleHint,
+                    onCapture = onCaptureSample,
+                )
+
+                if (uiState.debugUnlocked) {
+                    DebugPanel(debug = uiState.debug, onHide = onHideDebug)
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
             }
+
+            // 底部输入区(固定)
+            InputBar(
+                enabled = connected && uiState.status.task is TaskState.Idle,
+                defaultText = if (uiState.status.task is TaskState.Idle) DEFAULT_GOAL else "",
+                onSend = onSendGoal,
+            )
+        }
+    }
+}
+
+@Composable
+private fun HeaderTitle(
+    onTap: () -> Unit,
+    taskState: TaskState,
+) {
+    val isRunning = taskState is TaskState.Running
+    val pulseColor = if (isRunning) StatusColors.Pending else MaterialTheme.colorScheme.primary
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text(
+            text = "JoyPhone",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(top = 2.dp),
+        )
+        if (isRunning) {
+            Icon(
+                imageVector = Icons.Default.Sync,
+                contentDescription = null,
+                modifier = Modifier
+                    .size(18.dp)
+                    .clip(CircleShape)
+                    .background(DoneGreen)
+                    .padding(2.dp),
+                tint = Color.White,
+            )
         }
     }
 }
@@ -80,10 +170,20 @@ fun AgentScreen(
 private fun AccessibilityCard(granted: Boolean, onOpen: () -> Unit) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("无障碍服务", style = MaterialTheme.typography.titleMedium)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box(
+                    Modifier
+                        .size(10.dp)
+                        .clip(CircleShape)
+                        .background(if (granted) DoneGreen else FailedRed),
+                )
+                Text("无障碍服务", style = MaterialTheme.typography.titleMedium)
+            }
             Text(
-                if (granted) "已授权，可开始联调" else "未授权，请先开启无障碍服务",
+                if (granted) "已授权，可开始联调"
+                   else "未授权，请先开启无障碍服务",
                 style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             if (!granted) {
                 Button(onClick = onOpen) { Text("去开启") }
@@ -95,10 +195,10 @@ private fun AccessibilityCard(granted: Boolean, onOpen: () -> Unit) {
 @Composable
 private fun ConnectionCard(state: ConnectionState) {
     val (color, label) = when (state) {
-        ConnectionState.CONNECTED -> StatusColors.Connected to "已连接"
-        ConnectionState.CONNECTING -> StatusColors.Pending to "连接中…"
-        ConnectionState.RECONNECTING -> StatusColors.Pending to "重连中…"
-        ConnectionState.DISCONNECTED -> StatusColors.Disconnected to "已断开"
+        ConnectionState.CONNECTED    -> DoneGreen to "已连接"
+        ConnectionState.CONNECTING    -> StatusColors.Pending to "连接中…"
+        ConnectionState.RECONNECTING  -> StatusColors.Pending to "重连中…"
+        ConnectionState.DISCONNECTED  -> FailedRed to "已断开"
     }
     Card(modifier = Modifier.fillMaxWidth()) {
         Row(
@@ -106,22 +206,95 @@ private fun ConnectionCard(state: ConnectionState) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Box(Modifier.size(14.dp).background(color, CircleShape))
+            Box(Modifier.size(10.dp).clip(CircleShape).background(color))
             Column {
                 Text("云端连接", style = MaterialTheme.typography.titleMedium)
-                Text(label, style = MaterialTheme.typography.bodyMedium)
+                Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
 }
 
 @Composable
-private fun TestTaskCard(enabled: Boolean, onRunTestTask: () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("测试任务", style = MaterialTheme.typography.titleMedium)
-            Button(onClick = onRunTestTask, enabled = enabled) {
-                Text("运行测试任务")
+private fun TaskStatusCard(task: TaskState, onClear: () -> Unit) {
+    when (task) {
+        is TaskState.Idle -> {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+            ) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("任务状态", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "空闲中 — 在下方输入你想完成的任务",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+        is TaskState.Running -> {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFEFF6FF)),
+            ) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(
+                            imageVector = Icons.Default.Sync,
+                            contentDescription = null,
+                            tint = SendBlue,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Text("执行中", style = MaterialTheme.typography.titleMedium, color = SendBlue)
+                    }
+                    Text(
+                        task.description,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+        is TaskState.Done -> {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFF0FDF4)),
+            ) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = DoneGreen,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Text("已完成", style = MaterialTheme.typography.titleMedium, color = DoneGreen)
+                    }
+                    Text(task.summary, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                    TextButton(onClick = onClear) { Text("重新输入") }
+                }
+            }
+        }
+        is TaskState.Failed -> {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFEF2F2)),
+            ) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(
+                            imageVector = Icons.Default.Error,
+                            contentDescription = null,
+                            tint = FailedRed,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Text("执行失败", style = MaterialTheme.typography.titleMedium, color = FailedRed)
+                    }
+                    Text(task.reason, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                    TextButton(onClick = onClear) { Text("重新输入") }
+                }
             }
         }
     }
@@ -138,64 +311,82 @@ private fun SampleCard(
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("场景采样", style = MaterialTheme.typography.titleMedium)
-            Button(
-                onClick = onCapture,
-                enabled = enabled && !counting,
-            ) {
+            Button(onClick = onCapture, enabled = enabled && !counting) {
                 Text(if (counting) "倒计时 $countdown s…" else "开始采样(10s 后抓帧)")
             }
             if (hint.isNotBlank()) {
-                Text(hint, style = MaterialTheme.typography.bodySmall)
+                Text(hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
 }
 
 @Composable
-private fun TaskCard(task: TaskState) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("当前任务", style = MaterialTheme.typography.titleMedium)
-            when (task) {
-                is TaskState.Idle -> Text("空闲中", style = MaterialTheme.typography.bodyMedium)
-                is TaskState.Running -> Text("执行中：${task.description}", style = MaterialTheme.typography.bodyMedium)
-            }
+private fun InputBar(
+    enabled: Boolean,
+    defaultText: String,
+    onSend: (String) -> Unit,
+) {
+    var text by remember { mutableStateOf(defaultText) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface)
+            .padding(horizontal = 16.dp)
+            .padding(top = 12.dp, bottom = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        // 分割线
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(MaterialTheme.colorScheme.outlineVariant),
+        )
+
+        OutlinedTextField(
+            value = text,
+            onValueChange = { text = it },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("你想让我做什么？") },
+            enabled = enabled,
+            minLines = 2,
+            maxLines = 4,
+            shape = RoundedCornerShape(12.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = SendBlue,
+                unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f),
+            ),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(
+                onDone = {
+                    val trimmed = text.trim()
+                    if (trimmed.isNotEmpty() && enabled) {
+                        onSend(trimmed)
+                    }
+                },
+            ),
+        )
+
+        Button(
+            onClick = {
+                val trimmed = text.trim()
+                if (trimmed.isNotEmpty()) {
+                    onSend(trimmed)
+                }
+            },
+            enabled = enabled && text.trim().isNotEmpty(),
+            modifier = Modifier.align(Alignment.End),
+            colors = ButtonDefaults.buttonColors(containerColor = SendBlue),
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.Send,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text("发送")
         }
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-private fun PreviewConnected() {
-    JoyPhoneTheme {
-        AgentScreen(
-            uiState = AgentUiState(
-                status = AgentStatus(
-                    accessibilityGranted = true,
-                    connection = ConnectionState.CONNECTED,
-                    task = TaskState.Running("打开飞书并回复消息"),
-                ),
-            ),
-            onTitleTap = {}, onOpenAccessibility = {}, onRunTestTask = {}, onCaptureSample = {}, onHideDebug = {},
-        )
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-private fun PreviewDisconnected() {
-    JoyPhoneTheme {
-        AgentScreen(
-            uiState = AgentUiState(
-                status = AgentStatus(
-                    accessibilityGranted = false,
-                    connection = ConnectionState.DISCONNECTED,
-                    task = TaskState.Idle,
-                ),
-                debug = DebugInfo(wsUrl = "ws://10.0.2.2:8000", deviceId = "abc123", reconnectAttempts = 2),
-                debugUnlocked = true,
-            ),
-            onTitleTap = {}, onOpenAccessibility = {}, onRunTestTask = {}, onCaptureSample = {}, onHideDebug = {},
-        )
     }
 }

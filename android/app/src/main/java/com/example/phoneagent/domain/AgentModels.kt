@@ -7,6 +7,8 @@ enum class ConnectionState { DISCONNECTED, CONNECTING, CONNECTED, RECONNECTING }
 sealed interface TaskState {
     data object Idle : TaskState
     data class Running(val description: String) : TaskState
+    data class Done(val summary: String) : TaskState
+    data class Failed(val reason: String) : TaskState
 }
 
 /** 面向用户的聚合状态。 */
