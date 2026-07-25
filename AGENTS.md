@@ -49,6 +49,7 @@ server/app/
 - 端侧 WS_URL 来自 BuildConfig(build.gradle.kts),禁止硬编码
 - 协议双端契约测试样本:shared/protocol/v2/*.json
 - WS 握手:连接 URL 须带 `?v=2`(PROTOCOL_VERSION),缺失或不符直接 close(code=4402)
+- 日志约定(2026-07-25):日志只记录**实际发送的原始内容**,不额外 JSON 序列化美化。comm.log 记 WS 上下行原文;llm.log 记发给 LLM 的 user prompt 原文和 LLM 回复原文;三者都不是 JSONL,不要误按 JSONL 解析。
 - 真机联调分工:**AI 不碰真机操作**;AI 负责 `adb install -r` + `adb shell monkey` 启动 app,用户手动授予无障碍权限 + 点击触发场景,用户口述现象,AI 看 `server/logs/*` 分析(`tail -F` 三件套 uvicorn.log / comm.log / llm.log)
 
 ## 闭环优先级(2026-07-23 真机复盘后立)
