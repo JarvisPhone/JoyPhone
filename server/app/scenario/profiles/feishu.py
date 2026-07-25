@@ -63,4 +63,11 @@ FEISHU_PROFILE = AppProfile(
         "tenant_desc",
         "my_profile",
     ],
+    llm_brief=(
+        "飞书特有提示:\n"
+        "- 搜索结果列表里点「输入框本身」无效,要点「结果那一行」。\n"
+        "- 输入空消息点发送 → ack 失败,改用 expect 核查输入框文本。\n"
+        "- 个人主页左侧抽屉跨启动持久化,back 无效:用 expect pkg 核查。\n"
+        "- 「草稿未清空」≠ 已发送;只有 tap 发送按钮且 ack ok 才是已发送。"
+    ),
 )

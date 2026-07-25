@@ -30,6 +30,25 @@ from app.protocol import Action, Node, Perception
 _logger = logging.getLogger("phoneagent.decision")
 
 
+def _ui_profile_for_pkg(pkg: str) -> "AppProfile | None":
+    """按 pkg 查 L2 AppProfile;未注册返回 None。
+
+    profile 注册表 scenario/profiles.py 持有 ALL_PROFILES,
+    内部已 import。Task 5 引入,避免每次 _llm_decide 重新 loop。
+    """
+    from app.scenario.profiles import ALL_PROFILES
+    if not pkg:
+        return None
+    for profile in ALL_PROFILES:
+        if profile.pkg == pkg:
+            return profile
+    return None
+
+
+# 仅为类型提示:避免 forward reference 字符串在 pyright 下报「未定义」错误。
+from app.scenario.base import AppProfile  # noqa: E402
+
+
 @dataclass
 class DecideInput:
     goal: str
@@ -558,7 +577,17 @@ class DecisionEngine:
         # scene_brief 按 (scene, page) 注入,AppProfile.llm_brief 由 Task 5 注入。
         from app.decision.scene_briefs import brief_for as _generic_brief
         generic_brief = _generic_brief(scene, page_enum)
-        scene_brief = generic_brief  # app-specific 注入下个 task 加
+        # AppProfile.llm_brief:飞书等 app 专属 brief,与通用 brief 拼接。
+        app_brief = ""
+        if d.target_pkg:
+            profile = _ui_profile_for_pkg(d.target_pkg)
+            app_brief = profile.llm_brief if profile is not None else ""
+        if generic_brief and app_brief:
+            scene_brief = generic_brief + "\n" + app_brief
+        elif app_brief:
+            scene_brief = app_brief
+        else:
+            scene_brief = generic_brief
         screen_text = encode_visible_nodes(nodes, ancestor)
 
         # last_1_action 由 handlers 层写入(暂用空)

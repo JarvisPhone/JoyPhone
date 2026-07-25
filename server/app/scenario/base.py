@@ -28,6 +28,10 @@ class AppProfile(BaseModel):
     message_input_hints: list[str]
     # 侧边栏抽屉特征 rid(≥2 个命中判定为抽屉页,机械 tap_at 右侧空白消除)
     sidebar_rid_keywords: list[str] = []
+    # LLM 专有 brief:scene_brief 之外,该 app 特有的「容易踩坑」提醒。
+    # 例如飞书可能会加「草稿输入框非空也会拦截 confirm」、「搜索结果点输入框无效」。
+    # 推荐 1~3 行,直接给 LLM 看,不要解释术语。
+    llm_brief: str = ""
 
 
 class ScenarioPack(Protocol):
