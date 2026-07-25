@@ -6,6 +6,7 @@ from app.decision.engine import (
     parse_actions,
 )
 from app.decision.llm import FakeLLM
+from app.decision.payload import build_system_prompt
 from app.decision.pkg_guard import SceneConfig
 from app.decision.skills import BoundSkill, SkillCursor, SkillStep, SkillTemplate
 from app.infra.config import Config
@@ -20,6 +21,54 @@ TPL = SkillTemplate(
         SkillStep(op="tap", text="发送"),
     ],
 )
+
+
+def test_engine_no_long_module_level_system_prompt_constant():
+    """Task 2: _SYSTEM_PROMPT 应被 build_system_prompt() 取代,不再有 module-level 大常量。"""
+    import app.decision.engine as eng_mod
+
+    assert not hasattr(eng_mod, "_SYSTEM_PROMPT"), (
+        "engine.py 仍有 _SYSTEM_PROMPT module-level 常量,"
+        "应改用 build_system_prompt() 调用。"
+    )
+
+
+def test_engine_llm_decide_uses_payload_system_prompt():
+    """Task 2: _llm_decide 传给 LLM 的 system 应是精简后的新 prompt。"""
+    captured = {}
+
+    class Spy(FakeLLM):
+        def __init__(self):
+            super().__init__(["read"])
+
+        def complete(self, system, user, image_b64=None):
+            captured["system"] = system
+            return "read"
+
+    nodes = [
+        Node(
+            id="0",
+            text="x",
+            viewIdResourceName="x:id/x",
+            bounds=[0, 0, 100, 100],
+            clickable=False,
+            editable=False,
+        )
+    ]
+    frame = Perception(pkg="com.x", nodeTree=nodes, activity="", ts=1)
+    eng = DecisionEngine(llm=Spy(), cache=None)
+    eng._llm_decide(DecideInput(
+        goal="x",
+        frame=frame,
+        target_pkg="",
+        cursor=SkillCursor(),
+        bound_skill=None,
+        guard={},
+        title_keywords=(),
+    ))
+    assert captured["system"] == build_system_prompt()
+    assert captured["system"].startswith("[ROLE]")
+    assert len(captured["system"]) < 2000
 
 
 def _frame(title: str) -> Perception:
