@@ -18,7 +18,6 @@ data class NodeDto(
 data class UplinkPerception(
     val type: String = "perception",
     val nodeTree: List<NodeDto>,
-    val screenshot: String? = null,
     val pkg: String,
     val activity: String,
     val ts: Long,
