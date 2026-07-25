@@ -1,7 +1,5 @@
 from types import SimpleNamespace
 
-from app.decision.engine import _nav_map
-from app.protocol import Perception
 from app.decision.payload import (
     build_system_prompt,
     build_user_payload,
@@ -53,7 +51,7 @@ def test_visible_nodes_only_includes_clickable_editable_or_titled_nodes():
         _node(0, text="搜索框", editable=True),                 # 可交互,留
         _node(1, text="发送", clickable=True),                  # 可交互,留
         _node(2, text="装饰", clickable=False, editable=False), # 纯装饰,剔
-        _node(3, text="", rid="com.x:id/btn_send", clickable=True),  # rid 带语义,留
+        _node(3, text="", rid="com.x:id/btn_send", clickable=False, editable=False),  # rid 兜底,留
         _node(4, text="", clickable=False, editable=False),     # 无语义无交互,剔
     ]
     out = encode_visible_nodes(nodes, ancestor_clickable=[False]*len(nodes), screen_height=200)
@@ -69,7 +67,7 @@ def test_render_layout_summary_marks_top_middle_bottom():
         _node(1, text="mid", bounds=[0, 100, 100, 150]),     # bucket 2(中部)
         _node(2, text="bot", bounds=[0, 200, 100, 230]),     # bucket 3(底部)
     ]
-    summary = render_layout_summary(nodes, ancestor_clickable=[False]*len(nodes))
+    summary = render_layout_summary(nodes)
     assert "top=" in summary and "mid=" in summary and "bottom=" in summary
 
 

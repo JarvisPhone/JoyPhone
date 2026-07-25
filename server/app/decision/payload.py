@@ -69,8 +69,12 @@ def encode_visible_nodes(
         if n.clickable or n.editable:
             return True
         text = (n.text or n.desc or "").strip()
-        anc = ancestor_clickable[i] if i < len(ancestor_clickable) else False
-        return bool(text and anc)
+        if text:
+            anc = ancestor_clickable[i] if i < len(ancestor_clickable) else False
+            return bool(anc)
+        # rid 兜底:无文本但有语义 rid 的节点也保留,标签由 _node_label 派生
+        rid = (getattr(n, "viewIdResourceName", None) or "").strip()
+        return bool(rid)
 
     out = []
     for i, n in enumerate(nodes):
@@ -87,13 +91,11 @@ def encode_visible_nodes(
     return "\n".join(out)
 
 
-def render_layout_summary(
-    nodes: Sequence[Node],
-    ancestor_clickable: Sequence[bool],
-) -> str:
+def render_layout_summary(nodes: Sequence[Node]) -> str:
     """屏布局摘要:`top=(...) mid=(...) bottom=(...)`。
 
     只统计可交互节点(input/button)+ 标题节点(label)。
+    空节点列表直接返回 "",调用方负责兜底(IndexError 防御)。
     """
     if not nodes:
         return ""
@@ -248,12 +250,17 @@ def _build_act(
     return parts
 
 
-def _build_verify(feedback: str) -> list[str]:
+def _build_verify(feedback: str, last_action: dict | None = None) -> list[str]:
     parts = ["[VERIFY]"]
     if feedback and feedback.strip():
         parts.append(feedback.strip())
+    elif last_action is not None:
+        verdict = _VERIFY_VERDICT_TEMPLATES.get(
+            last_action.get("ack", ""), _VERIFY_VERDICT_TEMPLATES["ok"]
+        )
+        parts.append(f"上一条动作结果: {verdict}")
     else:
-        parts.append("(no feedback yet — assume previous action succeeded)")
+        parts.append("(no previous action — assume success)")
     return parts
 
 
@@ -289,7 +296,7 @@ def build_user_payload(
     sections.append(_build_ground(goal, target_pkg, exit_path, depth, prev_subgoal))
     sections.append(_build_phase(phase_label, phase_current, phase_next_gate))
     sections.append(_build_act(last_action, last_step_count))
-    sections.append(_build_verify(feedback))
+    sections.append(_build_verify(feedback, last_action))
 
     out: list[str] = []
     for sec in sections:
