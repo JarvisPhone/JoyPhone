@@ -32,10 +32,12 @@ class Executor(
         return when (op) {
             "tap" -> tap(params)
             "tap_at" -> tapAt(params)
+            "longpress" -> longPress(params)
             "input" -> input(params)
             "swipe" -> ExecResult(ok = swipe(params))
             "back" -> ExecResult(ok = service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK))
             "home" -> ExecResult(ok = service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME))
+            "press_enter" -> pressEnter()
             "read_screen", "wait" -> ExecResult(true)
             else -> ExecResult(false, "unknown_op")
         }
@@ -153,6 +155,63 @@ class Executor(
             .addStroke(GestureDescription.StrokeDescription(path, 0, 50))
             .build()
         return dispatchGestureFireAndForget(gesture, "tap")
+    }
+
+    /**
+     * longpress:与 tap 相同的语义锚点定位,但按住时间延长到 800ms,
+     * 触发上下文菜单(长按列表项弹出删除/置顶等菜单)。
+     */
+    private fun longPress(params: Map<String, String>): ExecResult {
+        val anchor = AnchorResolver.fromParams(params)
+            ?: return ExecResult(false, "anchor_missing")
+        val nodes = liveNodes() ?: return ExecResult(false, "no_window")
+        return when (val r = AnchorResolver.resolve(nodes, anchor)) {
+            is ResolveResult.Found -> {
+                val bounds = r.node.bounds
+                    ?: return ExecResult(false, "anchor_no_bounds")
+                val (cx, cy) = GestureGeometry.centerOf(bounds)
+                val path = Path().apply { moveTo(cx, cy) }
+                val gesture = GestureDescription.Builder()
+                    .addStroke(GestureDescription.StrokeDescription(path, 0, 800))
+                    .build()
+                ExecResult(dispatchGestureFireAndForget(gesture, "longpress"))
+            }
+            ResolveResult.NotFound -> ExecResult(false, "anchor_not_found")
+            is ResolveResult.Ambiguous -> ExecResult(false, "anchor_ambiguous")
+        }
+    }
+
+    /**
+     * press_enter:在当前焦点 EditText 旁找「搜索/提交」按钮并点。
+     * 多数搜索框把提交按钮做在 IME 上,但端侧 AccessibilityService 无法
+     * 注入 KEYCODE_ENTER(无 WRITE_SECURE_SETTINGS),所以走「找按钮+click」兜底。
+     * 如果找不到,返回 false 让 LLM 改用 tap 提交按钮。
+     */
+    private fun pressEnter(): ExecResult {
+        val root = service.rootInActiveWindow ?: return ExecResult(false, "no_window")
+        try {
+            val flatten = NodeFlattener.flatten(root)
+            val hasEditable = flatten.any { it.editable }
+            if (!hasEditable) return ExecResult(false, "no_editable")
+            // 在屏上找带「搜索」「确定」「Search」「Go」「Done」的 clickable 按钮
+            val submitTexts = ("搜索|Search|搜索\n|Search\n|确定|Go|Done|提交|回车|搜索一下|搜一搜|send")
+                .split("|")
+            val submit = flatten.firstOrNull { n ->
+                n.clickable && n.text?.trim()?.let { t ->
+                    submitTexts.any { k -> t.equals(k, ignoreCase = true) }
+                } == true
+            } ?: return ExecResult(false, "no_submit_button")
+            val node = findNodeByPath(root, submit.id)
+                ?: return ExecResult(false, "anchor_stale")
+            return try {
+                val ok = node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                if (ok) ExecResult(true) else ExecResult(false, "click_failed")
+            } finally {
+                if (node !== root) node.recycle()
+            }
+        } finally {
+            root.recycle()
+        }
     }
 
     /**

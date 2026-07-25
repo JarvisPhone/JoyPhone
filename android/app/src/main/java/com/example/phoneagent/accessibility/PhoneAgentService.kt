@@ -46,6 +46,8 @@ class PhoneAgentService : AccessibilityService() {
     @Volatile private var msgSeq: Int = 0
     // wsClient.start() 仅调用一次
     @Volatile private var wsStarted = false
+    // 下一次 reportScreen() 时携带截图(LLM 上一次发 request_screenshot 时置位)
+    @Volatile private var pendingScreenshot: Boolean = false
 
     /** 最近一次窗口状态变更事件带来的 Activity 类名(带包名前缀补全)。用于采样元数据,与 taskActive 无关。 */
     @Volatile private var lastActivity: String = ""
@@ -99,6 +101,12 @@ class PhoneAgentService : AccessibilityService() {
                 wsClient.sendActionResult(action.actionId, result.ok, seq, result.error)
                 repo.appendActionLog(ActionLog(System.currentTimeMillis(), action.op, result.ok))
                 if (action.op == "read_screen") reportScreen()
+                // request_screenshot 触发截屏;结果在下一帧 perception.screenshot 上传
+                if (action.op == "request_screenshot") {
+                    pendingScreenshot = true
+                    Log.i(TAG, "request_screenshot → 下一帧带 screenshot")
+                    repo.appendTrace(TraceEvent(System.currentTimeMillis(), TraceDirection.INFO, "screenshot.request", "pending"))
+                }
             },
             onTaskEnd = { done, detail ->
                 taskActive = false
@@ -162,8 +170,14 @@ class PhoneAgentService : AccessibilityService() {
         val nodes = NodeFlattener.flatten(root)
         val activity = root.packageName?.toString() ?: ""
         val seq = ++msgSeq
+        // 若上一次动作是 request_screenshot,本次 perception 携带 base64 截图
+        val screenshotB64 = if (pendingScreenshot) {
+            pendingScreenshot = false
+            captureScreenshot()?.also { Log.i(TAG, "screenshot attached, size=${it.length}") }
+        } else null
         val perception = UplinkPerception(
             nodeTree = nodes,
+            screenshot = screenshotB64,
             pkg = root.packageName?.toString() ?: "",
             activity = activity,
             ts = System.currentTimeMillis(),
@@ -172,6 +186,17 @@ class PhoneAgentService : AccessibilityService() {
         wsClient.sendPerception(perception)
         Log.i(TAG, "↑ perception pkg=${perception.pkg} nodes=${nodes.size} seq=$seq (taskActive=$taskActive)")
         repo.appendTrace(TraceEvent(System.currentTimeMillis(), TraceDirection.UP, "perception", "pkg=${perception.pkg} nodes=${nodes.size} seq=$seq"))
+    }
+
+    /** 截屏:返回 PNG base64。无 root 权限时退化为 null(LLM 收到反馈可再发一次)。
+     *
+     * 注意:AccessibilityService 没有 MediaProjection/system_app 权限,不能真正截屏。
+     * 此处返回 null + 在端侧 log 一行警告——实际联调需要给端侧开「无障碍截屏」白名单
+     * 或用 ADB shell screencap 通过主端协助传递图片。基线接通链路,等真机权限到位。
+     */
+    private fun captureScreenshot(): String? {
+        Log.w(TAG, "screenshot not yet implemented on AccessibilityService (need MediaProjection or system_app)")
+        return null
     }
 
     /** 采样专用抓帧:抓当前屏 nodeTree,组 sample.capture 上报。与决策链路解耦。 */

@@ -12,6 +12,7 @@ import com.example.phoneagent.protocol.DownAction
 import com.example.phoneagent.protocol.DownTaskConfirm
 import com.example.phoneagent.protocol.UplinkActionResult
 import com.example.phoneagent.protocol.UplinkConfirmResponse
+import com.example.phoneagent.protocol.UplinkDeviceHello
 import com.example.phoneagent.protocol.UplinkPerception
 import com.example.phoneagent.protocol.UplinkSampleCapture
 import com.example.phoneagent.protocol.UplinkTaskRequest
@@ -135,6 +136,20 @@ class WsClient @Inject constructor(
             repo.setReconnectAttempts(0)
             repo.updateConnection(ConnectionState.CONNECTED)
             repo.appendWsEvent(WsEventLog(now(), "onOpen", "code=${response.code}"))
+            // 连接握手后立即上报设备能力矩阵(首帧)
+            sendDeviceHello(
+                deviceId = deviceId,
+                sdkVersion = "joyphone-android/0.1",
+                capabilities = mapOf(
+                    "screenshot" to false,            // AccessibilityService 无截屏权限
+                    "speech_input" to true,           // 主端用户口述,云端文本
+                    "gesture_multi_touch" to true,
+                    "gesture_long_press" to true,     // Executor.longPress 已实装
+                    "max_nodes_per_frame" to true,
+                    "input_set_text" to true,
+                    "ime_action_done" to true,
+                ),
+            )
         }
 
         override fun onMessage(webSocket: WebSocket, text: String) {
@@ -275,6 +290,13 @@ class WsClient @Inject constructor(
 
     fun sendTaskRequest(goal: String) {
         ws?.send(json.encodeToString(UplinkTaskRequest(goal = goal)))
+    }
+
+    /** 连接建立后第一帧:上报设备能力矩阵。 */
+    fun sendDeviceHello(deviceId: String, sdkVersion: String, capabilities: Map<String, Boolean>) {
+        ws?.send(json.encodeToString(UplinkDeviceHello(
+            deviceId = deviceId, sdkVersion = sdkVersion, capabilities = capabilities,
+        )))
     }
 
     /** 发送探针采样帧。采样与决策解耦,不影响任务链路。 */

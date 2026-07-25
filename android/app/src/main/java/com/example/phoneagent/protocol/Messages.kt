@@ -67,6 +67,16 @@ data class UplinkSampleCapture(
     val device: String = "",
 )
 
+/** 上行:连接建立后第一帧,上报设备能力矩阵(sdk_version/capabilities)。
+ *  云端据此裁剪 action space(端侧不支持的动作 LLM 不生成)。 */
+@Serializable
+data class UplinkDeviceHello(
+    val type: String = "device.hello",
+    val deviceId: String = "",
+    val sdkVersion: String = "",
+    val capabilities: Map<String, Boolean> = emptyMap(),
+)
+
 @Serializable
 data class DownAction(
     val type: String = "action",
