@@ -18,7 +18,7 @@ from app.decision.cache import SkillCache, bind_params
 from app.decision.exit_hint import exit_hint
 from app.decision.app_page import AppPage, detect_app_page
 from app.decision.llm import LLM
-from app.decision.payload import build_system_prompt, build_user_payload, encode_visible_nodes
+from app.decision.payload import build_system_prompt, build_user_payload, encode_visible_nodes, render_layout_summary
 from app.decision.pkg_guard import pkg_guard_action
 from app.decision.skills import BoundSkill, SkillCursor
 from app.decision.types import Decision
@@ -148,66 +148,6 @@ def _app_page_label(frame: Perception) -> str:
     if scene != Scene.IN_APP:
         return "n/a"
     return _APP_PAGE_LABELS.get(detect_app_page(frame), _APP_PAGE_LABELS[AppPage.UNKNOWN])
-
-
-def _nav_map(nodes: list[Node], ancestor: list[bool]) -> str:
-    """screen 顶部 / 中部 / 底部布局摘要。
-
-    返回形如 "top=[0,1] list=[3..7] bottom=[8,9]";让 LLM 一眼看到「顶部是
-    标题/搜索,中间是列表,底部是 tab/fab」,不必从节点序号反推。
-    """
-    if not nodes:
-        return ""
-    # 把节点按 bounds.top 分桶: top/upper/middle/lower
-    HEIGHT_BUCKETS = 4  # 屏高按 4 等分
-    n = len(nodes)
-    # 取 bounds 的纵向区间
-    tops: list[int] = []
-    bots: list[int] = []
-    for i, nd in enumerate(nodes):
-        b = nd.bounds
-        if b and len(b) == 4:
-            tops.append(b[1])
-            bots.append(b[3])
-    if not tops:
-        return ""
-    screen_top = min(tops)
-    screen_bot = max(bots)
-    span = max(1, screen_bot - screen_top)
-    bucket_size = span / HEIGHT_BUCKETS
-
-    def bucket_of(i: int) -> int:
-        b = nodes[i].bounds
-        if not b or len(b) != 4:
-            return -1
-        return min(HEIGHT_BUCKETS - 1, max(0, int((b[1] - screen_top) / bucket_size)))
-
-    # 只标记 button / input(可交互元素),不标记 label/text(降低噪声)
-    def interactive_label(i: int) -> str | None:
-        nd = nodes[i]
-        if not (nd.clickable or nd.editable):
-            return None
-        if nd.editable:
-            return "input"
-        anc = ancestor[i] if i < len(ancestor) else False
-        return _node_type(nd, anc)
-
-    # 顶部节点索引范围(bucket 0)
-    top_idx = [i for i in range(n) if bucket_of(i) == 0]
-    bot_idx = [i for i in range(n) if bucket_of(i) == HEIGHT_BUCKETS - 1]
-    mid_idx = [i for i in range(n) if bucket_of(i) in (1, 2)]
-
-    def summarize(indices: list[int]) -> str:
-        labels = [interactive_label(i) for i in indices]
-        labels = [l for l in labels if l]
-        if not labels:
-            return f"{len(indices)} plain"
-        # 截断防止太长
-        if len(labels) > 6:
-            labels = labels[:3] + ["..."] + labels[-2:]
-        return f"{len(indices)}:" + ",".join(labels)
-
-    return f"top=({summarize(top_idx)}) mid=({summarize(mid_idx)}) bottom=({summarize(bot_idx)})"
 
 
 def _rid_tail(rid: str | None) -> str:
@@ -548,7 +488,7 @@ class DecisionEngine:
         page_label = _app_page_label(d.frame)  # "n/a" outside IN_APP
         page_enum = detect_app_page(d.frame) if scene == Scene.IN_APP else AppPage.UNKNOWN
         hint = exit_hint(scene, page_enum)
-        nav_map = _nav_map(nodes, ancestor)
+        nav_map = render_layout_summary(nodes)
         screen_text = _encode_nodes(nodes, ancestor)
 
         # === [NODE_TREE] 节点树分布打点 ===
