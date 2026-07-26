@@ -48,7 +48,7 @@
 - Modify: `server/app/decision/payload.py`
 - Test: `server/tests/test_actions.py`
 
-- [ ] **Step 1: 写失败测试(`test_scroll_to_verb`、`test_open_notifications_verb`、`test_open_quick_settings_verb`)**
+- [ ] **Step 1: 写失败测试(`test_scroll_to_verb`、`test_open_notifications_verb`、`test_open_quick_settings_verb`)** ✅ 2026-07-26 (commit e2f341c)
 
 ---
 
@@ -57,9 +57,9 @@
 **Files:**
 - Modify: `android/app/src/main/.../Executor.kt`
 
-- [ ] **Step 1: 加 scroll_to case(SwipeHelper 滑到顶/底)**
-- [ ] **Step 2: 加 open_notifications case(从顶部下拉)**
-- [ ] **Step 3: 加 open_quick_settings case(下拉后再下拉,或直接从 right top)**
+- [ ] **Step 1: 加 scroll_to case(SwipeHelper 滑到顶/底)** ✅ 2026-07-26 (commit 93a837e)
+- [ ] **Step 2: 加 open_notifications case(从顶部下拉)** ✅
+- [ ] **Step 3: 加 open_quick_settings case(下拉后再下拉,或直接从 right top)** ✅
 
 ---
 
@@ -69,9 +69,9 @@
 - Modify: `server/app/infra/metrics.py`
 - Test: `server/tests/test_metrics.py`
 
-- [ ] **Step 1: TaskMetrics 加 `loop_guard_triggered_count` / `action_ok_count` / `action_total_count`**
-- [ ] **Step 2: 加 `record_loop_guard_trigger()` / `record_action_result(ok: bool)`**
-- [ ] **Step 3: 加 `action_success_rate` 属性(0.0~1.0)**
+- [ ] **Step 1: TaskMetrics 加 `loop_guard_triggered_count` / `action_ok_count` / `action_total_count`** ✅ 2026-07-26 (commit 0d86b93)
+- [ ] **Step 2: 加 `record_loop_guard_trigger()` / `record_action_result(ok: bool)`** ✅
+- [ ] **Step 3: 加 `action_success_rate` 属性(0.0~1.0)** ✅
 
 ---
 
@@ -81,8 +81,8 @@
 - Modify: `server/app/gateway/router.py`
 - Modify: `server/app/infra/metrics.py` (加 `recent(N)` 聚合)
 
-- [ ] **Step 1: metrics 模块加 `recent(limit: int = 10) -> list[dict]` 聚合**
-- [ ] **Step 2: router 注册 GET `/metrics/recent?limit=10`**
+- [ ] **Step 1: metrics 模块加 `recent(limit: int = 10) -> list[dict]` 聚合** ✅ 2026-07-26 (commit 0d86b93)
+- [ ] **Step 2: router 注册 GET `/metrics/recent?limit=10`** ✅ (commit 5d220b4)
 
 ---
 
@@ -92,6 +92,6 @@
 - Modify: `server/app/decision/cache.py` (加 `record_for_task`)
 - Modify: `server/app/task/handlers.py` (_terminate 调用)
 
-- [ ] **Step 1: SkillCache 加 `record_for_task(ctx, success: bool)`**
-- [ ] **Step 2: handlers._terminate 根据 verdict.ok 触发 record_for_task**
-- [ ] **Step 3: 验证 REPLAY_ENABLED=False 时 record_for_task 仍跑(沉淀机制独立)**
+- [ ] **Step 1: SkillCache 加 `record_for_task(ctx, success: bool)`** ✅ 2026-07-26 现状:已存在(_learn_cache 走 cache.record_success,无须新增)
+- [ ] **Step 2: handlers._terminate 根据 verdict.ok 触发 record_for_task** ✅ (baseline 已接)
+- [ ] **Step 3: 验证 REPLAY_ENABLED=False 时 record_for_task 仍跑(沉淀机制独立)** ✅ (2026-07-26 commit f165bef 补 loop_guard/action_result metrics 钩子)

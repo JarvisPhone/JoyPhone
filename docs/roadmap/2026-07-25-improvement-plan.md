@@ -322,30 +322,30 @@ tail -F server/logs/uvicorn.log server/logs/comm.log server/logs/llm.log
 
 ### P0 (阻塞性，必须先修)
 
-- [ ] **退出路径迷失**: LoopGuard 升级 + 页面拓扑感知 + exit_hint
-- [ ] **screen 格式升级**: 带语义的 nav_map + goal_progress + exit_hint
-- [ ] **结构化 feedback**: 让 LLM 收到稳定的反馈信号
+- [x] **退出路径迷失**: LoopGuard 升级 + 页面拓扑感知 + exit_hint ✅ (2026-07-25, payload redesign Phase 3 + 4)
+- [x] **screen 格式升级**: 带语义的 nav_map + goal_progress + exit_hint ✅ (2026-07-25, payload redesign Phase 5)
+- [x] **结构化 feedback**: 让 LLM 收到稳定的反馈信号 ✅ (2026-07-25, payload redesign Phase 6)
 
 ### P1 (核心体验)
 
 - [x] **Android 文本输入框 + 发送按钮**: 替换硬编码按钮 ✅ (2026-07-25)
 - [ ] **Android 语音输入**: Intent 调用系统语音(推迟,先不做)
-- [ ] **死循环诊断日志**: LLM_DECIDE 结构化打点
-- [ ] **scene 检测强化**: app 内页面细粒度分类
+- [x] **死循环诊断日志**: LLM_DECIDE 结构化打点 ✅ (2026-07-25 baseline + 2026-07-26 metrics 加 loop_guard_triggered_count)
+- [x] **scene 检测强化**: app 内页面细粒度分类 ✅ (2026-07-25, AppPage enum + detect_app_page)
 - [x] **LLM 交互格式去除 JSON 包装**: user prompt 改为自然文本格式 ✅ (2026-07-25)
 
 ### P2 (功能完善)
 
-- [ ] **指令集扩充**: longpress / scroll_to / press enter 等
-- [ ] **screenshot 按需上报**: 视觉模态激活
-- [ ] **device.hello 能力握手**: 协议层完善
-- [ ] **metrics 监控增强**: 任务级指标
+- [x] **指令集扩充**: longpress / scroll_to / press enter 等 ✅ (longpress/press_enter 2026-07-25 baseline, scroll_to/open_notifications/open_quick_settings 2026-07-26)
+- [ ] **screenshot 按需上报**: 视觉模态激活(未实装,等真机图片需求)
+- [ ] **device.hello 能力握手**: 协议层完善(设计中,见 2026-07-22 spec)
+- [x] **metrics 监控增强**: 任务级指标 ✅ (2026-07-26, /metrics/recent + loop_guard_triggered_count + action_success_rate)
 
 ### P3 (优化)
 
-- [ ] **cursor 进度感知增强**: 告诉 LLM 离目标还剩几步
-- [ ] **cache 语义沉淀**: widget 子入口等 pattern 写入 cache
-- [ ] **skill 模板库**: 常见 app 操作链标准化
+- [x] **cursor 进度感知增强**: 告诉 LLM 离目标还剩几步 ✅ (2026-07-25 phase.payload 段 + 2026-07-26 gate_for 完整化)
+- [x] **cache 语义沉淀**: widget 子入口等 pattern 写入 cache ✅ (2026-07-26 Task 5 沿用现成 _learn_cache + generalize_steps)
+- [ ] **skill 模板库**: 常见 app 操作链标准化(部分实装,BoundSkill + SkillCursor 已就位,模板待真机沉淀)
 
 ---
 
