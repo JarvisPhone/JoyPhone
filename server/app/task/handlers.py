@@ -38,6 +38,7 @@ from app.protocol import (
     Perception,
     SampleCapture,
     TaskAbort,
+    TaskCancel,
     TaskConfirm,
     TaskDone,
     TaskRequest,
@@ -54,6 +55,7 @@ from app.task.policies import (
     LoopGuardPolicy,
     Verdict,
     run_pipeline,
+    terminate,
 )
 
 logger = logging.getLogger(__name__)
@@ -169,6 +171,8 @@ async def handle_uplink(
         _on_sample_capture(uplink)
     elif isinstance(uplink, DeviceHello):
         _on_device_hello(uplink, conn)
+    elif isinstance(uplink, TaskCancel):
+        await _on_task_cancel(uplink, store, conn, deps)
 
 
 def _on_device_hello(uplink: DeviceHello, conn: Conn) -> None:
@@ -365,6 +369,48 @@ async def _dispatch(
         if action.op in _MUTATING_OPS:
             ctx.pending_mutating.add(action.actionId)
         await conn.send(action)
+
+
+async def _on_task_cancel(
+    uplink: TaskCancel,
+    store: TaskStore,
+    conn: Conn,
+    deps: HandlerDeps,
+) -> None:
+    """用户主动取消运行中任务。
+
+    仅当 fsm.state ∈ {RUNNING, AWAITING_CONFIRM, WAITING_EVENT} 时终止;
+    其他状态(IDLE/DONE/ABORT)返回 task.done(taskId, summary=cancelled_noop),
+    不污染 metrics(无任务跑过也没意义记 canceled)。
+
+    reason 字段透传(默认 "user_cancel"),供上游分析取消原因分布。
+    """
+    ctx = store.current
+    if ctx is None or ctx.task_id != uplink.taskId:
+        logger.warning(
+            "[CANCEL_NOOP] taskId 不匹配 store 上无任务 task_id=%s uplink_taskId=%s",
+            ctx.task_id if ctx else "(none)", uplink.taskId,
+        )
+        await conn.send(TaskDone(taskId=uplink.taskId, result="ok", summary="cancelled_noop"))
+        return
+    cancellable = {
+        TaskState.RUNNING,
+        TaskState.AWAITING_CONFIRM,
+        TaskState.WAITING_EVENT,
+    }
+    if ctx.fsm.state not in cancellable:
+        logger.info(
+            "[CANCEL_NOOP] 任务不在可取消状态 state=%s task_id=%s",
+            ctx.fsm.state.value, ctx.task_id,
+        )
+        await conn.send(TaskDone(taskId=uplink.taskId, result="ok", summary="cancelled_noop"))
+        return
+    logger.info(
+        "[USER_CANCEL] task_id=%s state=%s reason=%s",
+        ctx.task_id, ctx.fsm.state.value, uplink.reason,
+    )
+    verdict = terminate(reason=uplink.reason or "user_cancel", status="aborted")
+    await _terminate(ctx, verdict, conn, deps, store)
 
 
 async def _terminate(

@@ -73,6 +73,7 @@ fun AgentScreen(
     onSendGoal: (String) -> Unit,
     onCaptureSample: () -> Unit,
     onHideDebug: () -> Unit,
+    onCancelTask: () -> Unit = {},
 ) {
     val connected = uiState.status.connection == ConnectionState.CONNECTED
 
@@ -106,7 +107,7 @@ fun AgentScreen(
 
                 TaskStatusCard(
                     task = uiState.status.task,
-                    onClear = { /* TODO: cancel task */ },
+                    onCancel = onCancelTask,
                 )
 
                 SampleCard(
@@ -216,7 +217,7 @@ private fun ConnectionCard(state: ConnectionState) {
 }
 
 @Composable
-private fun TaskStatusCard(task: TaskState, onClear: () -> Unit) {
+private fun TaskStatusCard(task: TaskState, onCancel: () -> Unit) {
     when (task) {
         is TaskState.Idle -> {
             Card(
@@ -254,6 +255,14 @@ private fun TaskStatusCard(task: TaskState, onClear: () -> Unit) {
                         maxLines = 3,
                         overflow = TextOverflow.Ellipsis,
                     )
+                    // 中止按钮(2026-07-26 加):走协议 task.cancel → _terminate,
+                    // 与 InputBar 的禁用(`uiState.status.task is TaskState.Idle`)配套。
+                    TextButton(
+                        onClick = onCancel,
+                        colors = ButtonDefaults.textButtonColors(contentColor = FailedRed),
+                    ) {
+                        Text("中止任务")
+                    }
                 }
             }
         }
@@ -273,7 +282,7 @@ private fun TaskStatusCard(task: TaskState, onClear: () -> Unit) {
                         Text("已完成", style = MaterialTheme.typography.titleMedium, color = DoneGreen)
                     }
                     Text(task.summary, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                    TextButton(onClick = onClear) { Text("重新输入") }
+                    TextButton(onClick = onCancel) { Text("重新输入") }
                 }
             }
         }
@@ -293,7 +302,7 @@ private fun TaskStatusCard(task: TaskState, onClear: () -> Unit) {
                         Text("执行失败", style = MaterialTheme.typography.titleMedium, color = FailedRed)
                     }
                     Text(task.reason, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                    TextButton(onClick = onClear) { Text("重新输入") }
+                    TextButton(onClick = onCancel) { Text("重新输入") }
                 }
             }
         }

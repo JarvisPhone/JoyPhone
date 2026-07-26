@@ -6,7 +6,8 @@ enum class ConnectionState { DISCONNECTED, CONNECTING, CONNECTED, RECONNECTING }
 /** 任务执行状态。 */
 sealed interface TaskState {
     data object Idle : TaskState
-    data class Running(val description: String) : TaskState
+    /** 执行中:携带 taskId 供「中止」按钮发起 task.cancel 时使用(2026-07-26 加)。 */
+    data class Running(val description: String, val taskId: String = "") : TaskState
     data class Done(val summary: String) : TaskState
     data class Failed(val reason: String) : TaskState
 }

@@ -81,12 +81,12 @@ class PhoneAgentService : AccessibilityService() {
         wsClient.start(
             baseUrl = BuildConfig.WS_URL,
             deviceId = deviceId,
-            onTaskStart = { goal, _ ->
+            onTaskStart = { goal, taskId ->
                 taskActive = true
                 resetSequenceNumbers()
-                Log.i(TAG, "↓ task.start goal=$goal → taskActive=true")
-                repo.appendTrace(TraceEvent(System.currentTimeMillis(), TraceDirection.DOWN, "task.start", goal))
-                repo.updateTask(TaskState.Running(goal))
+                Log.i(TAG, "↓ task.start taskId=$taskId goal=$goal → taskActive=true")
+                repo.appendTrace(TraceEvent(System.currentTimeMillis(), TraceDirection.DOWN, "task.start", "$taskId $goal"))
+                repo.updateTask(TaskState.Running(description = goal, taskId = taskId))
                 reportScreen()
             },
             onAction = { action ->

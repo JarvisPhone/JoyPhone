@@ -131,3 +131,15 @@ data class UplinkConfirmResponse(
     val reason: String = "",
     val ts: Long = 0,
 )
+
+/** 上行:用户主动取消运行中任务(2026-07-26 加,见 server/app/protocol/models.py:TaskCancel)。
+ *
+ *  仅在 fsm.state ∈ {RUNNING, AWAITING_CONFIRM, WAITING_EVENT} 时生效;
+ *  其他状态云端回 task.done(taskId, summary=cancelled_noop)。
+ */
+@Serializable
+data class UplinkTaskCancel(
+    val type: String = "task.cancel",
+    val taskId: String,
+    val reason: String = "user_cancel",
+)

@@ -86,7 +86,22 @@ class SampleCapture(BaseModel):
     device: str = ""
 
 
-Uplink = Union[Perception, ActionResult, NewMessage, Heartbeat, TaskRequest, ConfirmResponse, SampleCapture, DeviceHello]
+class TaskCancel(BaseModel):
+    """用户主动取消运行中任务(client → server)。
+
+    server 收到后:
+    - 仅在 ctx.fsm.state == RUNNING 时允许终止;
+    - 其他状态(AWAITING_CONFIRM/WAITING_EVENT/DONE/ABORT/IDLE)拒收并回 task.done(taskId, summary=cancelled_noop);
+    - 终止原因统一为 "user_cancel"(与 LoopGuard 的 "stuck_loop" / SendGuard 的 "false_done" 区分)。
+
+    reason 字段供端侧透传用户口述(可选,默认 "user_cancel")。
+    """
+    type: Literal["task.cancel"] = "task.cancel"
+    taskId: str
+    reason: str = "user_cancel"
+
+
+Uplink = Union[Perception, ActionResult, NewMessage, Heartbeat, TaskRequest, ConfirmResponse, SampleCapture, DeviceHello, TaskCancel]
 
 _UPLINK_MAP = {
     "perception": Perception,
@@ -97,6 +112,7 @@ _UPLINK_MAP = {
     "task.confirm_response": ConfirmResponse,
     "sample.capture": SampleCapture,
     "device.hello": DeviceHello,
+    "task.cancel": TaskCancel,
 }
 
 

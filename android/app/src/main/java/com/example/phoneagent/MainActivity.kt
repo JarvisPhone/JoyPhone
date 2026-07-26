@@ -34,6 +34,7 @@ class MainActivity : ComponentActivity() {
                     onSendGoal = viewModel::onSendGoal,
                     onCaptureSample = viewModel::onCaptureSample,
                     onHideDebug = viewModel::onHideDebug,
+                    onCancelTask = viewModel::onCancelTask,
                 )
             }
         }

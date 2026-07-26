@@ -13,6 +13,7 @@ from app.protocol import (
     Perception,
     SampleCapture,
     TaskAbort,
+    TaskCancel,
     TaskConfirm,
     TaskDone,
     TaskRequest,
@@ -42,6 +43,7 @@ def test_golden_dir_has_all_samples():
         "task_abort.json",
         "task_confirm.json",
         "heartbeat_ack.json",
+        "task_cancel.json",
     }
     actual = {p.name for p in GOLDEN_DIR.glob("*.json")}
     assert expected == actual
@@ -119,6 +121,29 @@ def test_uplink_sample_capture():
     assert msg.device == "pixel-7-pro-01"
 
 
+def test_uplink_task_cancel():
+    """task.cancel 上行解析(2026-07-26 加):用户主动取消运行中任务。
+
+    server 收到后:
+    - 仅在 fsm.state ∈ {RUNNING, AWAITING_CONFIRM, WAITING_EVENT} 时终止;
+    - 其他状态回 task.done(taskId, summary=cancelled_noop)。
+    """
+    raw = _load("task_cancel.json")
+    msg = parse_uplink(json.dumps(raw))
+    assert isinstance(msg, TaskCancel)
+    assert msg.taskId == "t-2026-07-26-001"
+    assert msg.reason == "user_cancel"
+    assert msg.type == "task.cancel"
+
+
+def test_uplink_task_cancel_default_reason():
+    """reason 字段默认 "user_cancel",端侧未传时也合法。"""
+    raw = {"type": "task.cancel", "taskId": "t-1"}
+    msg = parse_uplink(json.dumps(raw))
+    assert isinstance(msg, TaskCancel)
+    assert msg.reason == "user_cancel"
+
+
 # ---- 上行:roundtrip 键集断言 ----
 
 
@@ -154,6 +179,7 @@ def _assert_golden_keys_covered(golden, dumped, path="$"):
         "task_request.json",
         "confirm_response.json",
         "sample_capture.json",
+        "task_cancel.json",
     ],
 )
 def test_uplink_roundtrip_covers_golden_keys(golden_name):

@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.phoneagent.data.AgentStateRepository
 import com.example.phoneagent.domain.AgentStatus
 import com.example.phoneagent.domain.DebugInfo
+import com.example.phoneagent.domain.TaskState
 import com.example.phoneagent.domain.TraceDirection
 import com.example.phoneagent.domain.TraceEvent
 import com.example.phoneagent.net.WsClient
@@ -105,6 +106,41 @@ class MainViewModel @Inject constructor(
             }
             _sampleCountdown.value = 0
             _sampleHint.value = "已触发抓帧「$label」"
+        }
+    }
+
+    /** 用户点击「中止运行中任务」:上行 task.cancel,触发云端 _terminate。
+     *
+     *  乐观更新:UI 立即切到 Idle(用户感知即时),云端下行 task.abort / task.done(noop)
+     *  后会被 PhoneAgentService 覆盖 Running → Done/Failed。本地先切 Idle 让用户
+     *  看到「中止已发」的反馈,避免重复点击。
+     *
+     *  云端仅在 fsm.state ∈ {RUNNING, AWAITING_CONFIRM, WAITING_EVENT} 时终止,
+     *  其他状态回 task.done(noop),本函数不抛。
+     */
+    fun onCancelTask(reason: String = "user_cancel") {
+        val taskId = currentTaskId() ?: run {
+            // 没有 running task 也允许「重新输入」(Done/Failed),把 UI 重置到 Idle。
+            repo.updateTask(TaskState.Idle)
+            return
+        }
+        wsClient.sendTaskCancel(taskId, reason)
+        repo.appendTrace(
+            TraceEvent(
+                ts = System.currentTimeMillis(),
+                direction = TraceDirection.UP,
+                kind = "task.cancel",
+                summary = "taskId=$taskId reason=$reason",
+            )
+        )
+        repo.updateTask(TaskState.Idle)
+    }
+
+    private fun currentTaskId(): String? {
+        val st = uiState.value.status.task
+        return when (st) {
+            is TaskState.Running -> st.taskId.takeIf { it.isNotBlank() }
+            else -> null
         }
     }
 }

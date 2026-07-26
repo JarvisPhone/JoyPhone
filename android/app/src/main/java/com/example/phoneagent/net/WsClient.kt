@@ -15,6 +15,7 @@ import com.example.phoneagent.protocol.UplinkConfirmResponse
 import com.example.phoneagent.protocol.UplinkDeviceHello
 import com.example.phoneagent.protocol.UplinkPerception
 import com.example.phoneagent.protocol.UplinkSampleCapture
+import com.example.phoneagent.protocol.UplinkTaskCancel
 import com.example.phoneagent.protocol.UplinkTaskRequest
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -290,6 +291,15 @@ class WsClient @Inject constructor(
 
     fun sendTaskRequest(goal: String) {
         ws?.send(json.encodeToString(UplinkTaskRequest(goal = goal)))
+    }
+
+    /** 用户主动取消运行中任务(协议层 task.cancel,2026-07-26 加)。
+     *
+     *  仅在 fsm.state ∈ {RUNNING, AWAITING_CONFIRM, WAITING_EVENT} 时生效;
+     *  其他状态云端回 task.done(taskId, summary=cancelled_noop)。
+     */
+    fun sendTaskCancel(taskId: String, reason: String = "user_cancel") {
+        ws?.send(json.encodeToString(UplinkTaskCancel(taskId = taskId, reason = reason)))
     }
 
     /** 连接建立后第一帧:上报设备能力矩阵。 */

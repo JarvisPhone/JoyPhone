@@ -15,6 +15,7 @@ from app.protocol import (
     Heartbeat,
     Node,
     Perception,
+    TaskCancel,
     TaskRequest,
 )
 from app.scenario.profiles import FEISHU_PROFILE
@@ -915,3 +916,71 @@ async def test_confirm_resend_acked_only_on_ack_ok(tmp_path):
     ctx.confirm.resend_action_id = "rid-2"
     await handle_uplink(ActionResult(actionId="rid-2", ok=True), store, conn, deps)
     assert ctx.post_send.acked is True
+
+
+# ---- task.cancel 用户主动取消(2026-07-26 加) ----
+
+
+async def test_task_cancel_running_state_terminates(tmp_path):
+    """TaskState.RUNNING 时 task.cancel → 终止,下发 TaskAbort,metrics 标 aborted。"""
+    store = TaskStore()
+    ctx = store.new_task(goal="...", scenario="send_message")
+    ctx.fsm.force(TaskState.RUNNING, reason="test")
+    conn = FakeConn()
+    deps = _deps(SpyEngine(), tmp_path=tmp_path)
+
+    await handle_uplink(
+        TaskCancel(taskId=ctx.task_id, reason="user_cancel"),
+        store, conn, deps,
+    )
+    # fsm 已迁移至 ABORT
+    assert ctx.fsm.state == TaskState.ABORT
+    # 下发了 TaskAbort downlink
+    aborts = [m for m in conn.sent if getattr(m, "type", "") == "task.abort"]
+    assert len(aborts) == 1
+    assert aborts[0].reason == "user_cancel"
+
+
+async def test_task_cancel_awaiting_confirm_terminates(tmp_path):
+    """TaskState.AWAITING_CONFIRM 时 task.cancel 也允许终止。"""
+    store = TaskStore()
+    ctx = store.new_task(goal="...", scenario="send_message")
+    ctx.fsm.force(TaskState.AWAITING_CONFIRM, reason="test")
+    conn = FakeConn()
+    deps = _deps(SpyEngine(), tmp_path=tmp_path)
+
+    await handle_uplink(
+        TaskCancel(taskId=ctx.task_id), store, conn, deps,
+    )
+    assert ctx.fsm.state == TaskState.ABORT
+
+
+async def test_task_cancel_noop_when_no_task(tmp_path):
+    """store 上无 task(已 done/abort 后) → 回 task.done(cancelled_noop),不抛。"""
+    store = TaskStore()
+    conn = FakeConn()
+    deps = _deps(SpyEngine(), tmp_path=tmp_path)
+
+    await handle_uplink(
+        TaskCancel(taskId="t-nonexistent"), store, conn, deps,
+    )
+    done = [m for m in conn.sent if getattr(m, "type", "") == "task.done"]
+    assert len(done) == 1
+    assert done[0].summary == "cancelled_noop"
+
+
+async def test_task_cancel_noop_when_done_state(tmp_path):
+    """TaskState.DONE 时 task.cancel → noop(任务已完成,不能取消已成功的)。"""
+    store = TaskStore()
+    ctx = store.new_task(goal="...", scenario="send_message")
+    ctx.fsm.force(TaskState.DONE, reason="test")
+    conn = FakeConn()
+    deps = _deps(SpyEngine(), tmp_path=tmp_path)
+
+    await handle_uplink(
+        TaskCancel(taskId=ctx.task_id), store, conn, deps,
+    )
+    # 状态保持 DONE,不发 TaskAbort
+    assert ctx.fsm.state == TaskState.DONE
+    aborts = [m for m in conn.sent if getattr(m, "type", "") == "task.abort"]
+    assert len(aborts) == 0
