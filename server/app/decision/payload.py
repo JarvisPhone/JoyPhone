@@ -158,9 +158,12 @@ _SYSTEM_PROMPT_TEMPLATE = """[ROLE]
 - longpress <n>        长按 800ms,触发上下文菜单
 - input <n> <文本>     在输入框输入,会替换现有内容
 - swipe up|down|left|right   屏内滚动
+- scroll_to top|bottom 滚到顶/底(自动反复 swipe 直到屏内容稳定)
 - back                 上一级;在 app 内只按一次
 - home                 回桌面;只在 pkg != target_pkg 时用
 - press_enter          输完即搜索
+- open_notifications   下拉通知栏
+- open_quick_settings  下拉控制中心
 - expect title "X"     核查当前页标题,不点任何东西
 - expect pkg "com.x"   核查前台应用
 - expect "文本"        核查屏幕里是否有该文本

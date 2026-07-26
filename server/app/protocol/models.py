@@ -130,6 +130,7 @@ class TaskStart(_Downlink):
 Op = Literal[
     "tap", "tap_at", "input", "swipe", "back", "home", "wait", "read_screen",
     "longpress", "press_enter",
+    "scroll_to", "open_notifications", "open_quick_settings",
     "done", "abort",
 ]
 

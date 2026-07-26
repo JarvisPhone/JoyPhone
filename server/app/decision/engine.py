@@ -287,6 +287,8 @@ _NOARG_OPS = {
     "read": "read_screen",
     "done": "done",
     "press_enter": "press_enter",
+    "open_notifications": "open_notifications",
+    "open_quick_settings": "open_quick_settings",
 }
 
 
@@ -343,6 +345,11 @@ def parse_actions(text: str) -> list[dict]:
             specs.append({"op": "input", "id": idx.strip(), "text": txt.strip()})
         elif verb == "swipe":
             specs.append({"op": "swipe", "direction": rest.partition(" ")[0]})
+        elif verb == "scroll_to":
+            # scroll_to top|bottom —— 端侧 SwipeHelper 反复 swipe 直到屏不再变或次数上限
+            direction = rest.partition(" ")[0].strip().lower()
+            if direction in ("top", "bottom"):
+                specs.append({"op": "scroll_to", "direction": direction})
         elif verb == "wait":
             specs.append({"op": "wait", "ms": rest.partition(" ")[0]})
         elif verb == "abort":
