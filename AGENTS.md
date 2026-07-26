@@ -33,6 +33,14 @@ server/app/
 - 设备能力架构(设计中,未实装):见 `docs/superpowers/specs/2026-07-22-device-capability-architecture-design.md`;
   三条已拍板约定——①能力矩阵经握手首帧 `device.hello` 上报 ②动作空间由能力矩阵生成,
   无 SDK 设备 prompt 零变化 ③op 路由全在端侧,云端只感知能力不感知 Provider
+- LLM payload 段名约定(2026-07-25 落地,见 `docs/roadmap/2026-07-25-llm-payload-redesign.md`):
+  发给 LLM 的 user payload 由六段稳定结构组成:`[OBSERVE] [SCENE-BRIEF*] [GROUND] [PHASE] [ACT] [VERIFY]`,
+  其中 `SCENE-BRIEF` 按 `Scene × AppPage`(或 `AppProfile.llm_brief`)按需出现。
+  字段名稳定:`pkg` / `scene` / `page` / `layout` / `goal` / `target` / `exit_path` / `phase` /
+  `current` / `next_gate` / `last_1_action` / `ack` / `screen_changed`。
+  system prompt 缩到 `[ROLE] + [TOOLS] + [CONTRACT: done]`,约 1100 字符;
+  旧超长 prompt(4770+ char,文案堆叠)按段拆分进 payload 对应位置。
+  段名 / 字段名是稳定契约,改动先改 plan + plan-level review。
 - 日志禁止 f-string,统一 `logger.info("msg %s", arg)`
 - 日志双轨(2026-07-25 新增):应用进程走 `app.infra.logging.setup_logging()` 同时挂两路 handler
     * stdout:单行概要(`LEVEL | logger.name | message`),长消息自动截断 200 char,跑 dev 时人眼可读
