@@ -71,8 +71,11 @@ server/app/
 - WS 握手:连接 URL 须带 `?v=2`(PROTOCOL_VERSION),缺失或不符直接 close(code=4402)
 - task.cancel 协议(2026-07-26 加,见 server/app/protocol/models.py:TaskCancel):
   - client → server 上行,用户主动取消运行中任务
-  - server 仅在 fsm.state ∈ {RUNNING, AWAITING_CONFIRM, WAITING_EVENT} 时终止;
-    其他状态(IDLE/DONE/ABORT)回 `task.done(taskId, summary=cancelled_noop)`,不污染 metrics
+  - server 仅在 fsm.state ∈ {RUNNING, AWAITING_CONFIRM, WAITING_EVENT} 时终止并发下行;
+  - **其他状态(IDLE/DONE/ABORT) / store 上无该 task → silent noop,不发下行**
+    (2026-07-27 修:端侧 onCancelTask() 乐观更新 UI 至 Idle;若云端发
+    task.done(cancelled_noop),端侧 onTaskEnd(done=true,...) 把 UI 推回
+    TaskState.Done 误报成功。silent noop 保证乐观更新单向成立)
   - reason 字段透传,默认 `"user_cancel"`(与 LoopGuard 的 `stuck_loop` / SendGuard 的 `false_done` 区分)
   - 端侧 `MainViewModel.onCancelTask()` 乐观更新 UI 到 Idle,云端下行 `task.abort` 覆盖回 ABORT 状态
 - Action op 清单(2026-07-26 增 3 项,共 15):

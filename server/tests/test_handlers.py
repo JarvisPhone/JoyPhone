@@ -956,7 +956,12 @@ async def test_task_cancel_awaiting_confirm_terminates(tmp_path):
 
 
 async def test_task_cancel_noop_when_no_task(tmp_path):
-    """store 上无 task(已 done/abort 后) → 回 task.done(cancelled_noop),不抛。"""
+    """store 上无 task(已 done/abort 后)→ silent noop,不发下行。
+
+    rationale:端侧 onCancelTask() 乐观更新 UI 至 Idle;云端 noop 时若回
+    task.done(cancelled_noop) 会经由端侧 onTaskEnd(done=true,...)把 UI
+    推回 TaskState.Done,误报成功。故 noop 不发下行。
+    """
     store = TaskStore()
     conn = FakeConn()
     deps = _deps(SpyEngine(), tmp_path=tmp_path)
@@ -964,13 +969,11 @@ async def test_task_cancel_noop_when_no_task(tmp_path):
     await handle_uplink(
         TaskCancel(taskId="t-nonexistent"), store, conn, deps,
     )
-    done = [m for m in conn.sent if getattr(m, "type", "") == "task.done"]
-    assert len(done) == 1
-    assert done[0].summary == "cancelled_noop"
+    assert conn.sent == []
 
 
 async def test_task_cancel_noop_when_done_state(tmp_path):
-    """TaskState.DONE 时 task.cancel → noop(任务已完成,不能取消已成功的)。"""
+    """TaskState.DONE 时 task.cancel → silent noop,不抛不发下行。"""
     store = TaskStore()
     ctx = store.new_task(goal="...", scenario="send_message")
     ctx.fsm.force(TaskState.DONE, reason="test")
@@ -980,7 +983,41 @@ async def test_task_cancel_noop_when_done_state(tmp_path):
     await handle_uplink(
         TaskCancel(taskId=ctx.task_id), store, conn, deps,
     )
-    # 状态保持 DONE,不发 TaskAbort
+    # 状态保持 DONE,无任何下行
     assert ctx.fsm.state == TaskState.DONE
+    assert conn.sent == []
+
+
+async def test_task_cancel_noop_when_abort_state(tmp_path):
+    """TaskState.ABORT 时 task.cancel → silent noop(任务已终止)。"""
+    store = TaskStore()
+    ctx = store.new_task(goal="...", scenario="send_message")
+    ctx.fsm.force(TaskState.ABORT, reason="test")
+    conn = FakeConn()
+    deps = _deps(SpyEngine(), tmp_path=tmp_path)
+
+    await handle_uplink(
+        TaskCancel(taskId=ctx.task_id), store, conn, deps,
+    )
+    assert ctx.fsm.state == TaskState.ABORT
+    assert conn.sent == []
+
+
+async def test_task_cancel_running_state_logs_user_cancel(tmp_path, caplog):
+    """TaskState.RUNNING 时 task.cancel 打日志 [USER_CANCEL] 标识可追溯。"""
+    import logging
+    store = TaskStore()
+    ctx = store.new_task(goal="...", scenario="send_message")
+    ctx.fsm.force(TaskState.RUNNING, reason="test")
+    conn = FakeConn()
+    deps = _deps(SpyEngine(), tmp_path=tmp_path)
+
+    with caplog.at_level(logging.INFO, logger="app.task.handlers"):
+        await handle_uplink(
+            TaskCancel(taskId=ctx.task_id, reason="user_too_slow"),
+            store, conn, deps,
+        )
+    assert any("[USER_CANCEL]" in r.message for r in caplog.records)
+    # reason 透传到 TaskAbort.downlink
     aborts = [m for m in conn.sent if getattr(m, "type", "") == "task.abort"]
-    assert len(aborts) == 0
+    assert aborts[0].reason == "user_too_slow"

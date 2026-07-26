@@ -379,9 +379,12 @@ async def _on_task_cancel(
 ) -> None:
     """用户主动取消运行中任务。
 
-    仅当 fsm.state ∈ {RUNNING, AWAITING_CONFIRM, WAITING_EVENT} 时终止;
-    其他状态(IDLE/DONE/ABORT)返回 task.done(taskId, summary=cancelled_noop),
-    不污染 metrics(无任务跑过也没意义记 canceled)。
+    仅当 fsm.state ∈ {RUNNING, AWAITING_CONFIRM, WAITING_EVENT} 时终止并发下行;
+    其他状态 / store 上无该 task 时静默 noop,不发下行:
+    - 端侧 MainViewModel.onCancelTask() 已乐观更新 UI 至 Idle,云端 noop 时若返回
+      task.done(result="ok", summary="cancelled_noop"),端侧 onTaskEnd(done=true, ...)]
+      会再次把 UI 推回 TaskState.Done("cancelled_noop"),UX 上误报成功。
+    - silent noop 保证端侧乐观更新单向成立,冲突由用户行为本身负责。
 
     reason 字段透传(默认 "user_cancel"),供上游分析取消原因分布。
     """
@@ -391,7 +394,6 @@ async def _on_task_cancel(
             "[CANCEL_NOOP] taskId 不匹配 store 上无任务 task_id=%s uplink_taskId=%s",
             ctx.task_id if ctx else "(none)", uplink.taskId,
         )
-        await conn.send(TaskDone(taskId=uplink.taskId, result="ok", summary="cancelled_noop"))
         return
     cancellable = {
         TaskState.RUNNING,
@@ -403,7 +405,6 @@ async def _on_task_cancel(
             "[CANCEL_NOOP] 任务不在可取消状态 state=%s task_id=%s",
             ctx.fsm.state.value, ctx.task_id,
         )
-        await conn.send(TaskDone(taskId=uplink.taskId, result="ok", summary="cancelled_noop"))
         return
     logger.info(
         "[USER_CANCEL] task_id=%s state=%s reason=%s",
