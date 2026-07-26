@@ -191,3 +191,67 @@ def test_engine_llm_decide_app_profile_brief_concatenates_with_generic():
     assert "[SCENE-BRIEF" in user
     # 飞书专属 brief 关键词(选一个稳定的)
     assert "飞书" in user  # 飞书 brief 里含「飞书特有提示」
+
+
+def test_engine_llm_decide_renders_phase_section_from_decide_input():
+    """DecideInput.phase 是 PhaseState 时,_llm_decide 应把 phase 内容填到 [PHASE] 段。"""
+    from app.decision.engine import DecisionEngine, DecideInput
+    from app.decision.llm import FakeLLM
+    from app.protocol import Node, Perception
+    from app.decision.skills import SkillCursor
+    from app.scenario.phase import TaskPhase, PhaseState
+
+    captured = []
+    class CapturingFake(FakeLLM):
+        def complete(self, system, user, image_b64=None):
+            captured.append(user)
+            return "read"
+
+    state = PhaseState(phase=TaskPhase.ENTER_CHAT, current_step_index=3)
+    state.completed_phases.append((TaskPhase.SEARCH, "found_group"))
+
+    nodes = [Node(id="0", text="x", viewIdResourceName="x:id/x",
+                  bounds=[0, 0, 100, 100], clickable=False, editable=False)]
+    frame = Perception(pkg="com.x", nodeTree=nodes, activity="", ts=1)
+
+    eng = DecisionEngine(llm=CapturingFake(["read"]), cache=None)
+    eng._llm_decide(DecideInput(
+        goal="g", frame=frame, target_pkg="",
+        cursor=SkillCursor(), bound_skill=None, guard={}, title_keywords=(),
+        phase=state,
+    ))
+
+    user = captured[0]
+    assert "[PHASE]" in user
+    # phase label = "enter_chat"(TaskPhase enum value)
+    assert "phase: enter_chat" in user
+    # current step index 应出现
+    assert "step 3" in user or "3" in user
+
+
+def test_engine_llm_decide_default_phase_when_none_in_decide_input():
+    """DecideInput 不传 phase 时,_llm_decide 不应崩溃,而是用 (phase not yet wired) 兜底。"""
+    from app.decision.engine import DecisionEngine, DecideInput
+    from app.decision.llm import FakeLLM
+    from app.protocol import Node, Perception
+    from app.decision.skills import SkillCursor
+
+    captured = []
+    class CapturingFake(FakeLLM):
+        def complete(self, system, user, image_b64=None):
+            captured.append(user)
+            return "read"
+
+    nodes = [Node(id="0", text="x", viewIdResourceName="x:id/x",
+                  bounds=[0, 0, 100, 100], clickable=False, editable=False)]
+    frame = Perception(pkg="com.x", nodeTree=nodes, activity="", ts=1)
+
+    eng = DecisionEngine(llm=CapturingFake(["read"]), cache=None)
+    eng._llm_decide(DecideInput(
+        goal="g", frame=frame, target_pkg="",
+        cursor=SkillCursor(), bound_skill=None, guard={}, title_keywords=(),
+    ))
+
+    user = captured[0]
+    assert "[PHASE]" in user
+    assert "phase not yet wired" in user

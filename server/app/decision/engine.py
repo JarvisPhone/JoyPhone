@@ -26,6 +26,7 @@ from app.decision.ui_inspect import detect_title, match_title
 from app.infra.config import Config
 from app.decision.pkg_guard import Scene, detect_scene
 from app.protocol import Action, Node, Perception
+from app.scenario.phase import PhaseState
 
 _logger = logging.getLogger("phoneagent.decision")
 
@@ -68,6 +69,9 @@ class DecideInput:
     # LLM 反馈通道(一次性):上一条指令的执行失败/策略拦截/expect 判定结果;
     # 非空才进 payload,空表示上一条成功
     feedback: str = ""
+    # 任务阶段状态(Task 7 接入):None 表示无 phase(下层会用占位符兜底),
+    # 设置时 _llm_decide 把 phase 内容填到 [PHASE] 段。
+    phase: PhaseState | None = None
 
 
 _NOTIF_SUBTILE_RE = __import__("re").compile(r"有\s*\d+\s*条\s*(?:通知|消息|推荐|新动态|未读)")
@@ -593,6 +597,18 @@ class DecisionEngine:
         # last_1_action 由 handlers 层写入(暂用空)
         last_action = getattr(d, "last_action", None)
 
+        # phase:t7 接入:从 d.phase 读 PhaseState,填到 payload 字段。
+        # d.phase 为 None 时(尚未接入任务层)用 "(phase not yet wired)" 占位,
+        # 否则从 PhaseState.to_payload_dict() 取稳定字段。
+        if d.phase is not None:
+            phase_dict = d.phase.to_payload_dict()
+            phase_label = phase_dict["phase"]
+            phase_current = f"step {phase_dict['current_step_index']}"
+        else:
+            phase_label = "(phase not yet wired)"
+            phase_current = ""
+        # next_gate:t9 由 SendMessagePack.gate_for(phase, frame, ctx) 完整给出,t7 placeholder
+        phase_next_gate = "(see scene hints above; use expect to verify progress)"
         user_text = build_user_payload(
             goal=d.goal,
             frame=d.frame,
@@ -605,9 +621,9 @@ class DecisionEngine:
             feedback=d.feedback or "",
             last_action=last_action,
             scene_brief=scene_brief,
-            phase_label="(phase not yet wired)",
-            phase_current="",
-            phase_next_gate="",
+            phase_label=phase_label,
+            phase_current=phase_current,
+            phase_next_gate=phase_next_gate,
         )
 
         raw = self._llm.complete(system=build_system_prompt(), user=user_text)
