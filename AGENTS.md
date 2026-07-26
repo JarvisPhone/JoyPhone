@@ -56,6 +56,12 @@ server/app/
   达 `CACHE_STEP_MAX_FAILS` 整条作废+本场禁用
 - 任务状态跨连接存活:TaskStore 按 device_id 共享(WS 只是传输层,断线重连不丢任务现场)
 - 新场景 = 新 ScenarioPack(代码);同场景新 app = 新 AppProfile(数据)
+- **Commit message 必用英文**(2026-07-27 立):`git commit -m "..."` / `git commit -m "$(cat <<'EOF' ... EOF)"` 字符串内部全英文。
+  - type 限定:`feat` / `fix` / `refactor` / `test` / `docs` / `chore` / `perf` / `ci` / `build`
+  - subject:imperative mood,≤ 72 char,首字母小写(类型词除外)
+  - body:解释「why」而非「what」,wrap 72 char,详细到未来 reviewer 一眼能懂
+  - footer:关联 `Refs: ...` / `Fixes: ...` / `BREAKING:`(仅在不向后兼容时)
+  - 例:`feat(cancel): task.cancel 协议 + 端侧「中止」按钮全链路实装`
 - 执行定位只用语义锚点(match_text/match_rid/occurrence),坐标仅 tap_at 逃生舱;
   锚点 fail-closed,端侧执行瞬间在实时树上重定位
 - 端侧 WS_URL 来自 BuildConfig(build.gradle.kts),禁止硬编码
