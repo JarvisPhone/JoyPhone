@@ -98,12 +98,12 @@ def _format_feedback(
     exit_hint: str = "",
     extra: dict | None = None,
 ) -> str:
-    """结构化 feedback:LLM 解析更稳定。
+    """结构化 verify:LLM 解析更稳定(T8:段名由 [feedback] 改 [VERIFY],字段 result→ack)。
 
     字段顺序稳定(便于 LLM 模式匹配):
-      [feedback]
+      [VERIFY]
       last_action: tap
-      result: fail
+      ack: fail
       reason: 节点 [5] 不存在
       policy: confirm_guard
       replaced_op: read_screen
@@ -113,9 +113,10 @@ def _format_feedback(
 
     任一字段为空就省略该行。
     """
-    lines = ["[feedback]"]
+    lines = ["[VERIFY]"]
     lines.append(f"last_action: {last_op}")
-    lines.append(f"result: {result}")
+    # ack 字段语义对齐 payload 验证:ok / fail / intercepted
+    lines.append(f"ack: {result}")
     if policy:
         lines.append(f"policy: {policy}")
     if reason:
