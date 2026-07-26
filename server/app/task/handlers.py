@@ -87,6 +87,18 @@ def persist_sample(sample: SampleCapture, base_dir: Path | None = None) -> Path:
     return path
 
 
+def _screen_changed(ctx) -> str:
+    """action.result 到达时无新 perception;用 last_frame 存在性做粗判。
+
+    T9 简化版本:
+    - "unknown"  历史帧存在(无法判断这一动作是否真改变屏,后续 T11 真机清单升级)
+    - "no"       没有历史帧(冷启动 / 第一条)
+    """
+    if ctx.last_frame is None:
+        return "no"
+    return "unknown"
+
+
 def _format_feedback(
     *,
     last_op: str,
@@ -220,6 +232,7 @@ async def _on_perception(
         )
         return
     ctx.last_consumed_seq = uplink.seq
+    ctx.last_frame = uplink  # T9:[VERIFY] 段 screen_changed 字段用
 
     scenario = _scenario_for(deps, ctx)
     pre = [BudgetPolicy(), ConfirmTimeoutPolicy()]
@@ -395,10 +408,12 @@ async def _on_action_result(
             break
     if not uplink.ok and uplink.error and failed_op:
         # LLM 反馈通道:执行失败须让 LLM 知道原因(否则它只能从屏幕猜)
+        screen_changed = _screen_changed(ctx)
         ctx.llm_feedback = _format_feedback(
             last_op=failed_op,
             result="fail",
             reason=uplink.error or "",
+            extra={"screen_changed": screen_changed},
         )
     if uplink.ok:
         deps.metrics.record_step(ctx.task_id)

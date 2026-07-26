@@ -20,6 +20,7 @@ import uuid
 from dataclasses import dataclass, field
 
 from app.decision.skills import SkillStep, SkillTemplate
+from app.decision.app_page import AppPage, detect_app_page
 from app.decision.ui_inspect import detect_title
 from app.infra.config import Config
 from app.protocol import Action, Node, Perception
@@ -488,8 +489,41 @@ class SendMessagePack:
             TaskPhase.DONE,
         ]
 
-    def gate_for(self, phase: TaskPhase, frame) -> str | None:
-        """Task 6 stub:PhasePack.gate_for 接口,Task 9 完整化实现。"""
+    def gate_for(self, phase: TaskPhase, frame: Perception, ctx: "TaskContext") -> str | None:
+        """Task 9 完整化:看 (frame, ctx) 联合判定。
+
+        gate 语义:
+        - SEARCH → inbox_list 出现
+        - ENTER_CHAT → CHAT 页 + 标题匹配 target_chat
+        - INPUT_TEXT → 输入框已有非空正文(非 hint)
+        - SEND → ctx.post_send.acked(发送 tap 已 ack ok)
+        - VERIFY → ctx.post_send.acked + 输入框空
+        - DONE → 终止
+        """
+        page = detect_app_page(frame)
+        profile = _profile_for(ctx)
+        title_rid_keywords = tuple(profile.title_rid_keywords) if profile else ()
+        current_title = _detect_chat_title(frame.nodeTree, profile) if profile else None
+
+        if phase == TaskPhase.SEARCH:
+            return "已进入 inbox_list" if page == AppPage.INBOX_LIST else None
+        if phase == TaskPhase.ENTER_CHAT:
+            if page == AppPage.CHAT and current_title and ctx.target_chat \
+                    and match_title(ctx.target_chat, current_title):
+                return f"已进入目标会话({ctx.target_chat})"
+            return None
+        if phase == TaskPhase.INPUT_TEXT:
+            for n in frame.nodeTree:
+                if n.editable and (n.text or "").strip():
+                    hints = tuple((h or "").lower() for h in (profile.message_input_hints if profile else []))
+                    if hints and any(h in (n.text or "").lower() for h in hints):
+                        continue
+                    return "输入框已有正文"
+            return None
+        if phase == TaskPhase.SEND:
+            return "send tap 已 ack ok" if ctx.post_send.acked else None
+        if phase == TaskPhase.VERIFY:
+            return "expect title 通过 + 输入框已清空" if ctx.post_send.acked else None
         return None
 
     def skills(self) -> list[SkillTemplate]:

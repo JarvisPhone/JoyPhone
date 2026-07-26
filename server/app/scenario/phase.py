@@ -53,6 +53,9 @@ class PhasePack(Protocol):
         """该 scenario 的 phase 顺序。"""
         ...
 
-    def gate_for(self, phase: TaskPhase, frame) -> str | None:
-        """当前 phase 是否达到 next_gate;Task 6 stub。"""
+    def gate_for(self, phase: TaskPhase, frame, ctx) -> str | None:
+        """当前 phase 是否达到 next_gate;达到返回 gate 描述(中文),否则 None。
+
+        Task 9 完整化:看 (frame, ctx) 联合判定。
+        """
         ...

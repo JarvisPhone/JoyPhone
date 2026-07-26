@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 
 from app.decision.skills import BoundSkill, SkillCursor
 from app.infra.config import Config
-from app.protocol import Action
+from app.protocol import Action, Perception
 from app.scenario.phase import PhaseState
 from app.task.fsm import TaskFSM, TaskState
 
@@ -116,6 +116,9 @@ class TaskContext:
     max_steps: int = Config.MAX_STEPS_DEFAULT
     scenario: str | None = None
     phase: PhaseState = field(default_factory=PhaseState)
+    # 上一帧 perception:ActionResult 用来算 screen_changed 字段
+    # (对比 pkg / nodeTree 大小),让 [VERIFY] 段能告诉 LLM 屏是否真的变了。
+    last_frame: Perception | None = None
 
 
 @dataclass
