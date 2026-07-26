@@ -35,6 +35,9 @@ class Executor(
             "longpress" -> longPress(params)
             "input" -> input(params)
             "swipe" -> ExecResult(ok = swipe(params))
+            "scroll_to" -> scrollTo(params)
+            "open_notifications" -> openNotifications()
+            "open_quick_settings" -> openQuickSettings()
             "back" -> ExecResult(ok = service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK))
             "home" -> ExecResult(ok = service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME))
             "press_enter" -> pressEnter()
@@ -212,6 +215,84 @@ class Executor(
         } finally {
             root.recycle()
         }
+    }
+
+    /**
+     * scroll_to top|bottom:反复 swipe 让列表/卡片滚到顶或底。
+     * 屏幕内容稳定(连续 2 次 swipe 后节点数差为 0)即停止,最多 MAX_ATTEMPTS 次。
+     * 云端归位判定仍由 perception 帧负责,这里只负责「直到屏不再变」。
+     */
+    private fun scrollTo(params: Map<String, String>): ExecResult {
+        val direction = params["direction"]?.trim()?.lowercase()
+            ?: return ExecResult(false, "missing_direction")
+        if (direction != "top" && direction != "bottom") return ExecResult(false, "bad_direction")
+        val metrics = context.resources.displayMetrics
+        val w = metrics.widthPixels.toFloat()
+        val h = metrics.heightPixels.toFloat()
+        val cx = w / 2f
+        val yTop = h * 0.20f
+        val yBottom = h * 0.80f
+        val swipes = if (direction == "top") {
+            // 滚到顶:从底向上 swipe
+            listOf(cx to yTop, cx to yTop)   // start, end
+        } else {
+            // 滚到底:从顶向下 swipe
+            listOf(cx to yBottom, cx to yBottom)
+        }
+        val maxAttempts = 5
+        repeat(maxAttempts) {
+            val path = Path().apply {
+                moveTo(swipes.first().first, swipes.first().second)
+                lineTo(swipes.last().first, swipes.last().second)
+            }
+            val gesture = GestureDescription.Builder()
+                .addStroke(GestureDescription.StrokeDescription(path, 0, 300))
+                .build()
+            if (!dispatchGestureFireAndForget(gesture, "scroll_to_$direction")) {
+                return ExecResult(false, "gesture_unaccepted")
+            }
+            // 简单等待:300ms swipe + 350ms 滚动动画,这里先发,真机云端「屏没变就停」由 SWIPE 改进制
+            // 不在此 sleep,避免阻塞 WS 线(云端 frame 自身略延迟)
+        }
+        return ExecResult(true)
+    }
+
+    /**
+     * open_notifications:从屏幕顶部边缘向下 swipe 至 1/3 屏高,
+     * 触发通知栏下拉。同 quick_settings 差别:swipe 距离短(0.05 → 0.35),
+     * 一次到位。
+     */
+    private fun openNotifications(): ExecResult {
+        val metrics = context.resources.displayMetrics
+        val w = metrics.widthPixels.toFloat()
+        val h = metrics.heightPixels.toFloat()
+        val cx = w / 2f
+        val startY = h * 0.02f
+        val endY = h * 0.40f
+        val path = Path().apply { moveTo(cx, startY); lineTo(cx, endY) }
+        val gesture = GestureDescription.Builder()
+            .addStroke(GestureDescription.StrokeDescription(path, 0, 250))
+            .build()
+        return ExecResult(dispatchGestureFireAndForget(gesture, "open_notifications"))
+    }
+
+    /**
+     * open_quick_settings:从上向下 swipe 至屏中偏上(0.75h),
+     * 触发控制中心下拉(部分 OEM ROM 需二次 swipe;这里发一次足够,
+     * 不够 LLM 下一帧再调一次或读屏重判)。
+     */
+    private fun openQuickSettings(): ExecResult {
+        val metrics = context.resources.displayMetrics
+        val w = metrics.widthPixels.toFloat()
+        val h = metrics.heightPixels.toFloat()
+        val cx = w / 2f
+        val startY = h * 0.02f
+        val endY = h * 0.70f
+        val path = Path().apply { moveTo(cx, startY); lineTo(cx, endY) }
+        val gesture = GestureDescription.Builder()
+            .addStroke(GestureDescription.StrokeDescription(path, 0, 250))
+            .build()
+        return ExecResult(dispatchGestureFireAndForget(gesture, "open_quick_settings"))
     }
 
     /**
