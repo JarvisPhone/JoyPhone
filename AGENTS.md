@@ -3,10 +3,9 @@
 ## 合并硬门槛(三命令全绿)
 
 ```bash
-cd server && uv run pytest tests/ -q      # 服务端测试(当前 340)
+cd server && uv run pytest tests/ -q      # 服务端测试(当前 395)
 cd server && uv run pyright app/          # 类型检查(basic,零错误)
-cd android && ./gradlew :app:testDebugUnitTest  # 端侧单测(当前 78)
-```
+cd android && ./gradlew :app:testDebugUnitTest  # 端侧单测
 
 ## 架构分层(L0 内核 + L1 场景包 + L2 AppProfile)
 
@@ -62,6 +61,26 @@ server/app/
 - 端侧 WS_URL 来自 BuildConfig(build.gradle.kts),禁止硬编码
 - 协议双端契约测试样本:shared/protocol/v2/*.json
 - WS 握手:连接 URL 须带 `?v=2`(PROTOCOL_VERSION),缺失或不符直接 close(code=4402)
+- task.cancel 协议(2026-07-26 加,见 server/app/protocol/models.py:TaskCancel):
+  - client → server 上行,用户主动取消运行中任务
+  - server 仅在 fsm.state ∈ {RUNNING, AWAITING_CONFIRM, WAITING_EVENT} 时终止;
+    其他状态(IDLE/DONE/ABORT)回 `task.done(taskId, summary=cancelled_noop)`,不污染 metrics
+  - reason 字段透传,默认 `"user_cancel"`(与 LoopGuard 的 `stuck_loop` / SendGuard 的 `false_done` 区分)
+  - 端侧 `MainViewModel.onCancelTask()` 乐观更新 UI 到 Idle,云端下行 `task.abort` 覆盖回 ABORT 状态
+- Action op 清单(2026-07-26 增 3 项,共 15):
+  - `tap` / `tap_at` / `longpress` / `input` / `swipe` / `scroll_to`(top|bottom)
+  - `back` / `home` / `press_enter`
+  - `open_notifications` / `open_quick_settings`
+  - `wait` / `read_screen` / `expect`(云端求值,不下发) / `done` / `abort`
+  - `scroll_to` 端侧实装反复 swipe 直到屏稳定(上限 5 次);
+    `open_*` 顶部下拉手势(几何与 quick_settings 区分:0.40h vs 0.70h)
+- Metrics 任务级指标(2026-07-26):
+  - `TaskMetrics` 字段:`loop_guard_triggered_count` / `action_ok_count` / `action_total_count` +
+    派生 `action_success_rate()`(无数据时 None)
+  - HTTP 端点 `GET /metrics/recent?limit=10`:扫 metrics.log 末端 64KB 聚合,无 auth(本地调试)
+  - `loop_guard` 拦截处自动 `record_loop_guard_trigger`;`action_result` 来时自动 `record_action_result`
+- cache 沉淀(2026-07-26 验证):`Config.REPLAY_ENABLED=False`(回放总开关)与 `cache.record_success`(沉淀)是两个独立机制,
+  即使回放关闭,**沉淀照常跑**(测试 `tests/test_learn_cache.py::test_cache_record_success_independent_of_replay_enabled` 守护)
 - 真机联调分工:**AI 不碰真机操作**;AI 负责 `adb install -r` + `adb shell monkey` 启动 app,用户手动授予无障碍权限 + 点击触发场景,用户口述现象,AI 看 `server/logs/*` 分析(`tail -F` 四件套 `uvicorn.log` / `comm.log` / `comm.log.summary` / `llm.log`,或 `jq` `server.jsonl`)
 
 ## 闭环优先级(2026-07-23 真机复盘后立)
