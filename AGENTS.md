@@ -61,7 +61,7 @@ server/app/
   - subject:imperative mood,≤ 72 char,首字母小写(类型词除外)
   - body:解释「why」而非「what」,wrap 72 char,详细到未来 reviewer 一眼能懂
   - footer:关联 `Refs: ...` / `Fixes: ...` / `BREAKING:`(仅在不向后兼容时)
-  - 例:`feat(cancel): task.cancel 协议 + 端侧「中止」按钮全链路实装`
+  - 例:`feat(cancel): implement task.cancel uplink + Android abort button end-to-end`
   - **生效边界**:本约定自 commit `4fc4007` 起执行;之前 commit 不追溯重写
     (改历史会破坏 hash 链 + 远端 force push,traceability 优先,旧 commit 保留为历史快照)
 - 执行定位只用语义锚点(match_text/match_rid/occurrence),坐标仅 tap_at 逃生舱;
