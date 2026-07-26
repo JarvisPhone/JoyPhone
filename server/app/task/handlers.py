@@ -297,6 +297,9 @@ async def _on_perception(
         return
     if post_verdict.kind == "intercept":
         actions = post_verdict.actions or []
+        # T5:LoopGuard 触发即 +1 计数(包括 back+home 振荡、settle、back 脱困三类)
+        if post_verdict.policy == "loop_guard":
+            deps.metrics.record_loop_guard_trigger(ctx.task_id)
         if ctx.decided_actions:
             # LLM 反馈通道:决策被策略拦截(幻觉 done/标题栏点击/loop_guard 等)。
             # 结构化 feedback 替代自然语言字符串,LLM 解析更稳定。
@@ -399,6 +402,8 @@ async def _on_action_result(
     source = ctx.pending_sources.pop(uplink.actionId, "")
     was_mutating = uplink.actionId in ctx.pending_mutating
     ctx.pending_mutating.discard(uplink.actionId)
+    # T5:动作级指标——ok 比率供 /metrics/recent 暴露
+    deps.metrics.record_action_result(ctx.task_id, ok=uplink.ok)
     # 动作↔步骤对账:ack 结果回写到 applied_steps,供 learn 时过滤失败步骤
     failed_op = ""
     for step in reversed(ctx.applied_steps):
