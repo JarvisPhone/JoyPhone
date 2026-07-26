@@ -88,4 +88,13 @@ def create_app() -> FastAPI:
         finally:
             await conn.close()
 
+    @app.get("/metrics/recent")
+    async def metrics_recent(limit: int = 10) -> dict:
+        """最近 N 个已结束任务的聚合指标(P2 任务级暴露)。
+
+        复用 MetricsCollector.recent(),无 HTTP auth(本地调试用,生产应加白名单)。
+        """
+        items = get_metrics_collector().recent(limit=limit)
+        return {"items": items, "count": len(items)}
+
     return app
