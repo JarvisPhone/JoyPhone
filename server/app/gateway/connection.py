@@ -69,7 +69,7 @@ def _summary_of(msg_type: str, payload: str) -> str:
         return f"{msg_type} <invalid json> {payload[:120]}"
 
     if msg_type == "perception":
-        nodes = obj.get("nodes") or []
+        nodes = obj.get("nodeTree") or []
         return f"perception pkg={obj.get('pkg', '')} activity={obj.get('activity', '')} nodes={len(nodes)}"
     if msg_type == "action.result":
         return f"action.result ok={obj.get('ok')} error={obj.get('error', '')} actionId={obj.get('actionId', '')}"
