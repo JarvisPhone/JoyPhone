@@ -96,6 +96,8 @@ def home_locate_action(
 ```
 
 判定顺序：
+0. **fallback**：若 `aliases` 为空（未注册 profile，无匹配依据）→ `return None`（放行给 LLM），
+   不介入、不翻页、不 abort。
 1. 若 `detect_scene(perception) != HOME` 或 `perception.pkg == target_pkg` → `return None`（放行）。
 2. **找图标**：`find_icon(perception.nodeTree, aliases)` 扫节点 text/desc，命中返回该节点。
    - 命中 → `return [tap(match_text=图标文案)]`，并清理 guard 的翻页状态。
@@ -159,14 +161,17 @@ if located is not None:
 return self._llm_decide(d)
 ```
 
-- `aliases` 为空（未注册 profile）时，`home_locate_action` 内部找不到图标就只能翻页扫描
-  到底 abort——退化为「翻遍所有屏都没有」，可接受（本就无从匹配）。
+- **fallback（aliases 为空时不介入）**：`aliases` 为空（未注册 profile，无任何图标匹配
+  依据）时，`home_locate_action` 第一步即 `return None` 直接放行给 `_llm_decide`——
+  **不翻页、不 abort**。理由：没有匹配依据的盲翻页毫无意义，还不如把控制权交回 LLM
+  （至少 LLM 可能认出图标）。这是确定性守卫的适用边界:有依据才接管。
 
 ## 错误处理
 
 - **图标文案变体**（如图标只有 icon 无文字、或文案是「Lark」大小写差异）：aliases 已含
   中英文变体；匹配用 strip + 大小写归一 + 包含兜底。仍匹配不到则翻页到底 abort，reason
-  明确告知用户「未找到应用」,不静默卡死。
+  明确告知用户「未找到应用」,不静默卡死。（注:此分支仅适用 aliases 非空;aliases 为空走
+  fallback 放行 LLM,见组件设计判定顺序 step 0。）
 - **负一屏判据失效**（某些 launcher 无负一屏）：`swipe_count` 安全上限兜底，归位阶段翻满
   上限仍未见 MINUS_ONE 则直接切 scanning（从当前屏扫）。
 - **指纹抖动**（桌面有动态 widget 导致文案帧间微变）：指纹只取图标类文案集合，且要求
@@ -184,6 +189,7 @@ return self._llm_decide(d)
    - scanning 未命中 → swipe left；指纹前后相同 → abort(app_not_found)。
    - 非 HOME / 已进 target_pkg → 返回 None（放行）。
    - swipe_count 超上限 → 强制 abort。
+   - **aliases 为空 → 返回 None（fallback 放行,不翻页不 abort）。**
 4. engine.decide 接线：pkg_guard 放行后进 home_locate；进 app 后交 LLM。
 
 **先写失败复现测试**（systematic-debugging Phase 4）：用实测帧（visible_nodes 无飞书的
