@@ -34,7 +34,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 # 这样真机测试可以无脑 "起服务端 → 跑场景 → 看完",不必手动 : > truncate。
 LOG_DIR = PROJECT_ROOT / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
-LIVE_LOGS = ("uvicorn.log", "comm.log", "llm.log")
+LIVE_LOGS = ("uvicorn.log", "comm.log", "comm.log.summary", "llm.log", "server.jsonl")
 
 def _archive_and_clear_live_logs():
     """把当前 LIVE_LOGS 归档到 .archive/<start_ts>/,再 truncate。"""
@@ -88,11 +88,17 @@ if pid > 0:
     os._exit(0)
 
 # Grandchild: redirect stdio to log + /dev/null, change cwd
-sys.stdin = open("/dev/null")
-log_fh = open(log, "ab")
-os.dup2(log_fh.fileno(), sys.stdout.fileno())
-os.dup2(log_fh.fileno(), sys.stderr.fileno())
-log_fh.close()
+# 必须在 fd 层面重定向 0/1/2:fork 后原 terminal 的 fd 已失效,
+# execvp 出来的 uv/python 会继承这些 fd 初始化 sys.std* 流。
+# 只改 sys.stdin(Python 对象)不 dup2 fd 0 →子进程 init_sys_streams
+# 报 OSError: [Errno 9] Bad file descriptor(2026-07 真机踩坑)。
+devnull_fd = os.open(os.devnull, os.O_RDONLY)
+os.dup2(devnull_fd, 0)
+os.close(devnull_fd)
+log_fd = os.open(log, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+os.dup2(log_fd, 1)
+os.dup2(log_fd, 2)
+os.close(log_fd)
 
 os.chdir(str(PROJECT_ROOT))
 

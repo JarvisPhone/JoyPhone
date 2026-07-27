@@ -87,6 +87,7 @@ def setup_logging(
 
     file_handler = RotatingFileHandler(
         log_dir / "server.jsonl",
+        mode="w",  # 每次进程启动截断旧日志,避免跨次分析互相干扰
         maxBytes=10 * 1024 * 1024,
         backupCount=5,
         encoding="utf-8",

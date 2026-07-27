@@ -40,7 +40,8 @@ def _make_logger(name: str, filename: str) -> logging.Logger:
     lg.propagate = False
     if not lg.handlers:
         h = RotatingFileHandler(
-            _log_dir() / filename, maxBytes=10 * 1024 * 1024,
+            _log_dir() / filename, mode="w",  # 每次启动截断,清掉历史通信/LLM日志
+            maxBytes=10 * 1024 * 1024,
             backupCount=5, encoding="utf-8",
         )
         h.setFormatter(logging.Formatter("%(message)s"))
