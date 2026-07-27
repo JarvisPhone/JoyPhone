@@ -10,7 +10,7 @@ from typing import Literal
 
 from app.protocol import Action
 
-DecisionSource = Literal["cache", "skill", "pkg_guard", "llm"]
+DecisionSource = Literal["cache", "skill", "pkg_guard", "home_locate", "llm"]
 
 
 @dataclass

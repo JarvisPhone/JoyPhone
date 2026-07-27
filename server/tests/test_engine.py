@@ -787,3 +787,23 @@ def test_scene_label_table_covers_all_scenes():
     from app.decision.pkg_guard import Scene
     from app.decision.engine import _SCENE_LABELS
     assert set(_SCENE_LABELS.keys()) == set(Scene.__members__.values())
+
+
+def test_decide_home_locate_wired_after_pkg_guard_before_llm():
+    """接线: 桌面且未进目标 app 时, decide 走 home_locate(确定性找图标), 不问 LLM。
+
+    桌面帧无飞书图标 -> home_locate 归位阶段返回 swipe right, source=home_locate。
+    """
+    eng = DecisionEngine(llm=FakeLLM(["read"]), cache=None)
+    nodes = [
+        Node(id="ws", viewIdResourceName="com.coloros.launcher:id/workspace",
+             bounds=[0, 0, 1080, 2400]),
+        Node(id="wx", text="微信", viewIdResourceName="com.coloros.launcher:id/icon"),
+    ]
+    frame = Perception(pkg="com.coloros.launcher", nodeTree=nodes, activity="", ts=1)
+    d = eng.decide(DecideInput(
+        goal="打开飞书", frame=frame, target_pkg="com.ss.android.lark",
+        cursor=SkillCursor(), bound_skill=None, guard={}, title_keywords=(),
+    ))
+    assert d.source == "home_locate"
+    assert d.actions[0].op == "swipe"

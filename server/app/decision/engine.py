@@ -16,6 +16,7 @@ from dataclasses import dataclass
 
 from app.decision.cache import SkillCache, bind_params
 from app.decision.exit_hint import exit_hint
+from app.decision.home_locate import home_locate_action
 from app.decision.app_page import AppPage, detect_app_page
 from app.decision.llm import LLM
 from app.decision.payload import build_system_prompt, build_user_payload, encode_visible_nodes, render_layout_summary
@@ -419,6 +420,13 @@ class DecisionEngine:
         guarded = pkg_guard_action(d.frame, d.target_pkg, d.guard, self._escape_llm)
         if guarded is not None:
             return Decision(actions=guarded, source="pkg_guard")
+
+        # 桌面找图标守卫:HOME 且未进目标 app 时确定性找图标/翻页/abort(不问 LLM)
+        profile = _ui_profile_for_pkg(d.target_pkg)
+        aliases = profile.aliases if profile else []
+        located = home_locate_action(d.frame, d.target_pkg, aliases, d.guard)
+        if located is not None:
+            return Decision(actions=located, source="home_locate")
 
         return self._llm_decide(d)
 
