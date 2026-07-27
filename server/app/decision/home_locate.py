@@ -18,3 +18,23 @@ def _screen_icon_fingerprint(nodes: list[Node]) -> frozenset[str]:
             if raw and raw.strip():
                 out.add(raw.strip())
     return frozenset(out)
+
+
+def find_icon(nodes: list[Node], aliases: list[str]) -> Node | None:
+    """扫节点 text/desc,命中任一 alias 返回该节点;完全相等优先于包含。"""
+    lowered = [a.strip().lower() for a in aliases if a.strip()]
+    if not lowered:
+        return None
+    best_contains: Node | None = None
+    for n in nodes:
+        for raw in (n.text, n.desc):
+            if not raw:
+                continue
+            label = raw.strip().lower()
+            if not label:
+                continue
+            if label in lowered:
+                return n  # 完全相等,立即命中
+            if best_contains is None and any(a in label for a in lowered):
+                best_contains = n
+    return best_contains
