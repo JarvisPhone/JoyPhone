@@ -807,3 +807,29 @@ def test_decide_home_locate_wired_after_pkg_guard_before_llm():
     ))
     assert d.source == "home_locate"
     assert d.actions[0].op == "swipe"
+
+
+def test_decide_minus_one_reaches_home_locate_not_shortcircuited():
+    """复现真机 bug 的核心回归: MINUS_ONE(负一屏)场景下, decide 应交给 home_locate,
+    而非被 pkg_guard 抢先 swipe right 短路。
+
+    旧实现下 pkg_guard 排在 home_locate 前面, 对 MINUS_ONE 直接下发 swipe right
+    并 return(source=pkg_guard), 短路了 home_locate。接入 route_by_scene 后,
+    MINUS_ONE 由 home_locate 统一��辖。
+
+    target 用 com.ss.android.lark(飞书), 其 profile aliases=["飞书","feishu","lark"]
+    非空, 才会真正进入 home_locate 找图标逻辑。
+    负一屏帧: launcher workspace bounds 内缩 (left/top>0) -> detect_scene=MINUS_ONE。
+    """
+    eng = DecisionEngine(llm=FakeLLM(["read"]), cache=None)
+    nodes = [
+        Node(id="ws", viewIdResourceName="com.coloros.launcher:id/workspace",
+             bounds=[40, 60, 1040, 2340]),
+        Node(id="wx", text="微信", viewIdResourceName="com.coloros.launcher:id/icon"),
+    ]
+    frame = Perception(pkg="com.coloros.launcher", nodeTree=nodes, activity="", ts=1)
+    d = eng.decide(DecideInput(
+        goal="打开飞书", frame=frame, target_pkg="com.ss.android.lark",
+        cursor=SkillCursor(), bound_skill=None, guard={}, title_keywords=(),
+    ))
+    assert d.source == "home_locate"

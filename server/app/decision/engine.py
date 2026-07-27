@@ -16,11 +16,10 @@ from dataclasses import dataclass
 
 from app.decision.cache import SkillCache, bind_params
 from app.decision.exit_hint import exit_hint
-from app.decision.home_locate import home_locate_action
 from app.decision.app_page import AppPage, detect_app_page
 from app.decision.llm import LLM
 from app.decision.payload import build_system_prompt, build_user_payload, encode_visible_nodes, render_layout_summary
-from app.decision.pkg_guard import pkg_guard_action
+from app.decision.scene_router import RouteContext, route_by_scene
 from app.decision.skills import BoundSkill, SkillCursor
 from app.decision.types import Decision
 from app.decision.ui_inspect import detect_title, match_title
@@ -417,16 +416,16 @@ class DecisionEngine:
                 if skilled is not None:
                     return skilled
 
-        guarded = pkg_guard_action(d.frame, d.target_pkg, d.guard, self._escape_llm)
-        if guarded is not None:
-            return Decision(actions=guarded, source="pkg_guard")
-
-        # 桌面找图标守卫:HOME 且未进目标 app 时确定性找图标/翻页/abort(不问 LLM)
+        # 场景一次性判定 + 显式分派: 避免 pkg_guard/home_locate 各自 detect_scene
+        # 各自主张桌面管辖权导致的短路(真机 bug: MINUS_ONE 被 pkg_guard 抢走 return)。
+        scene = detect_scene(d.frame)
         profile = _ui_profile_for_pkg(d.target_pkg)
         aliases = profile.aliases if profile else []
-        located = home_locate_action(d.frame, d.target_pkg, aliases, d.guard)
-        if located is not None:
-            return Decision(actions=located, source="home_locate")
+        ctx = RouteContext(d.frame, d.target_pkg, aliases, d.guard, self._escape_llm)
+        routed = route_by_scene(scene, ctx)
+        if routed is not None:
+            actions, source = routed
+            return Decision(actions=actions, source=source)
 
         return self._llm_decide(d)
 
