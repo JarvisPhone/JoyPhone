@@ -792,7 +792,8 @@ def test_scene_label_table_covers_all_scenes():
 def test_decide_home_locate_wired_after_pkg_guard_before_llm():
     """接线: 桌面且未进目标 app 时, decide 走 home_locate(确定性找图标), 不问 LLM。
 
-    桌面帧无飞书图标 -> home_locate 归位阶段返回 swipe right, source=home_locate。
+    桌面帧无飞书图标 -> home_locate 首帧记录 fp 后返回 swipe(默认方向 left),
+    source=home_locate。方向选择本身不重要,只断言路由生效即可。
     """
     eng = DecisionEngine(llm=FakeLLM(["read"]), cache=None)
     nodes = [
@@ -807,6 +808,7 @@ def test_decide_home_locate_wired_after_pkg_guard_before_llm():
     ))
     assert d.source == "home_locate"
     assert d.actions[0].op == "swipe"
+    assert d.actions[0].params["direction"] in ("left", "right")
 
 
 def test_decide_minus_one_reaches_home_locate_not_shortcircuited():
