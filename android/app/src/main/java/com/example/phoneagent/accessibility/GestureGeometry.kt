@@ -30,10 +30,38 @@ object GestureGeometry {
         return x to y
     }
 
-    /** 默认上滑：屏�水平居中，从下方 80% 滑到 30%。 */
+    /** 默认上滑：屏水平居中，从下方 80% 滑到 30%。 */
     fun defaultSwipeUp(width: Int, height: Int): Swipe {
         val x = width / 2f
         return Swipe(startX = x, startY = height * 0.8f, endX = x, endY = height * 0.3f)
+    }
+
+    /**
+     * 语义 direction → 具体轨迹。
+     *
+     * 约定与云端一致(protocol/models.py::Swipe.direction):
+     * - left  : 内容向左移动 = 手指从右向左划 = 桌面 pager 翻到下一页(右侧页)
+     * - right : 内容向右移动 = 手指从左向右划 = 桌面 pager 翻到上一页(左侧页)
+     * - up    : 内容向上移动 = 手指从下往上划 = 列表向下滚
+     * - down  : 内容向下移动 = 手指从上往下划 = 列表向上滚
+     *
+     * 水平方向留 15%/85% 的边距,避免起点落在系统全屏手势敏感区,同时给桌面
+     * pager 足够的位移量识别为翻页(过短会被识别为「拒绝」抖动回原页)。
+     * unknown 或大小写异常 → null,交由调用方回落 defaultSwipeUp。
+     */
+    fun fromDirection(direction: String?, width: Int, height: Int): Swipe? {
+        if (direction.isNullOrBlank()) return null
+        val w = width.toFloat()
+        val h = height.toFloat()
+        val midX = w / 2f
+        val midY = h / 2f
+        return when (direction.lowercase()) {
+            "left"  -> Swipe(startX = w * 0.85f, startY = midY, endX = w * 0.15f, endY = midY)
+            "right" -> Swipe(startX = w * 0.15f, startY = midY, endX = w * 0.85f, endY = midY)
+            "up"    -> Swipe(startX = midX, startY = h * 0.80f, endX = midX, endY = h * 0.20f)
+            "down"  -> Swipe(startX = midX, startY = h * 0.20f, endX = midX, endY = h * 0.80f)
+            else    -> null
+        }
     }
 
     /** 从 params 读 x1,y1,x2,y2；任一缺失返回 null。 */
