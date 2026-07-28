@@ -6,6 +6,7 @@ import com.example.phoneagent.data.AgentStateRepository
 import com.example.phoneagent.domain.AgentStatus
 import com.example.phoneagent.domain.DebugInfo
 import com.example.phoneagent.domain.TaskState
+import com.example.phoneagent.domain.TaskUserIntent
 import com.example.phoneagent.domain.TraceDirection
 import com.example.phoneagent.domain.TraceEvent
 import com.example.phoneagent.net.WsClient
@@ -75,10 +76,15 @@ class MainViewModel @Inject constructor(
     /**
      * 用户在输入框输入任务目标并点击发送。
      * 通过 WS 上行 task.request，触发云端下发 task.start。
+     *
+     * 同时把 userIntent 标记为 SentGoal:UI 此时显示"等待开始",在收到下行
+     * task.start 前 TaskState 仍为 Idle/SentGoal 之前的值。SentGoal 仅在
+     * 收到下行 task.done/abort 时被 clearUserIntent 兜底清除(防 SentGoal 残留)。
      */
     fun onSendGoal(goal: String) {
         val trimmed = goal.trim()
         if (trimmed.isEmpty()) return
+        repo.setUserIntent(TaskUserIntent.SentGoal)
         wsClient.sendTaskRequest(trimmed)
         repo.appendTrace(
             TraceEvent(
@@ -109,21 +115,16 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    /** 用户点击「中止运行中任务」:上行 task.cancel,触发云端 _terminate。
+    /**
+     * 用户点击「中止运行中任务」按钮(只对 TaskState.Running 状态可点,UI 层保证)。
      *
-     *  乐观更新:UI 立即切到 Idle(用户感知即时),云端下行 task.abort / task.done(noop)
-     *  后会被 PhoneAgentService 覆盖 Running → Done/Failed。本地先切 Idle 让用户
-     *  看到「中止已发」的反馈,避免重复点击。
-     *
-     *  云端仅在 fsm.state ∈ {RUNNING, AWAITING_CONFIRM, WAITING_EVENT} 时终止,
-     *  其他状态回 task.done(noop),本函数不抛。
+     * 走 userIntent = Cancelled + 乐观切 Idle,下行 task.abort 到达时由
+     * PhoneAgentService.onTaskEnd 通过 consumeUserIntent 吸收,UI 不会推到 Failed。
      */
-    fun onCancelTask(reason: String = "user_cancel") {
-        val taskId = currentTaskId() ?: run {
-            // 没有 running task 也允许「重新输入」(Done/Failed),把 UI 重置到 Idle。
-            repo.updateTask(TaskState.Idle)
-            return
-        }
+    fun onAbortRunningTask(reason: String = "user_cancel") {
+        val taskId = currentTaskId() ?: return
+        repo.setUserIntent(TaskUserIntent.Cancelled)
+        repo.updateTask(TaskState.Idle)
         wsClient.sendTaskCancel(taskId, reason)
         repo.appendTrace(
             TraceEvent(
@@ -133,11 +134,21 @@ class MainViewModel @Inject constructor(
                 summary = "taskId=$taskId reason=$reason",
             )
         )
+    }
+
+    /**
+     * 用户点「重新输入」按钮(对 Done/Failed 状态可点)。
+     * 纯 UI 重置,不发任何上行:让用户继续输入下一个任务目标。
+     */
+    fun onResetToIdle() {
+        repo.clearUserIntent()
         repo.updateTask(TaskState.Idle)
     }
 
     private fun currentTaskId(): String? {
-        val st = uiState.value.status.task
+        // 直读 repo 而非 uiState:UiState 是 combine 的产物,SharingStarted.WhileSubscribed
+        // 在测试/无订阅者场景下返回 initialValue(空 TaskState),导致 currentTaskId() 误判。
+        val st = repo.status.value.task
         return when (st) {
             is TaskState.Running -> st.taskId.takeIf { it.isNotBlank() }
             else -> null

@@ -13,6 +13,7 @@ import com.example.phoneagent.BuildConfig
 import com.example.phoneagent.data.AgentStateRepository
 import com.example.phoneagent.domain.ActionLog
 import com.example.phoneagent.domain.TaskState
+import com.example.phoneagent.domain.TaskUserIntent
 import com.example.phoneagent.domain.TraceDirection
 import com.example.phoneagent.domain.TraceEvent
 import com.example.phoneagent.net.WsClient
@@ -86,6 +87,12 @@ class PhoneAgentService : AccessibilityService() {
                 resetSequenceNumbers()
                 Log.i(TAG, "↓ task.start taskId=$taskId goal=$goal → taskActive=true")
                 repo.appendTrace(TraceEvent(System.currentTimeMillis(), TraceDirection.DOWN, "task.start", "$taskId $goal"))
+                // 下行协议到达时清掉 SentGoal:用户意图已被服务端 task.start 兑现。
+                // 但保留 Cancelled:若用户中途取消,后到的 task.start 不应推翻 cancel 决定
+                // (目前服务端没有这条路径,但语义上保持 Cancelled 的更高优先级是合理的)。
+                if (repo.status.value.userIntent !is TaskUserIntent.Cancelled) {
+                    repo.clearUserIntent()
+                }
                 repo.updateTask(TaskState.Running(description = goal, taskId = taskId))
                 reportScreen()
             },
@@ -100,16 +107,45 @@ class PhoneAgentService : AccessibilityService() {
                 repo.appendActionLog(ActionLog(System.currentTimeMillis(), action.op, result.ok))
                 if (action.op == "read_screen") reportScreen()
             },
-            onTaskEnd = { done, detail ->
+            onTaskEnd = { done, taskId, detail ->
+                /**
+                 * cancel race 防御(2026-07-28 修):
+                 * ViewModel.onCancelTask() 上行 task.cancel 前会先把 userIntent 置
+                 * Cancelled,同时乐观更新 UI 到 Idle。云端无脑下发 task.abort 时,这里
+                 * 用 consumeUserIntent 消化掉意图:若 UI 已经被切到 Idle,就不应再把
+                 * TaskState 推回 Failed:user_cancel。
+                 *
+                 * consumeUserIntent 只对 Cancelled 一次性消费;其他意图(None /
+                 * SentGoal)不影响,服务端真实收尾正常落到 TaskState.Done / Failed。
+                 *
+                 * 但 taskActive / confirmManager 收尾仍要跑,与 TaskState 走哪条路径无关。
+                 */
                 taskActive = false
                 confirmManager.onTaskEnd()
-                val summary = if (done) detail else "失败: $detail"
-                Log.i(TAG, "↓ task.end done=$done detail=$detail → taskActive=false")
-                repo.appendTrace(TraceEvent(System.currentTimeMillis(), TraceDirection.DOWN, "task.end", summary))
-                repo.updateTask(
-                    if (done) TaskState.Done(detail)
-                    else TaskState.Failed(detail),
-                )
+                if (repo.consumeUserIntent(TaskUserIntent.Cancelled)) {
+                    // cancel race 防御(2026-07-28 修):viewmodel.onAbortRunningTask()
+                    // 上行 task.cancel 前会先把 userIntent 置 Cancelled,同时乐观更新
+                    // UI 到 Idle。云端无脑下发 task.abort 时,这里消费掉意图:
+                    // 若 UI 已经被切到 Idle,就不应再把 TaskState 推回 Failed:user_cancel。
+                    //
+                    // consumeUserIntent 只对 Cancelled 一次性消费;其他意图(None /
+                    // SentGoal)不影响,服务端真实收尾正常落到 TaskState.Done / Failed。
+                    // 但 taskActive / confirmManager 收尾仍要跑(已在前面跑)。
+                    Log.i(TAG, "↓ task.end absorbed by user cancel: taskId=$taskId done=$done detail=$detail → UI 已在 Idle")
+                    repo.appendTrace(
+                        TraceEvent(System.currentTimeMillis(), TraceDirection.DOWN, "task.end", "absorbed_by_user_cancel taskId=$taskId $detail")
+                    )
+                } else {
+                    val summary = if (done) detail else "失败: $detail"
+                    Log.i(TAG, "↓ task.end done=$done detail=$detail → taskActive=false")
+                    repo.appendTrace(TraceEvent(System.currentTimeMillis(), TraceDirection.DOWN, "task.end", summary))
+                    // 真实收尾路径:Done / Failed 时清掉残留 userIntent(如 SentGoal 漏发)
+                    repo.clearUserIntent()
+                    repo.updateTask(
+                        if (done) TaskState.Done(detail)
+                        else TaskState.Failed(detail),
+                    )
+                }
             },
             onTaskConfirm = { confirm ->
                 Log.i(TAG, "↓ task.confirm target=${confirm.target} msg=${confirm.message} timeoutMs=${confirm.timeoutMs}")

@@ -11,12 +11,17 @@ import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * 下行消息分发器：按 type 字段路由到回调。抽出为独立类以便纯单测。
- * onTaskEnd 的参数：done -> result，abort -> "abort:<reason>"。
+ *
+ * onTaskEnd 签名 (done, taskId, detail):
+ * - done=true (task.done) → 服务端主动完成任务
+ * - done=false (task.abort) → 服务端终止任务,detail 为 reason
+ * - taskId 必传:即使被 user cancel 吃掉,UI 也要先看 Service 的 TaskState
+ *   当前如何,再由 Repo.consumeUserIntent 决定要不要把 UI 拉回 Idle
  */
 class WsDispatcher(
     private val onTaskStart: (goal: String, taskId: String) -> Unit,
     private val onAction: (DownAction) -> Unit,
-    private val onTaskEnd: (done: Boolean, detail: String) -> Unit,
+    private val onTaskEnd: (done: Boolean, taskId: String, detail: String) -> Unit,
     private val onTaskConfirm: (DownTaskConfirm) -> Unit = {},
 ) {
     private val json = Json { ignoreUnknownKeys = true }
@@ -34,11 +39,11 @@ class WsDispatcher(
             "action" -> onAction(json.decodeFromString<DownAction>(text))
             "task.done" -> {
                 val m = json.decodeFromString<DownTaskDone>(text)
-                onTaskEnd(true, m.result)
+                onTaskEnd(true, m.taskId, m.result)
             }
             "task.abort" -> {
                 val m = json.decodeFromString<DownTaskAbort>(text)
-                onTaskEnd(false, m.reason)
+                onTaskEnd(false, m.taskId, m.reason)
             }
             "task.confirm" -> {
                 val m = json.decodeFromString<DownTaskConfirm>(text)

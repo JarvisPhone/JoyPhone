@@ -72,7 +72,8 @@ fun AgentScreen(
     onSendGoal: (String) -> Unit,
     onCaptureSample: () -> Unit,
     onHideDebug: () -> Unit,
-    onCancelTask: () -> Unit = {},
+    onAbortRunningTask: () -> Unit = {},
+    onResetToIdle: () -> Unit = {},
 ) {
     val connected = uiState.status.connection == ConnectionState.CONNECTED
 
@@ -101,7 +102,8 @@ fun AgentScreen(
 
             TaskStatusCard(
                 task = uiState.status.task,
-                onCancel = onCancelTask,
+                onAbort = onAbortRunningTask,
+                onReset = onResetToIdle,
             )
 
             // 发送任务卡:放在场景采样之前,便于连续测试。
@@ -209,7 +211,7 @@ private fun ConnectionCard(state: ConnectionState) {
 }
 
 @Composable
-private fun TaskStatusCard(task: TaskState, onCancel: () -> Unit) {
+private fun TaskStatusCard(task: TaskState, onAbort: () -> Unit, onReset: () -> Unit) {
     when (task) {
         is TaskState.Idle -> {
             Card(
@@ -247,11 +249,11 @@ private fun TaskStatusCard(task: TaskState, onCancel: () -> Unit) {
                         maxLines = 3,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    // 中止按钮(2026-07-26 加):走协议 task.cancel → _terminate,
-                    // 与发送框独立——发送框在任务执行中也可点(覆盖式发送),
-                    // 中止按钮走 cancel 协议明确终止当前任务。
+                    // 中止按钮(2026-07-28 拆):仅 Running 状态显示走 onAbortRunningTask,
+                    // 上行 task.cancel 同时 userIntent=Cancelled,下行 task.abort 到达时由
+                    // PhoneAgentService.consumeUserIntent 吸收,UI 不被推回 Failed。
                     TextButton(
-                        onClick = onCancel,
+                        onClick = onAbort,
                         colors = ButtonDefaults.textButtonColors(contentColor = FailedRed),
                     ) {
                         Text("中止任务")
@@ -275,7 +277,8 @@ private fun TaskStatusCard(task: TaskState, onCancel: () -> Unit) {
                         Text("已完成", style = MaterialTheme.typography.titleMedium, color = DoneGreen)
                     }
                     Text(task.summary, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                    TextButton(onClick = onCancel) { Text("重新输入") }
+                    // 重新输入按钮走 onResetToIdle(纯 UI 重置,不发任何上行)
+                    TextButton(onClick = onReset) { Text("重新输入") }
                 }
             }
         }
@@ -295,7 +298,8 @@ private fun TaskStatusCard(task: TaskState, onCancel: () -> Unit) {
                         Text("执行失败", style = MaterialTheme.typography.titleMedium, color = FailedRed)
                     }
                     Text(task.reason, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                    TextButton(onClick = onCancel) { Text("重新输入") }
+                    // 重新输入按钮走 onResetToIdle(纯 UI 重置,不发任何上行)
+                    TextButton(onClick = onReset) { Text("重新输入") }
                 }
             }
         }
