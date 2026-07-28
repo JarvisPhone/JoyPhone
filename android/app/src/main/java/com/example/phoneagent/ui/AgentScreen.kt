@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -82,54 +81,47 @@ fun AgentScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(inner)
-                .imePadding(),
+                .imePadding()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp)
+                .padding(top = 20.dp, bottom = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            // 顶部状态区(可滚动)
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 20.dp)
-                    .padding(top = 20.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                HeaderTitle(
-                    onTap = onTitleTap,
-                    taskState = uiState.status.task,
-                )
+            HeaderTitle(
+                onTap = onTitleTap,
+                taskState = uiState.status.task,
+            )
 
-                AccessibilityCard(
-                    granted = uiState.status.accessibilityGranted,
-                    onOpen = onOpenAccessibility,
-                )
+            AccessibilityCard(
+                granted = uiState.status.accessibilityGranted,
+                onOpen = onOpenAccessibility,
+            )
 
-                ConnectionCard(state = uiState.status.connection)
+            ConnectionCard(state = uiState.status.connection)
 
-                TaskStatusCard(
-                    task = uiState.status.task,
-                    onCancel = onCancelTask,
-                )
+            TaskStatusCard(
+                task = uiState.status.task,
+                onCancel = onCancelTask,
+            )
 
-                SampleCard(
-                    enabled = connected,
-                    countdown = uiState.sampleCountdown,
-                    hint = uiState.sampleHint,
-                    onCapture = onCaptureSample,
-                )
-
-                if (uiState.debugUnlocked) {
-                    DebugPanel(debug = uiState.debug, onHide = onHideDebug)
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-            }
-
-            // 底部输入区(固定)
-            InputBar(
-                enabled = connected && uiState.status.task is TaskState.Idle,
-                defaultText = if (uiState.status.task is TaskState.Idle) DEFAULT_GOAL else "",
+            // 发送任务卡:放在场景采样之前,便于连续测试。
+            // enabled 只按 connected 判,任务执行中也允许覆盖式发送(便于回归复测)。
+            InputCard(
+                enabled = connected,
+                defaultText = DEFAULT_GOAL,
                 onSend = onSendGoal,
             )
+
+            SampleCard(
+                enabled = connected,
+                countdown = uiState.sampleCountdown,
+                hint = uiState.sampleHint,
+                onCapture = onCaptureSample,
+            )
+
+            if (uiState.debugUnlocked) {
+                DebugPanel(debug = uiState.debug, onHide = onHideDebug)
+            }
         }
     }
 }
@@ -256,7 +248,8 @@ private fun TaskStatusCard(task: TaskState, onCancel: () -> Unit) {
                         overflow = TextOverflow.Ellipsis,
                     )
                     // 中止按钮(2026-07-26 加):走协议 task.cancel → _terminate,
-                    // 与 InputBar 的禁用(`uiState.status.task is TaskState.Idle`)配套。
+                    // 与发送框独立——发送框在任务执行中也可点(覆盖式发送),
+                    // 中止按钮走 cancel 协议明确终止当前任务。
                     TextButton(
                         onClick = onCancel,
                         colors = ButtonDefaults.textButtonColors(contentColor = FailedRed),
@@ -331,71 +324,64 @@ private fun SampleCard(
 }
 
 @Composable
-private fun InputBar(
+private fun InputCard(
     enabled: Boolean,
     defaultText: String,
     onSend: (String) -> Unit,
 ) {
+    // remember 只在首次生效,后续文本由用户输入维持在 state,连续测试时不会被覆盖。
     var text by remember { mutableStateOf(defaultText) }
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface)
-            .padding(horizontal = 16.dp)
-            .padding(top = 12.dp, bottom = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        // 分割线
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(1.dp)
-                .background(MaterialTheme.colorScheme.outlineVariant),
-        )
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text("发送任务", style = MaterialTheme.typography.titleMedium)
 
-        OutlinedTextField(
-            value = text,
-            onValueChange = { text = it },
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("你想让我做什么？") },
-            enabled = enabled,
-            minLines = 2,
-            maxLines = 4,
-            shape = RoundedCornerShape(12.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = SendBlue,
-                unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f),
-            ),
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(
-                onDone = {
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("你想让我做什么？") },
+                enabled = enabled,
+                minLines = 2,
+                maxLines = 4,
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = SendBlue,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f),
+                ),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(
+                    onDone = {
+                        val trimmed = text.trim()
+                        if (trimmed.isNotEmpty() && enabled) {
+                            onSend(trimmed)
+                        }
+                    },
+                ),
+            )
+
+            Button(
+                onClick = {
                     val trimmed = text.trim()
-                    if (trimmed.isNotEmpty() && enabled) {
+                    if (trimmed.isNotEmpty()) {
                         onSend(trimmed)
                     }
                 },
-            ),
-        )
-
-        Button(
-            onClick = {
-                val trimmed = text.trim()
-                if (trimmed.isNotEmpty()) {
-                    onSend(trimmed)
-                }
-            },
-            enabled = enabled && text.trim().isNotEmpty(),
-            modifier = Modifier.align(Alignment.End),
-            colors = ButtonDefaults.buttonColors(containerColor = SendBlue),
-        ) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.Send,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp),
-            )
-            Spacer(modifier = Modifier.width(6.dp))
-            Text("发送")
+                enabled = enabled && text.trim().isNotEmpty(),
+                modifier = Modifier.align(Alignment.End),
+                colors = ButtonDefaults.buttonColors(containerColor = SendBlue),
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Send,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("发送")
+            }
         }
     }
 }
