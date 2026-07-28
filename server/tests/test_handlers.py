@@ -1021,3 +1021,41 @@ async def test_task_cancel_running_state_logs_user_cancel(tmp_path, caplog):
     # reason 透传到 TaskAbort.downlink
     aborts = [m for m in conn.sent if getattr(m, "type", "") == "task.abort"]
     assert aborts[0].reason == "user_too_slow"
+
+
+async def test_task_cancel_stale_taskid_noop(tmp_path, caplog):
+    """上行 task.cancel 的 taskId 与 store 上 task 不一致 → silent noop。
+
+    scenario: 设备断连瞬间发 task.cancel,服务端未收;重连后旧 taskId
+    到达 → 不能误杀当前新任务。
+    """
+    import logging
+    store = TaskStore()
+    store.new_task(goal="...", scenario="send_message")  # 新 task
+    conn = FakeConn()
+    deps = _deps(SpyEngine(), tmp_path=tmp_path)
+
+    with caplog.at_level(logging.WARNING, logger="app.task.guard"):
+        await handle_uplink(
+            TaskCancel(taskId="t-stale-from-old-conn"), store, conn, deps,
+        )
+    assert conn.sent == []  # 没有任何下行
+    assert any("TASK_ID_STALE" in r.message for r in caplog.records)
+
+
+async def test_confirm_response_stale_taskid_noop(tmp_path, caplog):
+    """confirm_response 的 taskId 与 store 上不一致 → silent noop。"""
+    import logging
+    store = TaskStore()
+    store.new_task(goal="...", scenario="send_message")
+    conn = FakeConn()
+    deps = _deps(SpyEngine(), tmp_path=tmp_path)
+
+    with caplog.at_level(logging.WARNING, logger="app.task.guard"):
+        await handle_uplink(
+            ConfirmResponse(taskId="t-stale", confirmId="c1", approved=True),
+            store, conn, deps,
+        )
+    assert conn.sent == []
+    assert any("TASK_ID_STALE" in r.message for r in caplog.records)
+

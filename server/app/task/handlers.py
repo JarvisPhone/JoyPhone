@@ -49,6 +49,7 @@ from app.scenario.base import ScenarioPack, select_scenario
 from app.scenario.phase import TaskPhase
 from app.task.context import TaskContext, TaskStore
 from app.task.fsm import TaskState
+from app.task.guard import current_task_or_none, matches_current_task
 from app.task.policies import (
     BudgetPolicy,
     ConfirmTimeoutPolicy,
@@ -379,21 +380,16 @@ async def _on_task_cancel(
 ) -> None:
     """用户主动取消运行中任务。
 
-    仅当 fsm.state ∈ {RUNNING, AWAITING_CONFIRM, WAITING_EVENT} 时终止并发下行;
-    其他状态 / store 上无该 task 时静默 noop,不发下行:
-    - 端侧 MainViewModel.onCancelTask() 已乐观更新 UI 至 Idle,云端 noop 时若返回
-      task.done(result="ok", summary="cancelled_noop"),端侧 onTaskEnd(done=true, ...)]
-      会再次把 UI 推回 TaskState.Done("cancelled_noop"),UX 上误报成功。
-    - silent noop 保证端侧乐观更新单向成立,冲突由用户行为本身负责。
+    1. taskId-bearing uplink 入口统一守卫:store 空 / taskId 不一致 → silent noop
+       (典型:设备断连重连后旧 taskId 上行,不污染当前新任务)
+    2. fsm.state ∉ {RUNNING, AWAITING_CONFIRM, WAITING_EVENT} → silent noop
+       (端侧 MainViewModel.onAbortRunningTask() 已乐观更新 UI 至 Idle 且置
+        userIntent=Cancelled,云端 noop 不发下行,端侧按时序吸收 task.abort)
 
-    reason 字段透传(默认 "user_cancel"),供上游分析取消原因分布。
+    仅当两层都通过时才下行 task.abort 并清 store。
     """
-    ctx = store.current
-    if ctx is None or ctx.task_id != uplink.taskId:
-        logger.warning(
-            "[CANCEL_NOOP] taskId 不匹配 store 上无任务 task_id=%s uplink_taskId=%s",
-            ctx.task_id if ctx else "(none)", uplink.taskId,
-        )
+    ctx = current_task_or_none(uplink, store)
+    if ctx is None:
         return
     cancellable = {
         TaskState.RUNNING,
@@ -502,9 +498,11 @@ async def _on_action_result(
 async def _on_confirm_response(
     uplink: ConfirmResponse, store: TaskStore, conn: Conn, deps: HandlerDeps
 ) -> None:
-    ctx = store.current
-    if ctx is None:
+    # taskId 一致性防御:重连后旧 taskId 上行的 confirm_response → silent noop。
+    if not matches_current_task(uplink, store):
         return
+    ctx = current_task_or_none(uplink, store)
+    assert ctx is not None  # matches_current_task 已过
     if ctx.fsm.state != TaskState.AWAITING_CONFIRM:
         logger.warning(
             "confirm_response 状态非法,忽略: task_id=%s state=%s",
