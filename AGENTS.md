@@ -72,12 +72,19 @@ server/app/
 - task.cancel 协议(2026-07-26 加,见 server/app/protocol/models.py:TaskCancel):
   - client → server 上行,用户主动取消运行中任务
   - server 仅在 fsm.state ∈ {RUNNING, AWAITING_CONFIRM, WAITING_EVENT} 时终止并发下行;
-  - **其他状态(IDLE/DONE/ABORT) / store 上无该 task → silent noop,不发下行**
-    (2026-07-27 修:端侧 onCancelTask() 乐观更新 UI 至 Idle;若云端发
-    task.done(cancelled_noop),端侧 onTaskEnd(done=true,...) 把 UI 推回
-    TaskState.Done 误报成功。silent noop 保证乐观更新单向成立)
+  - **其他状态(IDLE/DONE/ABORT) / store 上无该 task / taskId 与 store 上不一致 → silent noop,不发下行**
+    - taskId mismatch 见 `server/app/task/guard.py`(设备断连重连后旧 taskId 上行)
+    - silent noop(2026-07-27 修):端侧 onAbortRunningTask() 乐观更新 UI 至 Idle 并置 userIntent=Cancelled;
+      云端下行 task.abort 到达端侧时由 `Repo.consumeUserIntent(Cancelled)` 吸收,
+      UI 保持 Idle,**不再被覆盖为 Failed:user_cancel**(cancel race 修)
   - reason 字段透传,默认 `"user_cancel"`(与 LoopGuard 的 `stuck_loop` / SendGuard 的 `false_done` 区分)
-  - 端侧 `MainViewModel.onCancelTask()` 乐观更新 UI 到 Idle,云端下行 `task.abort` 覆盖回 ABORT 状态
+- 端侧 TaskUserIntent 模型(2026-07-28 加)代替前轮 ad-hoc `pendingCancelledTaskIds` marker:
+  - `None` / `SentGoal` / `Cancelled` 三态;UI 合成 = 下行 TaskState + 上行 userIntent
+  - Cancelled 由 `Repo.consumeUserIntent(Cancelled)` 一次性消费(下行 task.end 到时吸收)
+  - 服务端 helper:`task.guard.current_task_or_none(uplink, store)` —
+    所有 taskId-bearing uplink(TaskCancel / ConfirmResponse 等)入口统一 staleness 防御
+- 端侧 viewModel 拆分:`onAbortRunningTask`(上行 cancel)+ `onResetToIdle`(纯 UI 重置);
+  旧 `onCancelTask` 双职能命名混淆已拆
 - Action op 清单(2026-07-26 增 3 项,共 15):
   - `tap` / `tap_at` / `longpress` / `input` / `swipe` / `scroll_to`(top|bottom)
   - `back` / `home` / `press_enter`
