@@ -38,8 +38,21 @@ class Executor(
             "scroll_to" -> scrollTo(params)
             "open_notifications" -> openNotifications()
             "open_quick_settings" -> openQuickSettings()
-            "back" -> ExecResult(ok = service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK))
-            "home" -> ExecResult(ok = service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME))
+            "back" -> {
+                val ok = service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+                // back 转场约 200ms;不阻塞到位,云端 F2 补的 read_screen 抓到过渡帧,
+                // 后续决策看到「半个页面」易误判。
+                Thread.sleep(BACK_SETTLE_MS)
+                ExecResult(ok = ok)
+            }
+            "home" -> {
+                val ok = service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
+                // ColorOS home 键回桌面动画约 400ms;阻塞 500ms 让 workspace 完全归位
+                // ([0,0,W,H]),否则 home_locate 的第一帧就是 workspace 内缩的过渡态,
+                // detect_scene 误判 MINUS_ONE、icon bounds 被 clip 影响 find_icon。
+                Thread.sleep(HOME_SETTLE_MS)
+                ExecResult(ok = ok)
+            }
             "press_enter" -> pressEnter()
             "read_screen", "wait" -> ExecResult(true)
             else -> ExecResult(false, "unknown_op")
@@ -140,16 +153,29 @@ class Executor(
 
     private fun swipe(params: Map<String, String>): Boolean {
         val metrics = context.resources.displayMetrics
+        val w = metrics.widthPixels
+        val h = metrics.heightPixels
+        // 优先级:显式坐标 x1/y1/x2/y2 > 语义 direction > 默认上滑逃生舱
         val s = GestureGeometry.fromParams(params)
-            ?: GestureGeometry.defaultSwipeUp(metrics.widthPixels, metrics.heightPixels)
+            ?: GestureGeometry.fromDirection(params["direction"], w, h)
+            ?: GestureGeometry.defaultSwipeUp(w, h)
+        // 水平翻页给 400ms(桌面 pager 对速度敏感,过快会被判成 fling 回弹);
+        // 垂直 300ms 保持不变。
+        val durationMs = if (s.startY == s.endY) 400L else 300L
         val path = Path().apply {
             moveTo(s.startX, s.startY)
             lineTo(s.endX, s.endY)
         }
         val gesture = GestureDescription.Builder()
-            .addStroke(GestureDescription.StrokeDescription(path, 0, 300))
+            .addStroke(GestureDescription.StrokeDescription(path, 0, durationMs))
             .build()
-        return dispatchGestureFireAndForget(gesture, "swipe")
+        val ok = dispatchGestureFireAndForget(gesture, "swipe")
+        // 阻塞到手势结束 + pager 结算(150ms 富余覆盖 fling 惯性收敛);
+        // 云端 F2 补 read_screen 是在 action.result 到达后触发的,不让这里
+        // 阻塞满,下一帧就是过渡态,home_locate 的 fingerprint 会误判 boundary
+        // (Frame N/N+1 都是同一页的动画瞬时,label 集相同 = 假边界)。
+        Thread.sleep(durationMs + SWIPE_SETTLE_MARGIN_MS)
+        return ok
     }
 
     private fun dispatchTap(x: Float, y: Float): Boolean {
@@ -312,5 +338,13 @@ class Executor(
             },
             null,
         )
+    }
+
+    companion object {
+        // 各动作的动画结算时长(阻塞到位再回 action.result,避免云端 F2 补的 read_screen
+        // 抓到过渡态帧误判 boundary/scene);数值经真机 2026-07-28 一次挂机复盘定值。
+        private const val HOME_SETTLE_MS = 500L        // 桌面回归动画约 400ms + margin
+        private const val BACK_SETTLE_MS = 250L        // back 转场
+        private const val SWIPE_SETTLE_MARGIN_MS = 150L // 覆盖 fling 惯性收敛
     }
 }
