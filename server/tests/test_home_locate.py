@@ -5,7 +5,52 @@ from app.decision.home_locate import _screen_icon_fingerprint, find_icon, home_l
 from app.protocol import Node, Perception
 
 
-# ---------- 帧工厂 ----------
+# ---------- Node 工厂 ----------
+
+def _icon(text: str | None = None, desc: str | None = None, *, x: int = 100, y: int = 400) -> Node:
+    """一枚典型的 launcher app 图标节点:clickable + 240×240 bounds。"""
+    label = text if text is not None else desc
+    return Node(
+        id=f"icon-{label or 'x'}",
+        text=text,
+        desc=desc,
+        clickable=True,
+        bounds=(x, y, x + 240, y + 240),
+    )
+
+
+def _offscreen_icon(text: str) -> Node:
+    """离屏页的 TextView(bounds 退化 26px 宽),不应被 find_icon 命中。
+
+    这是 ColorOS 真机 Frame A 的现象:飞书图标在另一 home 页,accessibility 树
+    也报告出来,但 bounds 退化到几十像素。
+    """
+    return Node(id=f"off-{text}", text=text, desc=text, clickable=True, bounds=(0, 1528, 26, 1785))
+
+
+def _smart_card(text: str) -> Node:
+    """负一屏「小布卡片」通知磁贴:clickable=False + com.nearme.instant.card resid。"""
+    return Node(
+        id=f"card-{text}",
+        text=text,
+        desc=text,
+        clickable=False,
+        bounds=(46, 1200, 1034, 1300),
+        viewIdResourceName="com.nearme.instant.card:id/ref_56",
+    )
+
+
+def _clickable_smart_card(text: str) -> Node:
+    """极端情况:即便 smart-card 是 clickable + 大 bounds,resid 前缀也要剔除。"""
+    return Node(
+        id=f"card-c-{text}",
+        text=text,
+        desc=text,
+        clickable=True,
+        bounds=(46, 1200, 1034, 1400),
+        viewIdResourceName="com.oplus.seedling.cardgroup.pluginapp:id/card_root",
+    )
+
 
 def _home(nodes: list[Node]) -> Perception:
     # launcher workspace 全屏 bounds=[0,0,...] → detect_scene 判 HOME
@@ -19,45 +64,100 @@ def _minus_one(nodes: list[Node] | None = None) -> Perception:
     return Perception(pkg="com.coloros.launcher", nodeTree=[ws, *(nodes or [])])
 
 
-# ---------- 纯工具:fingerprint / find_icon ----------
+# ---------- 图标过滤:find_icon 的核心新契约 ----------
 
-def test_fingerprint_ignores_order_and_dedup():
-    a = [Node(id="1", text="飞书"), Node(id="2", text="微信")]
-    b = [Node(id="3", text="微信"), Node(id="4", text="飞书"), Node(id="5", text="")]
-    assert _screen_icon_fingerprint(a) == _screen_icon_fingerprint(b)
-
-
-def test_fingerprint_differs_when_icon_added():
-    a = [Node(id="1", text="飞书")]
-    b = [Node(id="1", text="飞书"), Node(id="2", text="微信")]
-    assert _screen_icon_fingerprint(a) != _screen_icon_fingerprint(b)
+def test_find_icon_ignores_non_clickable():
+    """非 clickable 的文本节点(如通知磁贴装饰性文字)不作为图标入口。"""
+    nodes = [
+        Node(id="txt", text="飞书", clickable=False, bounds=(100, 400, 340, 640)),
+        _icon(text="微信"),
+    ]
+    hit = find_icon(nodes, ["飞书", "feishu"])
+    assert hit is None
 
 
-def test_find_icon_hit_exact():
-    nodes = [Node(id="1", text="微信"), Node(id="2", text="飞书")]
+def test_find_icon_ignores_offscreen_narrow_bounds():
+    """回归 2026-07-28 真机 bug:离屏页(bounds 宽 26px)的 TextView 不能被命中。
+
+    此帧 workspace 只显示 A 页,B 页图标出现在 tree 里但 bounds 退化。
+    """
+    nodes = [_offscreen_icon("飞书"), _icon(text="微信")]
+    hit = find_icon(nodes, ["飞书", "feishu"])
+    assert hit is None
+
+
+def test_find_icon_ignores_smart_card_by_resid_even_if_clickable_and_big():
+    """回归:小布卡片 resource-id 前缀 instant.card/seedling 直接剔除,即使 bounds 够大。"""
+    nodes = [_clickable_smart_card("飞书"), _icon(text="微信")]
+    hit = find_icon(nodes, ["飞书", "feishu"])
+    assert hit is None
+
+
+def test_find_icon_hits_valid_launcher_icon_only():
+    """离屏 + smart-card 都在 tree 里,但只有正常图标被命中。"""
+    nodes = [
+        _offscreen_icon("飞书"),          # 应剔除
+        _smart_card("飞书"),              # 应剔除
+        _icon(text="飞书", x=540, y=500), # 应命中
+        _icon(text="微信", x=100, y=500),
+    ]
     hit = find_icon(nodes, ["飞书", "feishu", "lark"])
-    assert hit is not None and hit.text == "飞书"
+    assert hit is not None
+    assert hit.text == "飞书"
+    assert hit.bounds == (540, 500, 780, 740)
 
 
 def test_find_icon_hit_by_desc_case_insensitive():
-    nodes = [Node(id="1", desc="Lark")]
+    nodes = [_icon(desc="Lark")]
     hit = find_icon(nodes, ["飞书", "feishu", "lark"])
     assert hit is not None
 
 
 def test_find_icon_miss_returns_none():
-    nodes = [Node(id="1", text="微信"), Node(id="2", text="王者荣耀")]
+    nodes = [_icon(text="微信"), _icon(text="王者荣耀", x=400)]
     assert find_icon(nodes, ["飞书", "feishu", "lark"]) is None
+
+
+def test_find_icon_empty_aliases_returns_none():
+    assert find_icon([_icon(text="飞书")], []) is None
+
+
+def test_find_icon_prefers_exact_over_contains():
+    """同帧内既有含子串又有完全相等 alias,exact 优先。"""
+    nodes = [_icon(text="飞书宠物", x=100), _icon(text="飞书", x=400)]
+    hit = find_icon(nodes, ["飞书"])
+    assert hit is not None and hit.text == "飞书"
+
+
+# ---------- 指纹:只统计 icon-like ----------
+
+def test_fingerprint_ignores_non_icon_nodes():
+    """小布卡片 loading 状态文本变化(「一键加速」→「一键加速可释放 445MB」)不改指纹。"""
+    a = [_icon(text="微信"), _smart_card("一键加速")]
+    b = [_icon(text="微信"), _smart_card("一键加速可释放 445MB")]
+    assert _screen_icon_fingerprint(a) == _screen_icon_fingerprint(b)
+
+
+def test_fingerprint_ignores_order_and_dedup():
+    a = [_icon(text="飞书"), _icon(text="微信", x=400)]
+    b = [_icon(text="微信"), _icon(text="飞书", x=400), _icon(text="", x=800)]
+    assert _screen_icon_fingerprint(a) == _screen_icon_fingerprint(b)
+
+
+def test_fingerprint_differs_when_visible_icon_added():
+    a = [_icon(text="飞书")]
+    b = [_icon(text="飞书"), _icon(text="微信", x=400)]
+    assert _screen_icon_fingerprint(a) != _screen_icon_fingerprint(b)
 
 
 # ---------- 早退分支 ----------
 
 def test_fallback_empty_aliases_returns_none():
-    frame = _home([Node(id="1", text="微信")])
+    frame = _home([_icon(text="微信")])
     assert home_locate_action(frame, "com.ss.android.lark", [], {}) is None
 
 
-def test_not_home_returns_none():
+def test_not_launcher_returns_none():
     frame = Perception(pkg="com.ss.android.lark", nodeTree=[])
     assert home_locate_action(frame, "com.ss.android.lark", ["飞书"], {}) is None
 
@@ -71,33 +171,34 @@ def test_already_in_target_returns_none():
 # ---------- 命中 tap ----------
 
 def test_home_hit_icon_returns_tap():
-    frame = _home([Node(id="1", text="飞书")])
+    frame = _home([_icon(text="飞书")])
     acts = home_locate_action(frame, "com.ss.android.lark", ["飞书", "lark"], {})
     assert acts and acts[0].op == "tap" and acts[0].params["match_text"] == "飞书"
 
 
 def test_home_hit_icon_clears_state():
     guard: dict = {"home_locate": {"direction": "right", "last_fp": frozenset(["x"]), "exhausted": {"left"}, "swipe_count": 5}}
-    frame = _home([Node(id="1", text="飞书")])
+    frame = _home([_icon(text="飞书")])
     acts = home_locate_action(frame, "com.ss.android.lark", ["飞书"], guard)
     assert acts and acts[0].op == "tap"
     # tap 后状态清空,避免命中同一 app 再次进入时残留
     assert "home_locate" not in guard
 
 
-# ---------- MINUS_ONE:跳过 find_icon(核心回归)----------
+def test_minus_one_scene_still_tries_find_icon():
+    """回归 2026-07-28 ColorOS bug:detect_scene 因 workspace inset 误判 HOME 为 MINUS_ONE,
+    home_locate 不能因此跳过 find_icon;icon-like 过滤足以剔除通知卡片。
+    """
+    frame = _minus_one([_icon(text="飞书", x=540, y=500), _smart_card("飞书 有4条通知")])
+    acts = home_locate_action(frame, "com.ss.android.lark", ["飞书", "lark"], {})
+    assert acts and acts[0].op == "tap" and acts[0].params["match_text"] == "飞书"
+
 
 def test_minus_one_notification_card_not_matched():
-    """回归 2026-07-28 真机 bug:负一屏「飞书 有4条通知」不能被 tap。
-
-    -1 屏上有含 alias 的通知卡片文本,但 clickable=False 且不是应用图标入口。
-    home_locate 在 MINUS_ONE 场景必须跳过 find_icon,只走 swipe 逻辑。
-    """
-    notif = Node(id="n", text="飞书 有4条通知", clickable=False)
+    """回归 2026-07-28 真机 bug 早期版本:仅通知卡片、无正常图标时,不应 tap 通知磁贴。"""
     guard: dict = {}
-    acts = home_locate_action(_minus_one([notif]), "com.ss.android.lark", ["飞书", "lark"], guard)
+    acts = home_locate_action(_minus_one([_smart_card("飞书 有4条通知")]), "com.ss.android.lark", ["飞书", "lark"], guard)
     assert acts is not None
-    # 不能 tap,应该 swipe
     assert acts[0].op == "swipe"
 
 
@@ -114,7 +215,7 @@ def test_minus_one_swipes_current_direction_from_fresh_state():
 # ---------- HOME 未命中:朝当前方向滑 ----------
 
 def test_home_miss_swipes_current_direction_default_left():
-    frame = _home([Node(id="1", text="微信")])
+    frame = _home([_icon(text="微信")])
     guard: dict = {}
     acts = home_locate_action(frame, "com.ss.android.lark", ["飞书"], guard)
     assert acts and acts[0].op == "swipe" and acts[0].params["direction"] == "left"
@@ -125,7 +226,7 @@ def test_new_frame_continues_current_direction_without_boundary():
     """last_fp 与当前帧 fp 不同 → 未到边界,朝原方向继续。"""
     prev_fp = frozenset(["A", "B"])
     guard: dict = {"home_locate": {"direction": "right", "last_fp": prev_fp, "exhausted": set(), "swipe_count": 3}}
-    frame = _home([Node(id="1", text="王者荣耀")])
+    frame = _home([_icon(text="王者荣耀")])
     acts = home_locate_action(frame, "com.ss.android.lark", ["飞书"], guard)
     assert acts and acts[0].op == "swipe" and acts[0].params["direction"] == "right"
     # last_fp 已更新为当前帧
@@ -136,7 +237,7 @@ def test_new_frame_continues_current_direction_without_boundary():
 
 def test_boundary_hit_switches_direction_not_abort():
     """当前方向 fp 相同 → 切另一方向,不 abort。"""
-    frame = _home([Node(id="1", text="微信"), Node(id="2", text="王者荣耀")])
+    frame = _home([_icon(text="微信"), _icon(text="王者荣耀", x=400)])
     fp = _screen_icon_fingerprint(frame.nodeTree)
     guard: dict = {"home_locate": {"direction": "left", "last_fp": fp, "exhausted": set(), "swipe_count": 3}}
     acts = home_locate_action(frame, "com.ss.android.lark", ["飞书"], guard)
@@ -150,7 +251,7 @@ def test_boundary_hit_switches_direction_not_abort():
 
 def test_direction_switch_next_frame_no_false_boundary():
     """切方向后,新方向首帧 fp 与旧 fp 相等也不应误判边界(last_fp=None 保护)。"""
-    frame = _home([Node(id="1", text="微信")])
+    frame = _home([_icon(text="微信")])
     guard: dict = {"home_locate": {"direction": "right", "last_fp": None, "exhausted": {"left"}, "swipe_count": 5}}
     acts = home_locate_action(frame, "com.ss.android.lark", ["飞书"], guard)
     assert acts and acts[0].op == "swipe" and acts[0].params["direction"] == "right"
@@ -162,7 +263,7 @@ def test_direction_switch_next_frame_no_false_boundary():
 
 def test_both_directions_exhausted_aborts():
     """一向已耗尽,另一向也遇 fp 相同 → 真正 abort。"""
-    frame = _home([Node(id="1", text="微信"), Node(id="2", text="王者荣耀")])
+    frame = _home([_icon(text="微信"), _icon(text="王者荣耀", x=400)])
     fp = _screen_icon_fingerprint(frame.nodeTree)
     guard: dict = {"home_locate": {"direction": "right", "last_fp": fp, "exhausted": {"left"}, "swipe_count": 10}}
     acts = home_locate_action(frame, "com.ss.android.lark", ["飞书"], guard)
@@ -173,25 +274,25 @@ def test_both_directions_exhausted_aborts():
 # ---------- 端到端:多帧扫描序列 ----------
 
 def test_end_to_end_bidirectional_scan_finds_icon_after_switch():
-    """场景:从中间某页起扫,先向 right(左向) 达边界后切 left(右向),在某页找到飞书。"""
+    """场景:从中间某页起扫,先向 left 达边界后切 right,在某页找到飞书。"""
     guard: dict = {}
     target_pkg = "com.ss.android.lark"
     aliases = ["飞书", "feishu", "lark"]
 
     # 帧 1:HOME 中间页,无飞书 → 记 fp,swipe left
-    f1 = _home([Node(id=f"n{i}", text=t) for i, t in enumerate(["微信", "支付宝"])])
+    f1 = _home([_icon(text="微信"), _icon(text="支付宝", x=400)])
     a1 = home_locate_action(f1, target_pkg, aliases, guard)
     assert a1 and a1[0].op == "swipe" and a1[0].params["direction"] == "left"
 
     # 帧 2:仍无飞书,但内容相同(fp 相同,翻不动)→ 切 direction=right
-    f2 = _home([Node(id=f"n{i}", text=t) for i, t in enumerate(["微信", "支付宝"])])
+    f2 = _home([_icon(text="微信"), _icon(text="支付宝", x=400)])
     a2 = home_locate_action(f2, target_pkg, aliases, guard)
     assert a2 and a2[0].op == "swipe" and a2[0].params["direction"] == "right"
     assert guard["home_locate"]["direction"] == "right"
     assert guard["home_locate"]["exhausted"] == {"left"}
 
     # 帧 3:向 right 滑到含飞书的页 → tap
-    f3 = _home([Node(id="fs", text="飞书")])
+    f3 = _home([_icon(text="飞书")])
     a3 = home_locate_action(f3, target_pkg, aliases, guard)
     assert a3 and a3[0].op == "tap" and a3[0].params["match_text"] == "飞书"
 
@@ -200,6 +301,6 @@ def test_end_to_end_bidirectional_scan_finds_icon_after_switch():
 
 def test_swipe_count_over_limit_aborts():
     guard: dict = {"home_locate": {"direction": "left", "last_fp": frozenset(["x"]), "exhausted": set(), "swipe_count": 99}}
-    frame = _home([Node(id="1", text="王者荣耀")])
+    frame = _home([_icon(text="王者荣耀")])
     acts = home_locate_action(frame, "com.ss.android.lark", ["飞书"], guard)
     assert acts and acts[0].op == "abort"

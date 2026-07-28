@@ -2,10 +2,14 @@
 """桌面找图标守卫(纯云端确定性,双向扫描)。
 
 设计:每一页对我们等价,不区分「首页/末页」;只关心「当前方向是否还能翻」。
-- 边界:连续两帧同 fingerprint(swipe 未实际翻页)。HOME 与 MINUS_ONE 走同一条判据。
+- 边界:连续两帧同 fingerprint(swipe 未实际翻页)。HOME 与 MINUS_ONE 同判据。
 - 命中当前方向边界 → 切另一方向;两向皆达边界 → abort。
-- MINUS_ONE 上跳过 find_icon:负一屏通知卡片(如「飞书 有4条通知」)会造成 alias
-  误命中,tap 下去要么被端侧拒(非可点/退化 bounds),要么跳到错的入口。
+- 图标识别只认「onscreen 可点、非 smart-card」节点:
+  * ColorOS 上 detect_scene 对 HOME 的 workspace inset 会误判 MINUS_ONE,不能
+    按 scene 决定要不要 find_icon;launcher 内一律尝试 find_icon。
+  * 负一屏「com.nearme.instant.card / seedling」小布卡片、offscreen 页的
+    离屏 TextView(bounds 退化到几十像素宽) 都通过 icon-like 过滤剔除,避免
+    误命中(通知磁贴 tap 不到应用,离屏坐标 tap 也无效)。
 """
 from __future__ import annotations
 
@@ -15,11 +19,44 @@ from app.decision.pkg_guard import Scene, detect_scene
 from app.protocol import Action, Node, Perception
 from app.protocol.models import Op
 
+# 图标最小边长:小于这个值的节点大概率是离屏(bounds 退化)或装饰性小图形,
+# 100px 阈值经真机验证(app 图标典型 240×240,通知卡内元素 ≤50)。
+_MIN_ICON_SIZE = 100
+
+# smart-card viewIdResourceName 关键字:ColorOS 负一屏「小布助理」通知磁贴
+# 使用这些前缀,即便 label 匹配 alias 也不作为图标入口(tap 后跳的是通知列表)。
+_ICON_EXCLUDE_RESID = ("instant.card", "seedling")
+
+
+def _is_icon_like(node: Node) -> bool:
+    """图标节点判据:可点 + bounds 足够大 + 非 smart-card。"""
+    if not node.clickable:
+        return False
+    b = node.bounds
+    if b is None:
+        return False
+    w = b[2] - b[0]
+    h = b[3] - b[1]
+    if w < _MIN_ICON_SIZE or h < _MIN_ICON_SIZE:
+        return False
+    rid = node.viewIdResourceName or ""
+    if any(sub in rid for sub in _ICON_EXCLUDE_RESID):
+        return False
+    return True
+
+
+def _icons(nodes: list[Node]) -> list[Node]:
+    return [n for n in nodes if _is_icon_like(n)]
+
 
 def _screen_icon_fingerprint(nodes: list[Node]) -> frozenset[str]:
-    """所有节点非空 text/desc(strip)组成的集合指纹,判断当前方向 swipe 是否有效。"""
+    """当前屏可点 icon 的 text/desc 集合;判断 swipe 是否实际翻页。
+
+    只算 icon-like 节点,避免小布卡片加载状态刷新(「一键加速」→「一键加速可释放 445MB」)
+    污染指纹导致误判"还在翻页"。
+    """
     out: set[str] = set()
-    for n in nodes:
+    for n in _icons(nodes):
         for raw in (n.text, n.desc):
             if raw and raw.strip():
                 out.add(raw.strip())
@@ -27,12 +64,12 @@ def _screen_icon_fingerprint(nodes: list[Node]) -> frozenset[str]:
 
 
 def find_icon(nodes: list[Node], aliases: list[str]) -> Node | None:
-    """扫节点 text/desc,命中任一 alias 返回该节点;完全相等优先于包含。"""
+    """在 icon-like 节点里扫 text/desc,命中任一 alias 返回该节点;完全相等优先。"""
     lowered = [a.strip().lower() for a in aliases if a.strip()]
     if not lowered:
         return None
     best_contains: Node | None = None
-    for n in nodes:
+    for n in _icons(nodes):
         for raw in (n.text, n.desc):
             if not raw:
                 continue
@@ -94,12 +131,11 @@ def home_locate_action(
     if st["swipe_count"] >= _MAX_SWIPE:
         return _abort(aliases[0])
 
-    # HOME 上尝试命中图标;MINUS_ONE 跳过 find_icon(通知卡片文本会误命中)
-    if scene == Scene.HOME:
-        hit = find_icon(perception.nodeTree, aliases)
-        if hit is not None:
-            guard.pop("home_locate", None)
-            return [_act("tap", {"match_text": (hit.text or hit.desc or "").strip()})]
+    # HOME/MINUS_ONE 一律尝试命中(icon-like 过滤剔除通知卡片和离屏元素)
+    hit = find_icon(perception.nodeTree, aliases)
+    if hit is not None:
+        guard.pop("home_locate", None)
+        return [_act("tap", {"match_text": (hit.text or hit.desc or "").strip()})]
 
     # 边界:连续两帧同 fingerprint,当前方向翻不动
     current_fp = _screen_icon_fingerprint(perception.nodeTree)
