@@ -108,3 +108,35 @@ server/app/
    让 LLM 看到 `[i] type "label"(clickable=true|false|editable=true|false)(scene=HOME|MINUS_ONE|...)` 等结构化字段;不要把 workspace bounds 写成文字描述让 LLM 自己推理。
 3. **LoopGuard 兜底要扩**(规划中):在 `policies.py` 增加 `swipe left/right` 出口(若 frame 持续不变 + current scene 在 launcher / 负一屏,允许触发一次方向性 swipe),而不是死磕 `back/home`。
 4. **clickable=false 显式标记**(规划中):`_encode_nodes` 输出 `type` 时,把不可点击纯文本与 `clickable=false` 装饰元素区分(例如新引入 `disabled` 标签);LLM 不该被"飞书 有2条通知"这种 clickable=false 通知磁贴误导为可点。
+
+## MCP / A11Y 边界(2026-07-29 立,ADR 0001 落地)
+
+LLM 看到的工具集分两段,两段走不同通道,边界刚性:
+
+- **A11Y ops(硬编码进 [TOOLS] 段,system prompt)**:`tap` / `longpress` / `input` /
+  `swipe` / `scroll_to` / `back` / `home` / `press_enter` / `open_notifications` /
+  `open_quick_settings` / `expect` / `read` / `wait` / `done` / `abort`。这些 op
+  LLM **直接产 Action 下行**(`Decision.actions=[Action(op="tap",...)]`),
+  端侧由 AccessibilityService 兜底执行;**不走 MCP、不进 BM25 索引**。
+- **SDK Provider tools(BM25 召回 + call_tool)**:`force_stop` / `install_silent` /
+  `kill_background` / `reboot_device` / `lock_a11y` / `unlock_a11y` /
+  `query_running_packages` / 厂商独有 capability(vivo / huawei / future ...)。
+  LLM 通过 `search_tools(query)` BM25 召回 → `call_tool(name, args)` → McpRouter
+  派发到具体 Provider → 走设备 daemon HTTP-RPC。
+
+硬规则:
+
+- `A11yProvider` **不存在**;Phase 1 注册表里有过,已删除。不要新加
+  「A11Y Provider」「Universal Provider」之类抽象挡板;a11y 路径就是
+  `Action 下行 + 端侧 AccessibilityService` 同一条链路。
+- `server/app/mcp/providers/` 子目录只放厂商 SDK 适配,新 Provider 一律命名
+  `mcp/providers/<vendor>/<vendor>.py` 并 `register` 到全局 registry。
+- BM25 索引的 corpus = `registry.all_tools()` = SDK Provider tools 之并,
+  **永远不包含 a11y ops**;LLM 在 [TOOLS] 段看到 a11y ops 与 BM25 召回
+  SDK tools 互不重叠,语义清晰(避免「tap 既是 a11y 又被 SDK 召回」的歧义)。
+- device.hello 上报的 `sdkVersion` 决定 capability 维度:**能力下放到设备**,
+  op 路由全在端侧(2026-07-22 三约定);云端不感知 provider name,只
+  BM25 召回 SDK tool,设备 daemon 按 SDK 实际能力执行或返回「不支持」。
+- 决策出口分两大类型:`Decision(actions=[...], source="llm"|"cache"|"skill"|"pkg_guard"|"home_locate")` 走 Action 下行;
+  SDK tool 调用由云端额外经 `McpRouter.route(...)` 异步执行,结果经 WS
+  下行 feedback 回 LLM。**Action 和 MCP call 不混在同一帧决策里**;LLM 二选一输出。

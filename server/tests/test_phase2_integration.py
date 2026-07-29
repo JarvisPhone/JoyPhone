@@ -5,6 +5,9 @@
 2. Router.route 把 force_stop 派发给 vivo provider
 3. VivoProvider.call_tool 走 DaemonClient.call
 4. DaemonClient 拿到正确 driver + tool_name + arguments
+
+ADR 0004:Registry 只装 vivo(SDK Provider),a11y 不在 MCP。测试里
+force_stop 路径不再分叉(a11y force_stop 已不存在),直接验证 vivo 派发。
 """
 from __future__ import annotations
 
@@ -14,7 +17,6 @@ from app.agent.cert import StaticCertProvider
 from app.agent.config import ProviderConfig
 from app.mcp import BM25Index, McpRouter, ProviderRegistry
 from app.mcp.daemon_client import FakeDaemonClient
-from app.mcp.providers.a11y import A11yProvider
 from app.mcp.providers.vivo import VivoProvider
 
 
@@ -23,7 +25,7 @@ def _setup(
     daemon_response: dict | None = None,
     capabilities: dict | None = None,
 ) -> tuple[McpRouter, BM25Index, FakeDaemonClient, VivoProvider]:
-    """构造"两 provider + Router + BM25 索引"完整链路。"""
+    """构造"vivo + Router + BM25 索引"完整链路(不再装 A11yProvider)。"""
     daemon = FakeDaemonClient(
         responses={
             ("vivo", "force_stop"): daemon_response or {"ok": True, "output": {"killed": "com.tencent.mm"}},
@@ -34,7 +36,6 @@ def _setup(
     vivo = VivoProvider(cfg)
 
     reg = ProviderRegistry()
-    reg.register(A11yProvider())
     reg.register(vivo)
 
     router = McpRouter(reg, device_capabilities=capabilities or {"devicesdk": True})
@@ -53,45 +54,26 @@ async def test_search_to_force_stop_e2e():
     names = [s.tool.name for s in scored]
     assert "force_stop" in names
 
-    # 2. 直接选 force_stop 派发(实测可能排在第 2,BM25 重在召回不重在排序)
+    # 2. 直接选 force_stop 派发(BM25 重在召回不重在排序)
     forced = next(s for s in scored if s.tool.name == "force_stop")
 
-    # 3. 验证派发载荷:Router 选的是 vivo 的那一支
-    # a11y 也有 force_stop 但 list_tools() 顺序上 a11y 先注册,会拿到 a11y variant
-    # 这时 a11y 不会走 daemon,daemon.calls 仍为空 → 这条路径验证 BM25 召回 + Router 派发通
+    # 3. Router 派发到 vivo(registry 里只有 vivo 一家)
     result = await router.route(forced.tool.name, {"pkg": "com.tencent.mm"})
     assert result.ok is True
+    assert result.output == {"killed": "com.tencent.mm"}
 
-    # 4. 如果 router 选了 vivo,daemon.calls 应有记录;选了 a11y 则无
-    # 这条断言验证两者必有一被走通(反映 Router 选的具体哪个 provider)
+    # 4. daemon.calls 验证 vivo 真实收到 RPC
     vivo_calls = [c for c in daemon.calls if c["tool_name"] == "force_stop"]
-    # 同时验证 a11y 的 force_stop 路径(本地 mock,output 是 mocked)
-    if not vivo_calls:
-        # Router 选了 a11y(因为 a11y 先注册)→ 验证 a11y 路径
-        assert result.output == {"mocked": True, "name": "force_stop"}
-    else:
-        # Router 选了 vivo → 验证 vivo 路径
-        assert vivo_calls == [
-            {"driver": "vivo", "tool_name": "force_stop", "arguments": {"pkg": "com.tencent.mm"}},
-        ]
-        assert result.output == {"killed": "com.tencent.mm"}
-
-
-async def test_a11y_capability_still_routes_correctly():
-    """a11y provider 不要求 devicesdk,应能独立路由。"""
-    router, _, _, _ = _setup(capabilities={"devicesdk": True})
-    result = await router.route("force_stop", {"pkg": "com.x"})
-    assert result.ok is True
+    assert vivo_calls == [
+        {"driver": "vivo", "tool_name": "force_stop", "arguments": {"pkg": "com.tencent.mm"}},
+    ]
 
 
 async def test_vivo_capability_missing_blocks_force_stop():
     """device.hello 没上报 devicesdk → 后端拒绝路由 vivo SDK 工具。
 
-    注:force_stop 也存在于 a11y provider,但 a11y 不要求 devicesdk,
-    所以测试专门用 vivo 独占的工具(lock_a11y)来验证 capability 拦截,
-    避免和 a11y 重名 tool 混淆。
+    force_stop 唯一在 vivo provider,无 a11y 回退路径,必须拦死(ADR 0004)。
     """
-    # 只装 vivo(不放 a11y),保证 router 派发到 vivo
     daemon = FakeDaemonClient()
     cert = StaticCertProvider(fingerprint="fp-vivo-001", signing_key=b"unit-test-key-32bytesxxxxxx")
     cfg = ProviderConfig(driver_type="vivo", device_id="dev-001", cert=cert, daemon_client=daemon)
@@ -125,12 +107,19 @@ async def test_vivo_unknown_tool_via_provider_local_fail_closed():
     assert "unknown tool" in (result.error or "")
 
 
-async def test_bm25_recall_distinguishes_vivo_vs_a11y():
-    """BM25 索引能区分 vivo SDK 工具和 a11y 工具。"""
+async def test_bm25_recall_contains_vivo_sdk_tools():
+    """BM25 索引能召回 vivo SDK 工具。
+
+    a11y ops 不在 corpus 里(ADR 0004),所以查询「tap」类应一律召回不到。
+    """
     _, idx, _, _ = _setup()
     scored = idx.search("force_stop wechat 后台一键 kill")
-    # 应同时召回 vivo force_stop 和 a11y kill_background
     names = {s.tool.name for s in scored}
     assert "force_stop" in names
-    # a11y 工具也应被检索路径覆盖(因为也加了索引)
-    assert "tap" in names  # a11y tap 在 corpus 里
+
+    # a11y 风格查询应召回不到 a11y op(tap / swipe / input 不在 corpus)
+    a11y_scored = idx.search("点击屏幕")
+    a11y_names = {s.tool.name for s in a11y_scored}
+    assert "tap" not in a11y_names
+    assert "swipe" not in a11y_names
+    assert "input" not in a11y_names

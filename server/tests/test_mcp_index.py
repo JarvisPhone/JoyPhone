@@ -1,4 +1,9 @@
-"""BM25 索引召回归位 + 精简 schema 转换。"""
+"""BM25 索引召回归位 + 精简 schema 转换。
+
+ADR 0004:BM25 索引只覆盖 SDK Provider tools;a11y ops(tap/swipe/input 等)
+不进 Provider Registry,也不进 BM25 索引。这里 corpus 用来测试 BM25 算分
+精度,工具集刻意模拟「厂商 SDK 工具混合」场景。
+"""
 from __future__ import annotations
 
 import pytest
@@ -7,28 +12,23 @@ from app.mcp.index import BM25Index
 from app.mcp.protocol import ToolArgument, ToolDefinition
 
 
-def _tool(name: str, desc: str, args: list[ToolArgument] | None = None) -> ToolDefinition:
+def _tool(name: str, desc: str, args: list[ToolArgument] | None = None, provider: str = "fake_vivo") -> ToolDefinition:
     return ToolDefinition(
         name=name,
         description=desc,
         arguments=args or [],
-        provider="a11y",
+        provider=provider,
     )
 
 
 def _corpus() -> list[ToolDefinition]:
     return [
         _tool("force_stop", "强制停止某个应用,后台一键 kill", [ToolArgument(name="pkg", type="string")]),
-        _tool("tap", "按语义锚点点击节点", [ToolArgument(name="match_text", type="string")]),
-        _tool("swipe", "从一个点滑到另一个点", [
-            ToolArgument(name="x1", type="number"),
-            ToolArgument(name="y1", type="number"),
-            ToolArgument(name="x2", type="number"),
-            ToolArgument(name="y2", type="number"),
-        ]),
-        _tool("input", "在当前输入框输入文本", [ToolArgument(name="text", type="string")]),
         _tool("kill_background", "清理后台进程,常用于杀微信 qq", [ToolArgument(name="pkg", type="string")]),
+        _tool("install_silent", "静默安装 APK", [ToolArgument(name="apk_path", type="string")]),
         _tool("screenshot", "截屏返回 base64", []),
+        _tool("open_app", "根据包名启动 app", [ToolArgument(name="pkg", type="string")]),
+        _tool("query_running_packages", "返回当前所有运行中的包名", []),
     ]
 
 
@@ -46,9 +46,9 @@ def test_search_basic_keyword_returns_relevant_tool():
 def test_search_chinese_query_tokenizes_per_char():
     idx = BM25Index()
     idx.add(_corpus())
-    res = idx.search("点击屏幕上的按钮")
+    res = idx.search("启动某个应用")
     names = [r.tool.name for r in res]
-    assert "tap" in names
+    assert "open_app" in names
 
 
 def test_search_unknown_query_returns_empty():
@@ -65,14 +65,14 @@ def test_search_empty_corpus_returns_empty():
 def test_search_top_k_caps_results():
     idx = BM25Index()
     idx.add(_corpus())
-    res = idx.search("kill app", top_k=2)
+    res = idx.search("kill pkg", top_k=2)
     assert len(res) <= 2
 
 
 def test_search_scores_are_nonnegative_and_sorted_desc():
     idx = BM25Index()
     idx.add(_corpus())
-    res = idx.search("input text")
+    res = idx.search("install apk")
     assert res, "expected at least one hit"
     for r in res:
         assert r.score >= 0
@@ -95,7 +95,7 @@ def test_tool_name_ranks_higher_than_description_only_token():
 def test_to_llm_schema_strips_provider_field():
     idx = BM25Index()
     idx.add(_corpus())
-    res = idx.search("tap")
+    res = idx.search("kill")
     schemas = idx.to_llm_schema(res)
     assert schemas
     for s in schemas:
@@ -115,14 +115,19 @@ def test_clear_resets_index():
 
 
 def test_idf_universal_token_is_lower_than_rare_token():
-    """全文档通用 token 的 IDF 应低于稀有 token,等价于"通用词无判别力"。"""
+    """全文档通用 token 的 IDF 应低于稀有 token,等价于"通用词无判别力"。
+
+    "kill" 仅出现在 kill_background 的 name 里(加权 3 次),"列出" 是
+    两工具描述的常见动词。让"kill" 单独查询,确认它把 kill_background
+    拉到第一。
+    """
     idx = BM25Index()
     tools = [
-        _tool("tap", "通用的点击操作"),
-        _tool("kill_background", "清理后台进程"),
+        _tool("kill_background", "通用的清理操作"),
+        _tool("query_running_packages", "列出后台进程"),
     ]
     idx.add(tools)
-    res = idx.search("kill 后台")
+    res = idx.search("kill")
     # "kill" 仅出现在 kill_background 中,理应让它排第一
     assert res[0].tool.name == "kill_background"
 
@@ -138,3 +143,17 @@ def test_provider_field_required_for_internal_use():
 
     s = ToolSchema(name="x", description="y", arguments=[])
     assert "provider" not in s.model_dump()
+
+
+def test_a11y_ops_not_in_index():
+    """ADR 0004 守护测试:BM25 索引绝不能召回 a11y ops。
+
+    a11y ops(tap/swipe/input 等)在 [TOOLS] 段硬编码,不在 MCP Provider Registry,
+    自然不在 BM25 corpus。本测试模拟「a11y 风格查询」,确认 corpus 不会假召回。
+    """
+    idx = BM25Index()
+    idx.add(_corpus())
+    res = idx.search("tap 屏幕")
+    names = [r.tool.name for r in res]
+    # a11y op 不在 corpus 里,不该被召回
+    assert "tap" not in names

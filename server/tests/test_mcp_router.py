@@ -2,6 +2,9 @@
 
 Phase 2 改造:BaseProvider.call_tool 改成 async,Router.route 改成 async,
 所有 Route 都 await。同步 fake 用 `async def` 仍是无副作用的。
+
+A11Y 不在 MCP 注册表(ADR 0001/0004),所以这里用 _FakeVivoProvider 模拟
+厂商 SDK Provider,验证路由 + capability 裁剪,不再 import A11yProvider。
 """
 from __future__ import annotations
 
@@ -9,9 +12,59 @@ import pytest
 
 from app.mcp.protocol import ToolArgument, ToolDefinition, ToolResult
 from app.mcp.providers.base import BaseProvider
-from app.mcp.providers.a11y import A11yProvider
 from app.mcp.registry import ProviderRegistry
 from app.mcp.router import McpRouter, RouteError
+
+
+class _FakeVivoProvider(BaseProvider):
+    """模拟厂商 SDK Provider,含 capability requires 的工具集合。"""
+
+    name = "fake_vivo"
+
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    def list_tools(self) -> list[ToolDefinition]:
+        return [
+            ToolDefinition(
+                name="force_stop",
+                description="强制停止某个应用(按包名),后台一键 kill",
+                arguments=[ToolArgument(name="pkg", type="string", description="包名")],
+                provider=self.name,
+                requires={"devicesdk": True},
+            ),
+            ToolDefinition(
+                name="install_silent",
+                description="静默安装 APK",
+                arguments=[ToolArgument(name="apk_path", type="string")],
+                provider=self.name,
+                requires={"devicesdk": True},
+            ),
+            ToolDefinition(
+                name="plain_op",
+                description="不需要任何能力",
+                arguments=[],
+                provider=self.name,
+            ),
+        ]
+
+    def _validate_args(self, name: str, arguments: dict) -> str | None:
+        if name == "force_stop":
+            pkg = arguments.get("pkg")
+            if not pkg or not isinstance(pkg, str):
+                return "force_stop requires string arg 'pkg'"
+        if name == "install_silent":
+            apk = arguments.get("apk_path")
+            if not apk or not isinstance(apk, str):
+                return "install_silent requires string arg 'apk_path'"
+        return None
+
+    async def call_tool(self, name, arguments):
+        err = self._validate_args(name, arguments)
+        if err is not None:
+            return ToolResult(ok=False, error=err)
+        self.calls.append({"name": name, "arguments": dict(arguments)})
+        return ToolResult(ok=True, output={"vendor": "fake_vivo", "name": name})
 
 
 class _FakeProvider(BaseProvider):
@@ -44,15 +97,15 @@ class _FakeProvider(BaseProvider):
         return ToolResult(ok=True, output={"echo": arguments})
 
 
-def _registry_with_a11y() -> tuple[ProviderRegistry, A11yProvider]:
+def _registry_with_fake_vivo() -> tuple[ProviderRegistry, _FakeVivoProvider]:
     reg = ProviderRegistry()
-    a11y = A11yProvider()
-    reg.register(a11y)
-    return reg, a11y
+    vivo = _FakeVivoProvider()
+    reg.register(vivo)
+    return reg, vivo
 
 
 async def test_route_unknown_tool_raises_route_error():
-    reg, _ = _registry_with_a11y()
+    reg, _ = _registry_with_fake_vivo()
     router = McpRouter(reg)
     with pytest.raises(RouteError) as exc:
         await router.route("no_such_tool", {})
@@ -61,17 +114,17 @@ async def test_route_unknown_tool_raises_route_error():
 
 
 async def test_route_known_tool_calls_provider_and_returns_result():
-    reg, a11y = _registry_with_a11y()
-    router = McpRouter(reg)
+    reg, vivo = _registry_with_fake_vivo()
+    router = McpRouter(reg, device_capabilities={"devicesdk": True})
     result = await router.route("force_stop", {"pkg": "com.tencent.mm"})
     assert result.ok is True
-    assert result.output == {"mocked": True, "name": "force_stop"}
-    assert a11y.calls == [{"name": "force_stop", "arguments": {"pkg": "com.tencent.mm"}}]
+    assert result.output == {"vendor": "fake_vivo", "name": "force_stop"}
+    assert vivo.calls == [{"name": "force_stop", "arguments": {"pkg": "com.tencent.mm"}}]
 
 
-async def test_route_a11y_arg_validation_returns_error_result():
-    reg, _ = _registry_with_a11y()
-    router = McpRouter(reg)
+async def test_route_arg_validation_returns_error_result():
+    reg, _ = _registry_with_fake_vivo()
+    router = McpRouter(reg, device_capabilities={"devicesdk": True})
     result = await router.route("force_stop", {})  # 缺 pkg
     assert result.ok is False
     assert "pkg" in (result.error or "")
@@ -133,9 +186,9 @@ async def test_set_capabilities_updates_router_runtime():
 
 def test_registry_rejects_duplicate_provider():
     reg = ProviderRegistry()
-    reg.register(A11yProvider())
+    reg.register(_FakeVivoProvider())
     with pytest.raises(ValueError, match="already registered"):
-        reg.register(A11yProvider())
+        reg.register(_FakeVivoProvider())
 
 
 def test_registry_rejects_empty_provider_name():
@@ -161,19 +214,24 @@ def test_registry_unregister_missing_raises():
 
 
 def test_registry_all_tools_aggregates_across_providers():
+    """仅 SDK Provider tools 之并;a11y ops 绝对不在(ADR 0004)。"""
     reg = ProviderRegistry()
-    reg.register(A11yProvider())
+    reg.register(_FakeVivoProvider())
     reg.register(_FakeProvider())
     names = {t.name for t in reg.all_tools()}
-    assert {"force_stop", "tap", "fancy_op", "plain_op"} <= names
+    assert {"force_stop", "install_silent", "fancy_op", "plain_op"} <= names
+    # a11y ops 不在 registry 里
+    assert "tap" not in names
+    assert "swipe" not in names
+    assert "input" not in names
 
 
 def test_registry_find_provider_for_tool():
     reg = ProviderRegistry()
-    reg.register(A11yProvider())
+    reg.register(_FakeVivoProvider())
     reg.register(_FakeProvider())
     p = reg.find_provider_for_tool("force_stop")
-    assert p is not None and p.name == "a11y"
+    assert p is not None and p.name == "fake_vivo"
     p = reg.find_provider_for_tool("fancy_op")
     assert p is not None and p.name == "fake"
     assert reg.find_provider_for_tool("nope") is None

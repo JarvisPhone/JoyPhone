@@ -1,4 +1,9 @@
-"""Provider SPI:每个厂商 SDK / a11y / git / filesystem 都实现这个。
+"""Provider SPI:每个厂商 SDK 适配(vivo / huawei / future)。
+
+注册表只承载厂商 SDK Provider(走 MCP + BM25 + DaemonClient → 设备 daemon
+HTTP-RPC);A11Y 是兜底通道,op 写在 system prompt 的 [TOOLS] 段,
+LLM 决策时直接产 Action 下行,跟 Provider 抽象无关。详细边界见
+docs/adr/0004-mcp-only-sdks.md。
 
 为什么 call_tool 是 async:
 - 真 HTTP RPC 调设备 daemon 必须异步( httpx.AsyncClient )
